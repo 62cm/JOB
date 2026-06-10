@@ -1,7 +1,7 @@
 const fs = require('fs');
 const data = JSON.parse(fs.readFileSync('data.json', 'utf8'));
 const REAL_CO = require('./real-companies.js');
-const GAME_BUILD_ID = '2026.06.09-rl-result3';
+const GAME_BUILD_ID = '2026.06.09-intern-layoff';
 
 const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -191,6 +191,29 @@ const html = `<!DOCTYPE html>
   .inbox-fold-hdr:hover{border-color:var(--accent)}
   .inbox-fold-hdr .fold-meta{color:var(--muted);font-size:.64rem}
   .inbox-fold-body{padding:0 2px 4px}
+  .fin-panel{margin-bottom:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)}
+  .fin-fold-hdr{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:7px 9px;cursor:pointer;font-size:.74rem;background:var(--panel)}
+  .fin-fold-hdr:hover{border-color:var(--accent)}
+  .fin-fold-body{padding:4px 6px 8px;max-height:min(52vh,420px);overflow-y:auto}
+  .fin-stmt{padding:8px 6px;border-top:1px solid var(--border)}
+  .fin-stmt:first-child{border-top:none}
+  .fin-stmt-hdr{display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:.72rem;font-weight:600;margin-bottom:4px}
+  .fin-stmt-hdr .fold-meta{font-weight:400}
+  .fin-bars{display:flex;flex-direction:column;gap:5px;margin:6px 0}
+  .fin-bar-row{display:flex;align-items:center;gap:6px;font-size:.64rem}
+  .fin-bar-lbl{width:1.6em;text-align:center;flex-shrink:0}
+  .fin-bar-track{flex:1;height:9px;background:rgba(255,255,255,.06);border-radius:5px;overflow:hidden}
+  .fin-bar-fill{height:100%;border-radius:5px;min-width:2px}
+  .fin-bar-fill.inc{background:var(--green)}
+  .fin-bar-fill.exp{background:var(--red)}
+  .fin-bar-amt{width:4.5em;text-align:right;color:var(--muted);font-size:.62rem;flex-shrink:0}
+  .fin-cats{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;margin-top:6px}
+  .fin-col-hdr{font-size:.6rem;color:var(--muted);margin-bottom:2px}
+  .fin-cat{display:flex;align-items:center;gap:3px;font-size:.64rem;color:var(--muted)}
+  .fin-cat b{color:var(--text);font-weight:500;margin-left:auto}
+  .fin-net{font-size:.7rem;font-weight:600;margin-top:5px;padding-top:4px;border-top:1px dashed var(--border)}
+  .fin-net.pos{color:var(--green)}
+  .fin-net.neg{color:var(--red)}
   .cal-planned-fold .inbox-fold-hdr{border-style:dashed}
   .cal-month-hdr{display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:6px;font-size:.72rem;font-weight:600}
   .cal-month-hdr .btn.cal-nav{padding:1px 7px;font-size:.78rem;line-height:1.2;min-width:24px}
@@ -838,7 +861,7 @@ const html = `<!DOCTYPE html>
     </div>
   </section>
 
-  <aside class="log-panel"><div class="panel-title">人生日志</div><div id="gameLog"></div></aside>
+  <aside class="log-panel"><div class="panel-title">人生日志</div><div id="financeLedgerPanel"></div><div id="gameLog"></div></aside>
 </main>
 
 <script>
@@ -1092,6 +1115,7 @@ let industryFilterCollapsed=false,industryPickerOpen=false;
 let portfolioFoldCollapsed=false;
 let interviewSortMode='time';
 let inboxFoldOpen={expired:false,ghost:false,rejected:false};
+let financeFoldOpen=false;
 let plannedExpandedCompanies=new Set();
 let currentSlotIndex=-1,selectedSlotIndex=0,pendingNewSlot=-1;
 
@@ -1369,7 +1393,7 @@ function serializeGameState(){
 function serializeUiState(){
   return{actionDone,selectedIdx,selectedJobIdxs:[...selectedJobIdxs],applyCategoryPicks:[...applyCategoryPicks],
     currentSort,currentCategory,currentTab,calendarView,calendarYear,calendarMonth,refPanelCollapsed,industryFilterCollapsed,portfolioFoldCollapsed,interviewSortMode,
-    inboxFold:{...inboxFoldOpen},plannedExpanded:[...plannedExpandedCompanies]};
+    inboxFold:{...inboxFoldOpen},financeFoldOpen,plannedExpanded:[...plannedExpandedCompanies]};
 }
 function buildSlotMeta(){
   const job=game.employed&&game.employment?game.market[game.employment.jobIdx]:null;
@@ -1433,6 +1457,7 @@ function restoreUiState(ui){
   interviewSortMode=(ui&&ui.interviewSortMode)||'time';
   if(ui&&ui.inboxFold)inboxFoldOpen={expired:false,ghost:false,rejected:false,...ui.inboxFold};
   else inboxFoldOpen={expired:false,ghost:false,rejected:false};
+  financeFoldOpen=!!(ui&&ui.financeFoldOpen);
   plannedExpandedCompanies=new Set((ui&&ui.plannedExpanded)||[]);
   applyRefPanelCollapse();
   applyPortfolioFoldCollapse();
@@ -1471,6 +1496,7 @@ function loadSlotIntoGame(slot){
     game.lifeStressEvents=game.lifeStressEvents||{};
     game.cashStressMilestones=game.cashStressMilestones||{};
     game.shownLifeFlags=game.shownLifeFlags||{};
+    game.monthLedgerHistory=game.monthLedgerHistory||[];
     game.spongeModalActive=!!game.spongeModalActive;
     initShownLifeFlagsFromState();
     migrateLoadedGameState();
@@ -1646,7 +1672,8 @@ function createNewGame(slot,playerName,edu,school){
     stealthJobSearch:false,stealthSearchWeeks:0,pendingHire:null,severanceBlacklistUntil:0,
     ownsConsole:false,ownsComputer:false,
     consumption:defaultConsumptionState(),
-    companion:createCompanionState(edu,school)
+    companion:createCompanionState(edu,school),
+    monthLedger:null,monthLedgerHistory:[]
   };
   selectedJobIdxs=new Set();applyCategoryPicks=new Set();actionDone=false;pendingBatch=null;
   calendarView='month';syncCalendarMonthToGame();
@@ -2276,7 +2303,8 @@ function settleParentsInheritance(silent){
   }else amount=samplePositiveInheritance();
   game.parentsInheritanceAmount=amount;
   game.cash+=amount;
-  if(amount>0)checkCashStressMilestones();
+  if(amount>0){checkCashStressMilestones();ledgerAddIncome('inheritance','📜','父母遗产',amount)}
+  else if(amount<0)ledgerAddExpense('inheritance','📜','父母债务',Math.abs(amount),false);
   if(silent)return;
   if(amount>0)addLog('📜 啃老十年结束：父母留下遗产 ¥'+amount.toLocaleString()+'（已入账）','success');
   else if(amount<0){
@@ -2292,7 +2320,9 @@ function tickWeeklyConsumption(){
 }
 function spendCash(amt,label){
   if(game.cash<amt){addLog(label+' 需 ¥'+amt+'，余额不足','fail');return false}
-  game.cash-=amt;game.lifestyleSpent=(game.lifestyleSpent||0)+amt;return true;
+  game.cash-=amt;game.lifestyleSpent=(game.lifestyleSpent||0)+amt;
+  ledgerAddExpense('lifestyle','🛒',label,amt,false);
+  return true;
 }
 function getYear(week){const d=new Date(START_DATE);d.setDate(d.getDate()+week*7);return d.getFullYear()}
 function getPlayerAge(){return START_AGE+Math.floor(game.week/52)}
@@ -3101,6 +3131,7 @@ function enterMarket(){
   if(game.casinoActive){addLog('在澳门赌桌，无法去人才市场','warn');return}
   if(game.cash<MARKET_ENTRY_FEE){addLog('现金不足，入场费需 ¥'+MARKET_ENTRY_FEE,'fail');return}
   game.cash-=MARKET_ENTRY_FEE;game.jobHuntSpent+=MARKET_ENTRY_FEE;
+  ledgerRecordJobHunt(MARKET_ENTRY_FEE,'人才市场入场');
   game.marketActive=true;game.marketTimeLeft=MARKET_TIME_BUDGET;game.marketApplyCount=0;game.marketBooths=[];
   fillMarketBooths();
   document.getElementById('marketOverlay').classList.remove('hidden');
@@ -3178,7 +3209,7 @@ function runApplyRound(jobIdxs){
     const tip=rc.renewApps&&rc.renewApps.length?'开通费需 ¥'+rc.upfront+'（'+rc.renewApps.map(a=>JOB_APPS[a]).join('、')+'）':'渠道费需 ¥'+rc.upfront;
     addLog('现金不足，'+tip,'fail');return;
   }
-  if(rc.upfront>0){game.cash-=rc.upfront;game.jobHuntSpent+=rc.upfront}
+  if(rc.upfront>0){game.cash-=rc.upfront;game.jobHuntSpent+=rc.upfront;ledgerRecordJobHunt(rc.upfront,rc.label||'求职渠道')}
   if(rc.renewApps&&rc.renewApps.length)activateAppSubscriptions(rc.renewApps);
   const paidNote=rc.upfront>0?'已付 ¥'+rc.upfront+(rc.renewApps&&rc.renewApps.length?'（开通 '+rc.renewApps.map(a=>JOB_APPS[a]).join('、')+' 一个月）':''):'免费';
   addLog('📋 【'+rc.label+'】'+paidNote+'，正在抽取本期招聘…','info');
@@ -3375,7 +3406,7 @@ function attendInterviewSlot(inboxId){
   const bill=calcInterviewAttendanceCost(app,true);
   const fee=bill.cost;
   if(game.cash<fee){addLog('面试费用 ¥'+fee+' 不足','fail');return}
-  if(fee>0){game.cash-=fee;game.jobHuntSpent+=fee}
+  if(fee>0){game.cash-=fee;game.jobHuntSpent+=fee;ledgerRecordJobHunt(fee,'面试费用')}
   app.interviewHeld=true;
   app.status='interview_scheduled';
   const job=game.market[app.jobIdx];
@@ -3585,6 +3616,7 @@ function mobileGamePaySave(){
   }else{
     game.cash-=MOBILE_PAY_COST;
     game.lifestyleSpent=(game.lifestyleSpent||0)+MOBILE_PAY_COST;
+    ledgerAddExpense('lifestyle','🎮','手游氪金',MOBILE_PAY_COST,false);
     addStress(-1,'手游氪金翻盘 ');
     addLog('手游氪金 ¥'+MOBILE_PAY_COST+' 翻盘减压','info');
   }
@@ -3823,7 +3855,7 @@ function signContractOffer(offerId){
   const app=game.applications.find(a=>a.id===offerId);
   if(app&&app.method==='headhunter'){
     const fee=Math.round((o.finalPay||o.offer.annualPay)*.2);
-    if(game.cash>=fee){game.cash-=fee;game.jobHuntSpent+=fee}else game.headhunterDebt+=fee;
+    if(game.cash>=fee){game.cash-=fee;game.jobHuntSpent+=fee;ledgerRecordJobHunt(fee,'猎头签约费')}else game.headhunterDebt+=fee;
   }
   o.contractSigned=true;o.accepted=true;o.stage='waiting';
   const pay=o.finalPay||o.offer.annualPay;
@@ -4221,7 +4253,7 @@ function renderSocialMedals(){
   }).join('');
 }
 function getLayoffWaveProbability(emp){
-  if(emp.weeksInCompany<12)return 0;
+  if(emp.roleExtra!=='intern'&&emp.roleExtra!=='temp'&&emp.weeksInCompany<12)return 0;
   const job=game.market[emp.jobIdx],co=emp.company;
   let base=.0065;
   base*=Math.exp(Math.max(0,game.macroUnemployment-.055)*5);
@@ -4235,7 +4267,7 @@ function getLayoffWaveProbability(emp){
   base*=impM[emp.importance]||1;
   if(emp.weeksInIndustry<26)base*=1.25;
   if(emp.roleExtra==='temp')base*=4;
-  if(emp.roleExtra==='intern')base*=0.45;
+  if(emp.roleExtra==='intern')base*=2.2;
   if(game.stealthJobSearch)base*=1.55+Math.min(1.2,(game.stealthSearchWeeks||0)*0.07);
   return Math.min(.48,base);
 }
@@ -4246,6 +4278,7 @@ function resolveLayoff(emp){
   if(co.scale==='large')structP+=0.02;
   if(co.tier==='low')structP+=0.015;
   if(co.tier==='low'&&emp.importance==='low')structP+=0.03;
+  if(emp.roleExtra==='intern')structP+=0.035;
   if(game.stealthJobSearch&&Math.random()<0.35)
     return {laidOff:true,reason:co.name+' 裁员（疑似因在职求职）',stealth:true};
   if(Math.random()<structP)
@@ -4255,7 +4288,8 @@ function resolveLayoff(emp){
   if(co.scale==='large')p*=1.25;
   if(co.tier==='low')p*=1.4;
   if(co.tier==='mid')p*=1.1;
-  if(Math.random()<Math.min(.72,p))return {laidOff:true,reason:co.name+' 批次裁员（'+IMP_LABEL[emp.importance]+'·'+SCALE_LABEL[co.scale]+'）',stealth:false};
+  if(emp.roleExtra==='intern')p*=1.75;
+  if(Math.random()<Math.min(.72,p))return {laidOff:true,reason:co.name+(emp.roleExtra==='intern'?' 实习生优化':' 批次裁员（'+IMP_LABEL[emp.importance]+'·'+SCALE_LABEL[co.scale]+'）'),stealth:false};
   return {laidOff:false,reason:co.name+' 裁员潮中幸存',stealth:false};
 }
 function triggerLayoffSeverance(emp,layoffInfo){
@@ -4283,13 +4317,18 @@ function triggerLayoffSeverance(emp,layoffInfo){
   });
 }
 function severanceAcceptLow(){
-  if(game&&game._severanceCtx){game.cash+=Math.round(game._severanceCtx.base*0.45);addLog('接受辞退补偿','info')}
+  if(game&&game._severanceCtx){
+    const p=Math.round(game._severanceCtx.base*0.45);
+    game.cash+=p;ledgerAddIncome('severance','💰','辞退补偿',p);
+    addLog('接受辞退补偿','info');
+  }
   game._severanceCtx=null;closeConsumeModal();
 }
 function severanceNegotiate(){
   if(!game||!game._severanceCtx){closeConsumeModal();return}
   if(Math.random()<0.42){
     game.cash+=game._severanceCtx.base;
+    ledgerAddIncome('severance','💰','赔偿谈判',game._severanceCtx.base);
     addLog('赔偿谈判成功 ¥'+game._severanceCtx.base.toLocaleString(),'success');
   }else{
     game.severanceBlacklistUntil=game.week+26+Math.floor(Math.random()*26);
@@ -4300,11 +4339,14 @@ function severanceNegotiate(){
 function severanceSue(){
   if(!game||!game._severanceCtx){closeConsumeModal();return}
   if(Math.random()<0.28){
-    game.cash+=Math.round(game._severanceCtx.base*1.2);
+    const p=Math.round(game._severanceCtx.base*1.2);
+    game.cash+=p;ledgerAddIncome('severance','💰','诉讼获赔',p);
     game.severanceBlacklistUntil=game.week+52+Math.floor(Math.random()*52);
     addLog('诉讼惨胜，但业内风评受损','warn');
   }else{
-    game.cash=Math.max(0,game.cash-Math.round(game._severanceCtx.base*0.3));
+    const fee=Math.round(game._severanceCtx.base*0.3);
+    game.cash=Math.max(0,game.cash-fee);
+    ledgerAddExpense('legal','⚖️','诉讼律师费',fee,false);
     game.severanceBlacklistUntil=game.week+40+Math.floor(Math.random()*40);
     addLog('诉讼失败并承担律师费','fail');
   }
@@ -4400,6 +4442,147 @@ function checkCashStressMilestones(){
     game.cashStressMilestones[m.key]=true;
     addStress(-20,'首次存款达'+m.label+' ');
   });
+}
+function getLedgerMonthKey(week){
+  return Math.max(1,Math.ceil((week||0)/WEEKS_PER_MONTH));
+}
+function ledgerPeriodLabel(week){
+  const d=new Date(START_DATE);
+  d.setDate(d.getDate()+(week||game.week)*7);
+  return d.toLocaleDateString('zh-CN',{year:'numeric',month:'long'});
+}
+function sumLedgerBucket(bucket){
+  return Object.values(bucket||{}).reduce((s,x)=>s+(x.amount||0),0);
+}
+function ensureMonthLedger(){
+  if(!game)return null;
+  game.monthLedgerHistory=game.monthLedgerHistory||[];
+  const mk=getLedgerMonthKey(Math.max(1,game.week));
+  if(!game.monthLedger||game.monthLedger.monthKey!==mk){
+    if(game.monthLedger&&!game.monthLedger._closed)finalizeMonthLedger(false);
+    game.monthLedger={
+      monthKey:mk,income:{},expense:{},
+      weekStart:(mk-1)*WEEKS_PER_MONTH+1,weekEnd:mk*WEEKS_PER_MONTH
+    };
+  }
+  return game.monthLedger;
+}
+function ledgerAdd(type,cat,icon,label,amount,mandatory){
+  if(!game||_companionActor||!amount||amount<=0)return;
+  const L=ensureMonthLedger();if(!L)return;
+  const bucket=type==='income'?L.income:L.expense;
+  if(!bucket[cat])bucket[cat]={icon,label,amount:0,mandatory:!!mandatory};
+  bucket[cat].amount+=amount;
+}
+function ledgerAddIncome(cat,icon,label,amt){ledgerAdd('income',cat,icon,label,amt,false)}
+function ledgerAddExpense(cat,icon,label,amt,mandatory){ledgerAdd('expense',cat,icon,label,amt,mandatory)}
+function ledgerRecordMandatoryExpense(exp,amount){
+  if(!amount||amount<=0)return;
+  const need=exp.total||amount;
+  const mort=need>0?Math.round((exp.mortgage||0)*amount/need):0;
+  const live=amount-mort;
+  if(mort>0)ledgerAddExpense('housing','🏠','房贷',mort,true);
+  if(live>0)ledgerAddExpense('living','🍜',(exp.label||'生活费').replace(/ ·.*/,''),live,true);
+}
+function ledgerRecordJobHunt(amt,label){
+  if(amt>0)ledgerAddExpense('jobhunt','📋',label||'求职支出',amt,false);
+}
+function finalizeMonthLedger(isPayslip){
+  if(!game||!game.monthLedger||game.monthLedger._closed)return;
+  const L=game.monthLedger;
+  const incomeTotal=sumLedgerBucket(L.income);
+  const expenseTotal=sumLedgerBucket(L.expense);
+  if(incomeTotal===0&&expenseTotal===0&&!isPayslip){game.monthLedger=null;return}
+  const stmt={
+    monthKey:L.monthKey,
+    period:ledgerPeriodLabel(L.weekEnd||game.week),
+    weekRange:[L.weekStart,L.weekEnd||game.week],
+    income:JSON.parse(JSON.stringify(L.income)),
+    expense:JSON.parse(JSON.stringify(L.expense)),
+    incomeTotal,expenseTotal,net:incomeTotal-expenseTotal,
+    closedAt:game.week
+  };
+  game.monthLedgerHistory=game.monthLedgerHistory||[];
+  game.monthLedgerHistory.unshift(stmt);
+  if(game.monthLedgerHistory.length>48)game.monthLedgerHistory.pop();
+  L._closed=true;
+  if(isPayslip){
+    const sign=stmt.net>=0?'+':'-';
+    addLog('📊 '+stmt.period+' 工资单：收入 ¥'+incomeTotal.toLocaleString()+
+      ' · 支出 ¥'+expenseTotal.toLocaleString()+
+      ' · 结余 '+sign+'¥'+Math.abs(stmt.net).toLocaleString(),stmt.net>=0?'success':'warn');
+  }
+  game.monthLedger=null;
+}
+function startNextMonthLedger(){
+  if(!game)return;
+  const nextWeek=game.week+1;
+  const mk=getLedgerMonthKey(nextWeek);
+  game.monthLedger={
+    monthKey:mk,income:{},expense:{},
+    weekStart:nextWeek,weekEnd:mk*WEEKS_PER_MONTH
+  };
+}
+function closeMonthPayslip(){
+  if(!game||game.monthLedger&&game.monthLedger._closing)return;
+  if(game.monthLedger)game.monthLedger._closing=true;
+  finalizeMonthLedger(true);
+  startNextMonthLedger();
+}
+function toggleFinanceFold(){
+  financeFoldOpen=!financeFoldOpen;
+  renderFinanceLedger();
+}
+function fmtLedgerAmt(n){
+  if(n>=10000)return'¥'+(n/10000).toFixed(n>=100000?1:2).replace(/\\.0$/,'')+'万';
+  return'¥'+n.toLocaleString();
+}
+function renderFinanceLedgerBars(incomeTotal,expenseTotal){
+  const max=Math.max(incomeTotal,expenseTotal,1);
+  const iPct=Math.round(incomeTotal/max*100);
+  const ePct=Math.round(expenseTotal/max*100);
+  return'<div class="fin-bars">'+
+    '<div class="fin-bar-row"><span class="fin-bar-lbl">💰</span><div class="fin-bar-track"><div class="fin-bar-fill inc" style="width:'+iPct+'%"></div></div><span class="fin-bar-amt">'+fmtLedgerAmt(incomeTotal)+'</span></div>'+
+    '<div class="fin-bar-row"><span class="fin-bar-lbl">💸</span><div class="fin-bar-track"><div class="fin-bar-fill exp" style="width:'+ePct+'%"></div></div><span class="fin-bar-amt">'+fmtLedgerAmt(expenseTotal)+'</span></div>'+
+    '</div>';
+}
+function renderFinanceLedgerCats(bucket,type){
+  const items=Object.values(bucket||{}).filter(x=>x.amount>0).sort((a,b)=>b.amount-a.amount);
+  if(!items.length)return'<div style="font-size:.62rem;color:var(--muted)">无</div>';
+  return items.map(x=>'<div class="fin-cat"><span>'+x.icon+'</span><span>'+x.label+'</span><b>'+fmtLedgerAmt(x.amount)+'</b></div>').join('');
+}
+function renderFinanceLedger(){
+  const el=document.getElementById('financeLedgerPanel');
+  if(!el||!game)return;
+  const hist=game.monthLedgerHistory||[];
+  const cur=game.monthLedger;
+  const curInc=sumLedgerBucket(cur&&cur.income);
+  const curExp=sumLedgerBucket(cur&&cur.expense);
+  const latest=hist[0];
+  const summary=latest
+    ?latest.period+' · 结余 '+(latest.net>=0?'+':'')+fmtLedgerAmt(Math.abs(latest.net))
+    :(curInc||curExp?ledgerPeriodLabel(game.week)+' 记账中…':'暂无账单');
+  let body='';
+  if(financeFoldOpen){
+    if(cur&&(curInc>0||curExp>0)){
+      body+='<div class="fin-stmt"><div class="fin-stmt-hdr"><span>'+ledgerPeriodLabel(game.week)+'</span><span class="fold-meta">进行中</span></div>'+
+        renderFinanceLedgerBars(curInc,curExp)+
+        '<div class="fin-cats"><div><div class="fin-col-hdr">收入来源</div>'+renderFinanceLedgerCats(cur.income,'income')+'</div>'+
+        '<div><div class="fin-col-hdr">支出</div>'+renderFinanceLedgerCats(cur.expense,'expense')+'</div></div>'+
+        '<div class="fin-net '+(curInc-curExp>=0?'pos':'neg')+'">暂计结余 '+(curInc-curExp>=0?'+':'')+fmtLedgerAmt(Math.abs(curInc-curExp))+'</div></div>';
+    }
+    hist.forEach(stmt=>{
+      body+='<div class="fin-stmt"><div class="fin-stmt-hdr"><span>'+stmt.period+'</span><span class="fold-meta">第'+stmt.weekRange[0]+'–'+stmt.weekRange[1]+'周</span></div>'+
+        renderFinanceLedgerBars(stmt.incomeTotal,stmt.expenseTotal)+
+        '<div class="fin-cats"><div><div class="fin-col-hdr">收入来源</div>'+renderFinanceLedgerCats(stmt.income,'income')+'</div>'+
+        '<div><div class="fin-col-hdr">支出</div>'+renderFinanceLedgerCats(stmt.expense,'expense')+'</div></div>'+
+        '<div class="fin-net '+(stmt.net>=0?'pos':'neg')+'">结余 '+(stmt.net>=0?'+':'')+fmtLedgerAmt(Math.abs(stmt.net))+'</div></div>';
+    });
+    if(!body)body='<div style="padding:8px;font-size:.68rem;color:var(--muted)">每月结算后自动生成工资单</div>';
+  }
+  el.innerHTML='<div class="fin-panel"><div class="fin-fold-hdr" onclick="toggleFinanceFold()">'+
+    '<span>📊 财务账单 <span class="fold-meta">'+summary+'</span></span><span>'+(financeFoldOpen?'▼':'▶')+'</span></div>'+
+    (financeFoldOpen?'<div class="fin-fold-body">'+body+'</div>':'')+'</div>';
 }
 function getMonthlyExpenses(){
   if(game.homeless)return {housing:0,living:1000,total:1000,mortgage:0,label:'流浪（桥洞）',isRent:true,affairMult:1};
@@ -4548,6 +4731,9 @@ function determineEnding(){
 
 function processMonthlyBills(){
   if(game.week<1||game.week%WEEKS_PER_MONTH!==0||game.gameOver)return;
+  ensureMonthLedger();
+  if(game.monthLedger)game.monthLedger.weekEnd=game.week;
+  try{
   checkAffairEvent();
   syncAffairState();
   checkChildBirth();
@@ -4556,6 +4742,7 @@ function processMonthlyBills(){
   if(game.onWelfare&&!game.homeless){
     income=game.disabled?2370:1310;
     game.cash+=income; game.money+=income;
+    ledgerAddIncome('welfare','📋',game.disabled?'伤残低保':'低保',income);
     addLog('📋 领取'+(game.disabled?'伤残':'')+'低保 ¥'+income,'info');
   }
   if(game.hasChildren&&game.childRaisingMonthsLeft>0){
@@ -4564,6 +4751,7 @@ function processMonthlyBills(){
   }
   let need=exp.total;
   if(game.cash>=need){
+    ledgerRecordMandatoryExpense(exp,need);
     game.cash-=need;
     checkCashStressMilestones();
     game.monthsUnderpaid=0;
@@ -4582,9 +4770,11 @@ function processMonthlyBills(){
     return;
   }
   const shortfall=need-game.cash;
+  const paid=game.cash;
   game.cash=0;
   if(tryEnterHomeless(shortfall))return;
   if(game.homeless){
+    if(paid>0)ledgerRecordMandatoryExpense(exp,paid);
     game.homelessMonths++;
     game.familyStress=Math.min(100,game.familyStress+8);
     addLog('🌧 流浪中无力维持生活（缺 ¥'+shortfall+'），在桥洞又熬过一個月','warn');
@@ -4594,6 +4784,8 @@ function processMonthlyBills(){
   if(!game.onWelfare&&game.parentsSupportMonthsLeft>0){
     game.livingOffParents=true;
     game.parentsSupportMonthsLeft--;
+    ledgerRecordMandatoryExpense(exp,need);
+    ledgerAddIncome('parents','🏠','父母资助',shortfall);
     markLifeStressEvent('parents','开始啃老 ');
     addLog('🏠 收入不足，啃老 ¥'+shortfall.toLocaleString()+'（剩余'+game.parentsSupportMonthsLeft+'月）','stress');
     game.familyStress=Math.min(100,game.familyStress+STRESS_PARENTS_MONTHLY*game.stressMultiplier);
@@ -4601,6 +4793,7 @@ function processMonthlyBills(){
     if(game.parentsSupportMonthsLeft<=0)settleParentsInheritance();
     return;
   }
+  if(paid>0)ledgerRecordMandatoryExpense(exp,paid);
   game.monthsUnderpaid++;
   game.familyStress=Math.min(100,game.familyStress+10*game.stressMultiplier);
   addLog('⚠ 第'+game.monthsUnderpaid+'月无力交满（缺 ¥'+shortfall.toLocaleString()+'）','warn');
@@ -4618,6 +4811,7 @@ function processMonthlyBills(){
     markLifeStressEvent('welfare','领取低保 ');
     addLog('📋 啃老十年耗尽，领取低保 ¥1310/月。只能从事体力劳动。','warn');
   }
+  }finally{closeMonthPayslip();renderFinanceLedger()}
 }
 
 function checkManualInjury(){
@@ -4703,8 +4897,9 @@ function processEmployedWeek(){
   if(!game.employed)return;
   const emp=game.employment, job=game.market[emp.jobIdx];
   let salary=weeklySalary(job,emp);
-  if(game.headhunterDebt>0){const d=Math.min(salary,game.headhunterDebt);game.headhunterDebt-=d;salary-=d;if(d)addLog('扣猎头欠款 ¥'+d,'warn')}
+  if(game.headhunterDebt>0){const d=Math.min(salary,game.headhunterDebt);game.headhunterDebt-=d;salary-=d;if(d){addLog('扣猎头欠款 ¥'+d,'warn');ledgerAddExpense('debt','💼','猎头欠款',d,false)}}
   game.money+=salary; game.cash+=salary;
+  ledgerAddIncome('salary','💼',job.title+'·'+emp.company.name,salary);
   checkCashStressMilestones();
   checkChildBirth();
   emp.weeksInIndustry++; emp.weeksInCompany++; emp.weeksInRole++;
@@ -4842,12 +5037,14 @@ function tradeStock(sym,action,shares){
     const cost=s.price*shares, comm=stockCommission(cost), total=cost+comm;
     if(game.cash<total){addLog('现金不足炒股','fail');return}
     game.cash-=total; game.stockSpent+=comm;
+    ledgerAddExpense('invest','📈','股票买入',total,false);
     game.portfolio[sym]=(game.portfolio[sym]||0)+shares;
     addLog('买入 '+s.name+' ×'+shares+' @¥'+s.price.toFixed(2)+' 佣金¥'+comm.toFixed(2),'info');
   }else{
     const held=game.portfolio[sym]||0; if(held<shares){addLog('持仓不足','fail');return}
     const rev=s.price*shares, comm=stockCommission(rev), net=rev-comm;
     game.cash+=net; game.money+=net; game.stockSpent+=comm;
+    ledgerAddIncome('invest','📈','股票卖出',net);
     game.portfolio[sym]=held-shares; if(game.portfolio[sym]<=0)delete game.portfolio[sym];
     addLog('卖出 '+s.name+' ×'+shares+' 净收¥'+net.toFixed(2),'info');
   }
@@ -6101,6 +6298,7 @@ function enterCasino(){
   if(game.cash<entry){addLog('澳门五日游入场需 ¥'+entry,'fail');return}
   if(usedCoupon){game.casinoCoupons--;addLog('🎟 使用赌场优惠券，入场费减免 ¥500','info')}
   game.cash-=entry; game.gambleSpent+=entry; game.gambleCount++;
+  ledgerAddExpense('casino','🎰','澳门入场',entry,false);
   game.casinoActive=true;
   game.spectateRunning=false; game.spectatePhase='idle'; game.spectateAis=null; game.spectatePhaseEnd=0;
   game.spectateManualBet=false; game.spectatePausedMs=0; game.spectatePauseKind=null;
@@ -6118,6 +6316,7 @@ function buyChipAtCage(denom){
   if(!game||!game.casinoActive||casinoRolling)return;
   if(game.cash<denom){addLog('现金不足购买 ¥'+denom+' 筹码','fail');return}
   game.cash-=denom; game.chipHand[denom]=(game.chipHand[denom]||0)+1;
+  ledgerAddExpense('casino','🎰','购买筹码',denom,false);
   renderCasino();
 }
 
@@ -6133,6 +6332,7 @@ function cashChipFromHand(denom){
   if(!game.chipHand[denom])return;
   game.chipHand[denom]--;
   game.cash+=denom; game.money+=denom;
+  ledgerAddIncome('casino','🎰','筹码兑回',denom);
   if(game.selectedChipDenom===denom&&!game.chipHand[denom])game.selectedChipDenom=null;
   addLog('筹码换回现金 ¥'+denom,'info');
   renderCasino();
@@ -6143,6 +6343,7 @@ function cashAllChipsFromHand(){
   const total=chipMapTotal(game.chipHand);
   if(total<=0){addLog('手中没有筹码','fail');return}
   game.cash+=total; game.money+=total;
+  ledgerAddIncome('casino','🎰','筹码兑回',total);
   game.chipHand=emptyChipMap(); game.selectedChipDenom=null;
   addLog('手中筹码全部换回现金 ¥'+total.toLocaleString(),'info');
   renderCasino();
@@ -6157,6 +6358,7 @@ function exchangeCashToChips(){
   const {map,remainder}=distributeChips(amt);
   if(remainder>0){addLog('金额无法完全拆成筹码','fail');return}
   game.cash-=amt;
+  ledgerAddExpense('casino','🎰','兑换筹码',amt,false);
   mergeChipMaps(game.chipHand,map);
   addLog('兑换筹码 ¥'+amt.toLocaleString()+' 入手','info');
   renderCasino();
@@ -6262,7 +6464,9 @@ function leaveCasino(){
   if(onTable>0){addLog('请先开盅/开转或收回桌面筹码','warn');return}
   const handVal=chipMapTotal(game.chipHand);
   if(handVal>0){
-    game.cash+=handVal; game.money+=handVal; game.chipHand=emptyChipMap();
+    game.cash+=handVal; game.money+=handVal;
+    ledgerAddIncome('casino','🎰','离桌结款',handVal);
+    game.chipHand=emptyChipMap();
     addLog('离桌结款：筹码兑换 ¥'+handVal.toLocaleString(),'info');
   }
   stopSpectateLoop();
@@ -6598,7 +6802,7 @@ function updateUI(){
   document.getElementById('actionTip').innerHTML=actionDone
     ?'<strong>本周已行动</strong> → 进入下周 · 查看招聘回复选面试 · 炒股页签仍可随时交易':'<strong>'+getDateStr(game.week)+'</strong>：求职/赌博占本周行动；炒股随时可切换买卖';
   if(game.employed&&selectedIdx<0)selectedIdx=game.employment.jobIdx;
-  renderHeaderProgress(); renderSocialMedals(); renderJobs(); renderStocks(); renderCasino(); renderInbox(); renderOffers(); renderInterviewCalendar(); renderSpendingPanel(); renderCompanionPanel(); renderCasinoRefStats(); updateButtons();
+  renderHeaderProgress(); renderSocialMedals(); renderJobs(); renderStocks(); renderCasino(); renderInbox(); renderOffers(); renderInterviewCalendar(); renderSpendingPanel(); renderCompanionPanel(); renderCasinoRefStats(); renderFinanceLedger(); updateButtons();
   checkLifeStatusModals();
   updateHeadhunterOption();
   updateOfferPreview();
