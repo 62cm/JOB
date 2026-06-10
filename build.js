@@ -497,9 +497,9 @@ const MANUAL_CATS = ['农林牧渔','制造业','建筑工程','交通运输','�
 const START_AGE = 30;
 const MAX_SALARY = 10000000;
 const PAY_MULT_RANGES={
-  high:{high:[10,100],mid:[5,25],low:[2,6]},
-  mid:{high:[3,12],mid:[0.85,1.2],low:[0.25,0.65]},
-  low:{high:[1.2,4],mid:[0.12,0.35],low:[0.05,0.12]}
+  high:{high:[1.8,12],mid:[1.05,2.8],low:[0.82,1.25]},
+  mid:{high:[1.25,4],mid:[0.88,1.18],low:[0.72,1.05]},
+  low:{high:[0.95,2.2],mid:[0.8,1.08],low:[0.68,1.0]}
 };
 const SCHOOL_TIER_FACTOR = {
   none:{high:0.0001,mid:0.001,low:1},
@@ -1120,13 +1120,37 @@ function getSelectedApps(){
 }
 function aiMultiplier(week){const y=getYear(week)-2024;if(y<=0)return .4;if(y<=5)return .4+y*.12;if(y<=15)return 1+(y-5)*.1;return 2+(y-15)*.06}
 
+function minPayRatioForJob(medianPay){
+  const p=Math.max(medianPay,25000);
+  const t=Math.min(1,Math.max(0,(Math.log10(p)-4.35)/1.15));
+  return 1-t*0.5;
+}
+function maxPayRatioForJob(medianPay,tier,importance){
+  if(tier==='high'&&importance==='high')return Math.min(80,8+Math.log10(Math.max(medianPay,50000))*4);
+  if(importance==='high')return tier==='high'?18:6;
+  if(importance==='mid')return tier==='high'?4:2.2;
+  return tier==='low'?1.15:1.35;
+}
 function calcAnnualPay(job,tier,importance){
   const m=job.pay;
   const mult=payMultForOffer(tier,importance,job.idx*31+(game?game.week:0)*17+tier.charCodeAt(0));
   let pay=Math.round(m*mult);
-  if(tier==='high'&&importance==='high')pay=Math.min(MAX_SALARY,Math.max(Math.round(m*10),pay));
-  if(tier==='low'&&importance==='low')pay=Math.max(Math.round(m*0.05),Math.min(Math.round(m*0.12),pay));
+  const minR=minPayRatioForJob(m), maxR=maxPayRatioForJob(m,tier,importance);
+  pay=Math.max(Math.round(m*minR),Math.min(Math.round(m*maxR),pay));
+  if(tier==='high'&&importance==='high')pay=Math.min(MAX_SALARY,pay);
   return pay;
+}
+function openingRoleExtra(job,co,imp,r){
+  if(isManualJob(job))return r()<(co.tier==='low'?0.48:0.32)?'temp':null;
+  let internP=imp==='low'?0.38:imp==='mid'?0.14:0.05;
+  if(co.tier==='low')internP+=0.22;
+  else if(co.tier==='mid'&&imp==='low')internP+=0.12;
+  if(job.pay>=200000)internP+=0.08;
+  else if(job.pay<60000)internP*=0.75;
+  internP=Math.min(0.72,internP);
+  if(r()<internP)return 'intern';
+  if(co.tier==='low'&&imp==='low'&&r()<0.25)return 'temp';
+  return null;
 }
 
 function getSchoolTierFactor(tier){
@@ -1282,7 +1306,7 @@ function computeOffer(job,opts={}){
 function buildPositionWelfare(tier,importance,roleExtra){
   const w=WELFARE_BY_TIER[tier];
   const imp=IMP_LABEL[importance];
-  let extra=roleExtra==='intern'?' · 实习期1-3月薪资减半':roleExtra==='temp'?' · 周薪结算随时裁':'';
+  let extra=roleExtra==='intern'?' · 实习期薪资约55%·转正不确定':roleExtra==='temp'?' · 周薪结算·随时裁退':'';
   return '工时'+w.hours+' · '+w.ot+' · '+w.leave+' · '+w.ins+' · '+w.meal+' · '+w.bonus+' · '+imp+'岗'+extra;
 }
 function seededR(seed){return seededRand(seed)}
@@ -1292,9 +1316,10 @@ function genOpeningsForCompany(job,co,r){
   const weights={low:0.8,mid:0.15,high:0.05};
   imps.forEach(imp=>{
     if(r()>weights[imp]+0.15)return;
-    const roleExtra=isManualJob(job)?(r()<0.35?'temp':null):(!isManualJob(job)&&imp==='low'&&r()<0.28?'intern':null);
-    const pay=roleExtra==='intern'?Math.round(calcAnnualPay(job,co.tier,imp)*0.5):
-      roleExtra==='temp'?Math.round(calcAnnualPay(job,co.tier,imp)/52):calcAnnualPay(job,co.tier,imp);
+    const roleExtra=openingRoleExtra(job,co,imp,r);
+    const basePay=calcAnnualPay(job,co.tier,imp);
+    const pay=roleExtra==='intern'?Math.round(basePay*0.55):
+      roleExtra==='temp'?Math.round(basePay/52):basePay;
     const startDelay=roleExtra==='temp'?0:r()<0.08?Math.floor(20+r()*8):Math.floor(1+r()*12);
     openings.push({importance:imp,roleExtra,pay,welfare:buildPositionWelfare(co.tier,imp,roleExtra),startDelayWeeks:startDelay,
       planned:r()<0.06});
@@ -1668,35 +1693,43 @@ function getHireProbabilityModifiers(offer){
 }
 
 function getLayoffWaveProbability(emp){
-  if(emp.weeksInCompany<20)return 0;
+  if(emp.weeksInCompany<12)return 0;
   const job=game.market[emp.jobIdx];
-  let base=.0035;
+  let base=.0045;
   base*=Math.exp(Math.max(0,game.macroUnemployment-.055)*5);
-  if(game.layoffSeason>0)base*=1.8;
+  if(game.layoffSeason>0)base*=2;
   base*=1+job.exposure*.03;
-  if(emp.importance==='low')base*=1.35; else if(emp.importance==='high')base*=.4;
-  if(emp.weeksInIndustry<26)base*=1.25;
-  if(emp.tier==='low'&&emp.importance==='low')base*=2.2;
-  if(emp.roleExtra==='temp')base*=3.5;
-  return Math.min(.25,base);
+  if(emp.importance==='low')base*=1.55; else if(emp.importance==='high')base*=.35;
+  if(emp.weeksInIndustry<26)base*=1.35;
+  if(emp.tier==='low')base*=1.45;
+  if(emp.tier==='low'&&emp.importance==='low')base*=2.4;
+  if(emp.tier==='mid'&&emp.importance==='low')base*=1.35;
+  if(emp.roleExtra==='temp')base*=4;
+  if(emp.roleExtra==='intern')base*=0.45;
+  return Math.min(.32,base);
 }
 
 function resolveLayoff(emp){
   const job=game.market[emp.jobIdx],co=emp.company;
-  if(Math.random()<.025+job.exposure*.006+game.macroUnemployment*.35+(game.layoffSeason>0?.05:0))
+  let structP=.022+job.exposure*.006+game.macroUnemployment*.38+(game.layoffSeason>0?.06:0);
+  if(emp.tier==='low')structP+=0.018;
+  if(emp.tier==='low'&&emp.importance==='low')structP+=0.025;
+  if(Math.random()<structP)
     return {laidOff:true,reason:co.name+' 整岗裁撤【'+job.title+'】'};
-  const impCut={low:.28,mid:.12,high:.04};
+  const impCut={low:.34,mid:.14,high:.04};
   let p=impCut[emp.importance]*Math.exp(Math.max(0,game.macroUnemployment-.055)*4);
-  if(Math.random()<Math.min(.6,p))return {laidOff:true,reason:co.name+' 批次裁员（'+IMP_LABEL[emp.importance]+'重要度）'};
+  if(emp.tier==='low')p*=1.35;
+  if(emp.tier==='mid'&&emp.importance==='low')p*=1.15;
+  if(Math.random()<Math.min(.65,p))return {laidOff:true,reason:co.name+' 批次裁员（'+IMP_LABEL[emp.importance]+'重要度）'};
   return {laidOff:false,reason:co.name+' 裁员潮中幸存'};
 }
 
 function weeklySalary(job,emp){
   const heat=job.heatPct>100?1+(job.heatPct-100)*.004:1-(100-job.heatPct)*.003;
   let base=emp.annualPay||calcAnnualPay(job,emp.tier,emp.importance);
-  if(emp.roleExtra==='intern')base=Math.round(base*0.5);
+  if(emp.roleExtra==='intern')base=Math.round(base*0.55);
   let vol=1;
-  if(emp.roleExtra==='temp'||emp.tier==='low'&&emp.importance==='low')vol=0.7+((game.week+job.idx*3)%20)/35;
+  if(emp.roleExtra==='temp')vol=0.88+((game.week+job.idx*3)%12)/80;
   if(emp.roleExtra==='temp')return Math.round(base*heat*vol*(1-game.familyStress*game.stressMultiplier*.0006));
   return Math.round(base/52*heat*vol*(1-game.familyStress*game.stressMultiplier*.0006));
 }
@@ -1954,7 +1987,8 @@ function hirePlayer(jobIdx,offer,viaReferral){
   const job=game.market[jobIdx];
   if(game.employed&&game.employment)recordCareerHistory(game.employment);
   const was=game.employed;
-  const internWeeks=offer.roleExtra==='intern'?4+Math.floor(Math.random()*9):0;
+  const internWeeks=offer.roleExtra==='intern'?
+    (offer.tier==='low'?10+Math.floor(Math.random()*15):offer.tier==='mid'?6+Math.floor(Math.random()*11):4+Math.floor(Math.random()*8)):0;
   game.employed=true;
   game.employment={jobIdx,company:offer.company,tier:offer.tier,importance:offer.importance,
     roleExtra:offer.roleExtra||null,annualPay:offer.annualPay,
@@ -1995,21 +2029,22 @@ function processEmployedWeek(){
   if(emp.roleExtra==='intern'&&emp.internWeeksLeft>0){
     emp.internWeeksLeft--;
     if(emp.internWeeksLeft<=0){
-      let conv=emp.tier==='low'?0.5:emp.tier==='mid'?0.28:0.12;
+      let conv=emp.tier==='low'?0.28:emp.tier==='mid'?0.42:0.58;
+      if(emp.importance==='low')conv*=0.88;
       const catDecl=isCategorySalaryDeclining(job.category);
-      if(catDecl)conv*=0.7;
+      if(catDecl)conv*=0.75;
       if(Math.random()<conv){
         emp.roleExtra=null; emp.annualPay=calcAnnualPay(job,emp.tier,emp.importance);
         addLog('🎉 实习转正！年薪 ¥'+emp.annualPay.toLocaleString(),'success');
       }else{
         recordCareerHistory(emp);
-        game.employed=false; game.employment=null;
+        game.employed=false; game.employment=null; game.layoffs++;
         addLog('实习期结束未获留用，离开 '+emp.company.name,'fail');
         return;
       }
     }
   }
-  if(emp.roleExtra==='temp'&&Math.random()<0.06+game.macroUnemployment*2){
+  if(emp.roleExtra==='temp'&&Math.random()<0.09+game.macroUnemployment*2.4){
     recordCareerHistory(emp);
     game.employed=false; game.employment=null; game.layoffs++;
     addLog('💔 临时工被随时裁退 @'+emp.company.name,'fail');
