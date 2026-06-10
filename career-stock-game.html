@@ -128,12 +128,21 @@
   .modal.victory h2{color:var(--green)} .modal.tragedy h2{color:var(--red)}
   .modal.victory{border-color:var(--green)} .modal.tragedy{border-color:var(--red)}
   .modal .final-stats div{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:.85rem}
-  .save-history-panel{margin-top:10px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;max-height:220px;overflow-y:auto;text-align:left}
-  .save-entry{padding:8px;margin-bottom:6px;border:1px solid var(--border);border-radius:6px;font-size:.78rem;line-height:1.45}
-  .save-entry.victory{border-color:rgba(63,185,80,.45)}
-  .save-entry.tragedy{border-color:rgba(248,81,73,.35)}
-  .save-entry .save-meta{color:var(--muted);font-size:.7rem}
-  .save-entry b{font-size:.82rem}
+  .modal.slot-modal{max-width:720px}
+  .storage-hint{font-size:.78rem;color:var(--yellow);background:rgba(210,153,34,.08);padding:8px;border-radius:6px;margin-bottom:10px}
+  .slot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
+  @media(max-width:640px){.slot-grid{grid-template-columns:1fr}}
+  .slot-card{border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg);text-align:left;min-height:120px;display:flex;flex-direction:column}
+  .slot-card.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .slot-card.empty{opacity:.9}
+  .slot-card .slot-title{font-weight:700;font-size:.85rem;margin-bottom:4px}
+  .slot-card .save-meta{color:var(--muted);font-size:.7rem;line-height:1.4;flex:1}
+  .slot-actions{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+  .slot-actions .btn{font-size:.7rem;padding:3px 8px}
+  .char-create-panel{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+  .rebirth-btn{position:fixed;bottom:12px;right:12px;z-index:90;padding:6px 12px;font-size:.72rem;
+    background:rgba(240,136,62,.15);border:1px solid var(--orange);color:var(--orange);border-radius:20px;cursor:pointer}
+  .rebirth-btn:hover{background:rgba(240,136,62,.28)}
   .intro-tip{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.25);border-radius:8px;padding:9px;margin-bottom:10px;font-size:.8rem;color:var(--muted)}
   .offer-box{background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:8px;margin:6px 0}
   .emp-card{background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3);border-radius:8px;padding:9px;margin-bottom:10px;font-size:.82rem}
@@ -205,32 +214,32 @@
 <body>
 
 <div id="startOverlay" class="overlay">
-  <div class="modal">
+  <div class="modal slot-modal">
     <h2>职业股市 · 人生模拟</h2>
-    <p><strong>通关目标：</strong>30年内还清房贷，与伴侣在自己的房中安度晚年。存款超50万可生育（月支出升至2万，维持18年）。各类落魄结局：出租屋孤独终老、离异子女讨钱、伤残尸体无人知、流浪桥洞冻死……</p>
-    <p>学历：<select id="playerEduSelect" onchange="syncPlayerSchoolEdu()" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:4px">
-      <option value="高中/中专">高中/中专</option><option value="大专">大专</option>
-      <option value="本科" selected>本科</option><option value="硕士">硕士</option><option value="博士">博士</option>
-    </select>
-    <span id="schoolSelectWrap">院校：<select id="playerSchoolSelect" onchange="syncPlayerSchoolEdu()" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:4px">
-      <option value="normal">普通高校</option>
-      <option value="985">985/211（擅长中企）</option>
-      <option value="c9">C9/常春藤（擅长大企）</option>
-    </select></span></p>
-    <p id="schoolEduHint" style="font-size:.78rem;color:var(--muted);margin:-6px 0 10px"></p>
-    <p>昵称 <input type="text" id="playerNameInput" maxlength="16" placeholder="本地取名，仅保存在本机浏览器" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:4px;width:200px"></p>
-    <p style="font-size:.85rem;color:var(--muted)">30岁开局。约一万家企业：大型100·中型900·小型9000；等级分头部/重点/草根（与规模无关）。内推录取看等级，不看规模。</p>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
-      <button class="btn btn-primary" onclick="startGame()">开始人生模拟</button>
-      <button class="btn" type="button" onclick="toggleSaveHistory()">本地存档 (<span id="saveCount">0</span>)</button>
-    </div>
-    <div id="saveHistoryPanel" class="save-history-panel" style="display:none">
-      <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">终局或重开时自动记录 · 仅存本机</div>
-      <div id="saveHistoryList"></div>
-      <button class="btn" type="button" style="margin-top:6px" onclick="clearSaveHistory()">清空全部存档</button>
+    <p class="storage-hint">存档保存在本机浏览器（GitHub Pages 在线玩同样有效，仅当前浏览器；换电脑或换浏览器无存档）</p>
+    <p style="font-size:.85rem;color:var(--muted)"><strong>通关目标：</strong>30年还清房贷安度晚年。每周自动存档，共 3 个档位可选。</p>
+    <div class="slot-grid" id="slotGrid"></div>
+    <div id="charCreatePanel" class="char-create-panel" style="display:none">
+      <p style="font-weight:600;margin-bottom:8px">档位 <span id="newSlotLabel">1</span> · 新游戏设置</p>
+      <p>学历：<select id="playerEduSelect" onchange="syncPlayerSchoolEdu()" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:4px">
+        <option value="高中/中专">高中/中专</option><option value="大专">大专</option>
+        <option value="本科" selected>本科</option><option value="硕士">硕士</option><option value="博士">博士</option>
+      </select>
+      <span id="schoolSelectWrap">院校：<select id="playerSchoolSelect" onchange="syncPlayerSchoolEdu()" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:4px">
+        <option value="normal">普通高校</option>
+        <option value="985">985/211（擅长中企）</option>
+        <option value="c9">C9/常春藤（擅长大企）</option>
+      </select></span></p>
+      <p id="schoolEduHint" style="font-size:.78rem;color:var(--muted);margin:-6px 0 10px"></p>
+      <p>昵称 <input type="text" id="playerNameInput" maxlength="16" placeholder="本档位角色名" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:4px;width:200px"></p>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="confirmNewGameInSlot()">开始新档</button>
+        <button class="btn" type="button" onclick="cancelCharCreate()">返回选档</button>
+      </div>
     </div>
   </div>
 </div>
+<button type="button" id="btnRebirth" class="rebirth-btn" style="display:none" onclick="confirmRebirth()">重新投胎</button>
 
 <div id="endOverlay" class="overlay hidden">
   <div class="modal" id="endModal"><h2 id="endTitle">人生终局</h2><p id="endSummary"></p><div class="final-stats" id="finalStats"></div>
@@ -476,8 +485,8 @@ const SAVINGS_MILESTONES = [
 ];
 const AFFAIR_CASH_THRESHOLD = 1000000;
 const AFFAIR_MARRIED_WEEKS = 7 * 52;
-const LS_PLAYER_NAME = 'csg_player_name_v1';
-const LS_SAVE_HISTORY = 'csg_save_history_v1';
+const SAVE_SLOT_COUNT = 3;
+const LS_SLOTS = 'csg_slots_v3';
 const CHILD_RAISING_MONTHS = 216;
 const CHILD_LIVING_COST = 20000;
 const MANUAL_CATS = ['农林牧渔','制造业','建筑工程','交通运输','餐饮住宿','个人与生活服务'];
@@ -549,6 +558,7 @@ let casinoRolling = false;
 const DICE_SUM_WAYS = {3:1,4:3,5:6,6:10,7:15,8:21,9:25,10:27,11:27,12:25,13:21,14:15,15:10,16:6,17:3,18:1};
 
 let game=null,selectedIdx=-1,selectedJobIdxs=new Set(),applyCategoryPicks=new Set(),currentSort='heat',currentCategory='全部',actionDone=false,currentTab='job',applyModalStep=0,pendingBatch=null;
+let currentSlotIndex=-1,selectedSlotIndex=0,pendingNewSlot=-1;
 
 function seededRand(seed){let s=Math.abs(seed)||1;return()=>{s=(s*16807)%2147483647;return(s-1)/2147483646}}
 function shuffleArr(arr,rng){const r=rng||Math.random;for(let i=arr.length-1;i>0;i--){const j=Math.floor(r()*(i+1));const t=arr[i];arr[i]=arr[j];arr[j]=t}return arr}
@@ -764,9 +774,10 @@ function payMultForOffer(tier,importance,seed){
   return rng[0]+(rng[1]-rng[0])*r;
 }
 
-function initStocks(){
+function stockSeedForSlot(slot){return 2024+(slot||0)*10007}
+function initStocks(seed){
   const listed=REAL_COMPANIES.LISTED_STOCKS||[];
-  const pick=shuffleArr([...listed],seededRand(2024)).slice(0,Math.min(24,listed.length));
+  const pick=shuffleArr([...listed],seededRand(seed||2024)).slice(0,Math.min(24,listed.length));
   return pick.map(s=>{
     const ref=s.price, hist=[];
     let p=ref;
@@ -783,83 +794,196 @@ function initStocks(){
 
 function initCategoryTrends(){const t={};[...new Set(RAW_DATA.map(j=>j.category))].forEach(c=>t[c]=[]);return t}
 
-function getStoredPlayerName(){
-  try{return localStorage.getItem(LS_PLAYER_NAME)||''}catch(e){return ''}
+function loadAllSlots(){
+  try{
+    const raw=JSON.parse(localStorage.getItem(LS_SLOTS)||'[]');
+    const slots=[null,null,null];
+    for(let i=0;i<SAVE_SLOT_COUNT;i++)slots[i]=raw[i]||null;
+    return slots;
+  }catch(e){return [null,null,null]}
 }
-function setStoredPlayerName(name){
-  try{localStorage.setItem(LS_PLAYER_NAME,(name||'').trim())}catch(e){}
+function writeAllSlots(slots){
+  try{localStorage.setItem(LS_SLOTS,JSON.stringify(slots.slice(0,SAVE_SLOT_COUNT)))}catch(e){console.warn(e)}
 }
-function getSaveHistory(){
-  try{return JSON.parse(localStorage.getItem(LS_SAVE_HISTORY)||'[]')}catch(e){return []}
+function stripCoInOffer(offer){
+  if(!offer)return offer;
+  const o={...offer};
+  if(o.company&&o.company.id){o.companyId=o.company.id;delete o.company}
+  return o;
 }
-function setSaveHistory(list){
-  try{localStorage.setItem(LS_SAVE_HISTORY,JSON.stringify(list))}catch(e){}
+function relinkOffer(offer,byId){
+  if(!offer)return offer;
+  const o={...offer};
+  if(o.companyId&&byId[o.companyId]){o.company=byId[o.companyId];delete o.companyId}
+  return o;
 }
-function refreshSaveHistoryUI(){
-  const list=getSaveHistory();
-  const cnt=document.getElementById('saveCount');
-  if(cnt)cnt.textContent=String(list.length);
-  const box=document.getElementById('saveHistoryList');
-  if(!box)return;
-  if(!list.length){box.innerHTML='<div style="color:var(--muted);font-size:.78rem">暂无存档，完成一局或点「再来一局」后会自动保存</div>';return}
-  box.innerHTML=list.map(s=>{
-    const cls=s.endingType==='victory'||s.endingType==='victory_early'?'victory':(s.endingType==='incomplete'?'':'tragedy');
-    return '<div class="save-entry '+cls+'"><b>'+s.playerName+'</b> · '+s.endingTitle+
-      '<div class="save-meta">'+s.savedAt+' · '+s.reason+' · '+s.education+'（'+s.school+'） · '+
-      s.year+'年'+s.age+'岁 · 第'+s.weeks+'周</div>'+
-      '<div>现金 ¥'+(s.cash||0).toLocaleString()+' · 累计 ¥'+(s.money||0).toLocaleString()+
-      ' · 房贷 '+s.mortgage+' · 入职'+s.hires+'次 · 被裁'+s.layoffs+'次</div></div>';
+function serializeGameState(){
+  const g={...game};
+  delete g.companyAll;delete g.companyById;delete g.jobCompanies;delete g.companyStats;
+  if(g.employment){
+    g.employment={...g.employment};
+    if(g.employment.company){g.employment.companyId=g.employment.company.id;delete g.employment.company}
+  }
+  g.inbox=(g.inbox||[]).map(it=>({...it,offer:stripCoInOffer(it.offer)}));
+  g.offers=(g.offers||[]).map(o=>({...o,offer:stripCoInOffer(o.offer)}));
+  g.log=(g.log||[]).slice(0,80);
+  return g;
+}
+function serializeUiState(){
+  return{actionDone,selectedIdx,selectedJobIdxs:[...selectedJobIdxs],applyCategoryPicks:[...applyCategoryPicks],
+    currentSort,currentCategory,currentTab};
+}
+function buildSlotMeta(){
+  const job=game.employed&&game.employment?game.market[game.employment.jobIdx]:null;
+  let endingTitle='';
+  if(game.gameOver)try{endingTitle=determineEnding().title}catch(e){endingTitle='已终局'}
+  return{
+    playerName:game.playerName,week:game.week,year:getYear(game.week),age:getPlayerAge(),
+    cash:game.cash,money:game.money,gameOver:!!game.gameOver,endingTitle,
+    education:game.playerEducation,school:schoolLabelFor(game.playerSchool),
+    jobTitle:job?job.title:'待业',employed:!!game.employed,
+    mortgage:game.mortgagePaidOff?'已还清':game.mortgagePaymentsMade+'/'+MORTGAGE_MONTHS
+  };
+}
+function buildSlotRecord(){
+  return{
+    v:1,savedAt:new Date().toLocaleString('zh-CN',{hour12:false}),
+    stockSeed:game.stockSeed||stockSeedForSlot(currentSlotIndex),
+    meta:buildSlotMeta(),game:serializeGameState(),ui:serializeUiState()
+  };
+}
+function autoSaveSlot(){
+  if(currentSlotIndex<0||!game)return;
+  try{
+    const slots=loadAllSlots();
+    slots[currentSlotIndex]=buildSlotRecord();
+    writeAllSlots(slots);
+  }catch(e){
+    console.warn('autosave',e);
+    if(game&&!game._saveWarned){game._saveWarned=true;addLog('⚠ 自动存档失败，浏览器存储可能已满','warn')}
+  }
+}
+function restoreGameState(g,corp){
+  game=g;
+  game.companyAll=corp.all;game.companyById=corp.byId;game.jobCompanies=corp.jobCompanies;game.companyStats=corp.stats;
+  if(game.employment&&game.employment.companyId){
+    game.employment.company=corp.byId[game.employment.companyId];
+    delete game.employment.companyId;
+  }
+  game.inbox=(game.inbox||[]).map(it=>({...it,offer:relinkOffer(it.offer,corp.byId)}));
+  game.offers=(game.offers||[]).map(o=>({...o,offer:relinkOffer(o.offer,corp.byId)}));
+  casinoRolling=false;pendingBatch=null;
+}
+function restoreUiState(ui){
+  actionDone=!!(ui&&ui.actionDone);selectedIdx=ui&&ui.selectedIdx!=null?ui.selectedIdx:-1;
+  selectedJobIdxs=new Set((ui&&ui.selectedJobIdxs)||[]);
+  applyCategoryPicks=new Set((ui&&ui.applyCategoryPicks)||[]);
+  currentSort=(ui&&ui.currentSort)||'heat';currentCategory=(ui&&ui.currentCategory)||'全部';
+  currentTab=(ui&&ui.currentTab)||'job';
+  showTab(currentTab);
+}
+function loadSlotIntoGame(slot){
+  const rec=loadAllSlots()[slot];
+  if(!rec||!rec.game)return false;
+  try{
+    const market=rec.game.market||initMarket(RAW_DATA);
+    const corp=initCompanyUniverse(market);
+    restoreGameState(rec.game,corp);
+    game.stockSeed=rec.stockSeed||stockSeedForSlot(slot);
+    restoreUiState(rec.ui||{});
+    currentSlotIndex=slot;selectedSlotIndex=slot;
+    buildCategories();renderJobs();renderCasino();renderInbox();renderOffers();updateUI();
+    rollReferralChance();
+    return true;
+  }catch(e){console.error(e);return false}
+}
+function renderSlotGrid(){
+  const grid=document.getElementById('slotGrid');
+  if(!grid)return;
+  const slots=loadAllSlots();
+  grid.innerHTML=slots.map((rec,i)=>{
+    const sel=i===selectedSlotIndex?' selected':'';
+    if(!rec||!rec.meta){
+      return '<div class="slot-card empty'+sel+'" onclick="selectSlot('+i+')"><div class="slot-title">档位 '+(i+1)+'</div>'+
+        '<div class="save-meta">空档 · 可开新游戏</div>'+
+        '<div class="slot-actions"><button type="button" class="btn btn-primary" onclick="event.stopPropagation();beginNewGame('+i+')">新游戏</button></div></div>';
+    }
+    const m=rec.meta;
+    const status=m.gameOver?('<div style="color:var(--yellow);font-size:.72rem;margin-top:4px">'+m.endingTitle+'</div>'):
+      ('<div style="color:var(--green);font-size:.72rem;margin-top:4px">进行中</div>');
+    return '<div class="slot-card'+sel+'" onclick="selectSlot('+i+')"><div class="slot-title">档位 '+(i+1)+' · '+m.playerName+'</div>'+
+      '<div class="save-meta">'+m.year+'年 · '+m.age+'岁 · 第'+m.week+'周<br>'+
+      (m.jobTitle||'待业')+' · 现金 ¥'+(m.cash||0).toLocaleString()+'<br>'+
+      '存档 '+rec.savedAt+'</div>'+status+
+      '<div class="slot-actions">'+
+      (!m.gameOver?'<button type="button" class="btn btn-primary" onclick="event.stopPropagation();continueSlot('+i+')">续档</button>':'')+
+      '<button type="button" class="btn" onclick="event.stopPropagation();beginNewGame('+i+')">重开新档</button>'+
+      '<button type="button" class="btn" onclick="event.stopPropagation();deleteSlotConfirm('+i+')">删档</button></div></div>';
   }).join('');
 }
-function toggleSaveHistory(){
-  const p=document.getElementById('saveHistoryPanel');
-  if(!p)return;
-  const show=p.style.display==='none';
-  p.style.display=show?'block':'none';
-  if(show)refreshSaveHistoryUI();
+function selectSlot(i){selectedSlotIndex=i;renderSlotGrid()}
+function showStartOverlay(){
+  document.getElementById('startOverlay').classList.remove('hidden');
+  document.getElementById('endOverlay').classList.add('hidden');
+  const cp=document.getElementById('charCreatePanel'),sg=document.getElementById('slotGrid');
+  if(cp)cp.style.display='none';
+  if(sg)sg.style.display='grid';
+  const rb=document.getElementById('btnRebirth');
+  if(rb)rb.style.display='none';
+  game=null;currentSlotIndex=-1;pendingNewSlot=-1;
+  renderSlotGrid();syncPlayerSchoolEdu();
 }
-function clearSaveHistory(){
-  if(!confirm('确定清空本机全部存档？'))return;
-  setSaveHistory([]);
-  refreshSaveHistoryUI();
+function hideStartOverlay(){
+  document.getElementById('startOverlay').classList.add('hidden');
+  const rb=document.getElementById('btnRebirth');
+  if(rb)rb.style.display='block';
 }
-function archiveGameSave(reason){
+function beginNewGame(slot){
+  selectedSlotIndex=slot;
+  const slots=loadAllSlots();
+  if(slots[slot]&&slots[slot].meta&&!slots[slot].meta.gameOver){
+    if(!confirm('档位 '+(slot+1)+' 有进行中的存档，确定覆写开新档？'))return;
+  }else if(slots[slot]&&slots[slot].meta&&slots[slot].meta.gameOver){
+    if(!confirm('档位 '+(slot+1)+' 将开启新的人生，旧终局记录会被覆盖。继续？'))return;
+  }
+  pendingNewSlot=slot;
+  document.getElementById('slotGrid').style.display='none';
+  document.getElementById('charCreatePanel').style.display='block';
+  document.getElementById('newSlotLabel').textContent=String(slot+1);
+  const inp=document.getElementById('playerNameInput');
+  if(inp)inp.value=(slots[slot]&&slots[slot].meta&&slots[slot].meta.playerName)||'';
+  syncPlayerSchoolEdu();
+}
+function cancelCharCreate(){
+  pendingNewSlot=-1;
+  document.getElementById('charCreatePanel').style.display='none';
+  document.getElementById('slotGrid').style.display='grid';
+  renderSlotGrid();
+}
+function continueSlot(slot){
+  if(!loadSlotIntoGame(slot)){alert('读档失败，存档可能已损坏');return}
+  hideStartOverlay();
+  addLog('📂 读取档位 '+(slot+1)+' 存档（第'+game.week+'周）','info');
+}
+function deleteSlotConfirm(slot){
+  if(!confirm('确定删除档位 '+(slot+1)+' 的存档？'))return;
+  const slots=loadAllSlots();slots[slot]=null;writeAllSlots(slots);
+  renderSlotGrid();
+}
+function confirmRebirth(){
   if(!game)return;
-  const name=(game.playerName||getStoredPlayerName()||'匿名').trim()||'匿名';
-  let endingTitle='中途重开', endingType=game.endingType||'incomplete';
-  if(game.gameOver){
-    const e=determineEnding();
-    endingTitle=e.title;
-    endingType=e.type;
-  }else if(reason==='restart')endingTitle='中途重开（第'+game.week+'周）';
-  const rec={
-    id:Date.now(),playerName:name,
-    savedAt:new Date().toLocaleString('zh-CN',{hour12:false}),
-    reason:reason==='ending'?'终局':'重开',
-    endingTitle,endingType,
-    education:game.playerEducation,
-    school:schoolLabelFor(game.playerSchool),
-    age:getPlayerAge(),year:getYear(game.week),weeks:game.week,
-    cash:game.cash,money:game.money,
-    mortgage:game.mortgagePaidOff?'已还清':game.mortgagePaymentsMade+'/'+MORTGAGE_MONTHS,
-    layoffs:game.layoffs||0,hires:game.successfulHires||0,
-    married:game.divorced?'离异':game.married?'已婚':'单身',
-    children:game.hasChildren?'是':'否'
-  };
-  const list=getSaveHistory();
-  list.unshift(rec);
-  if(list.length>80)list.length=80;
-  setSaveHistory(list);
-  refreshSaveHistoryUI();
+  if(!confirm('重新投胎将返回选档界面。本周进度已自动存档的可续档，确定吗？'))return;
+  autoSaveSlot();
+  showStartOverlay();
+  if(currentSlotIndex>=0)selectedSlotIndex=currentSlotIndex;
+  renderSlotGrid();
 }
 function replayGame(){
-  if(game&&!game._archived)archiveGameSave('restart');
-  location.reload();
-}
-function initPlayerProfile(){
-  const inp=document.getElementById('playerNameInput');
-  if(inp)inp.value=getStoredPlayerName();
-  refreshSaveHistoryUI();
+  autoSaveSlot();
+  document.getElementById('endOverlay').classList.add('hidden');
+  showStartOverlay();
+  if(currentSlotIndex>=0)selectedSlotIndex=currentSlotIndex;
+  renderSlotGrid();
 }
 
 function getPlayerSchoolFromUI(){
@@ -900,26 +1024,14 @@ function syncPlayerSchoolEdu(){
   if(hint)hint.textContent=EDU_SCHOOL_HINT[edu]||'';
 }
 
-function startGame(){
-  syncPlayerSchoolEdu();
-  const eduSel=document.getElementById('playerEduSelect');
-  const schSel=document.getElementById('playerSchoolSelect');
-  const edu=eduSel.value;
-  const school=getPlayerSchoolFromUI();
-  if(edu!=='高中/中专'&&!(EDU_SCHOOL_ALLOW[edu]||[]).includes(school)){
-    alert('请先选学历，再选符合的院校：'+(EDU_SCHOOL_HINT[edu]||''));
-    return;
-  }
-  const nameInp=document.getElementById('playerNameInput');
-  const playerName=((nameInp&&nameInp.value)||'').trim()||'匿名';
-  setStoredPlayerName(playerName);
-  if(game&&!game.gameOver&&!game._archived)archiveGameSave('restart');
-  document.getElementById('startOverlay').classList.add('hidden');
+function createNewGame(slot,playerName,edu,school){
+  currentSlotIndex=slot;selectedSlotIndex=slot;pendingNewSlot=-1;
+  const stockSeed=stockSeedForSlot(slot);
   const market=initMarket(RAW_DATA);
   const corp=initCompanyUniverse(market);
   game={
     week:0,money:0,cash:STARTING_CASH,employed:false,
-    playerName:playerName,playerEducation:edu,playerSchool:school,_archived:false,
+    playerName:playerName,playerEducation:edu,playerSchool:school,stockSeed,
     employment:null,industryExperience:{},careerHistory:[],
     employedWeeks:0,switches:0,layoffs:0,totalApplications:0,successfulHires:0,failedApplications:0,
     jobHuntSpent:0,headhunterDebt:0,longestStreak:0,currentStreak:0,
@@ -934,19 +1046,37 @@ function startGame(){
     macroUnemployment:.052,prevMacroUnemployment:.052,layoffSeason:0,
     log:[],market,categoryPriceHistory:initCategoryTrends(),
     companyAll:corp.all,companyById:corp.byId,jobCompanies:corp.jobCompanies,companyStats:corp.stats,
-    stocks:initStocks(),portfolio:{},stockSpent:0,gambleSpent:0,gambleCount:0,
+    stocks:initStocks(stockSeed),portfolio:{},stockSpent:0,gambleSpent:0,gambleCount:0,
     casinoActive:false,chipHand:emptyChipMap(),selectedChipDenom:null,tableBets:emptyTableBets(),
     applications:[],inbox:[],offers:[],appliedCategories:{},resumeFailCount:0,showProbabilities:false,
     wolfAchievement:false,expiredOfferCount:0,referralThisWeek:false,usedHeadhunterBatch:false
   };
-  selectedJobIdxs=new Set(); applyCategoryPicks=new Set();
-  buildCategories(); renderJobs(); renderCasino(); updateUI();
+  selectedJobIdxs=new Set();applyCategoryPicks=new Set();actionDone=false;pendingBatch=null;
+  buildCategories();renderJobs();renderCasino();updateUI();
   rollReferralChance();
   const schoolLabel=schoolLabelFor(game.playerSchool);
   const st=corp.stats;
   addLog('2024年，'+START_AGE+'岁的'+game.playerName+'带着 ¥'+STARTING_CASH.toLocaleString()+'、'+game.playerEducation+'（'+schoolLabel+'）出发。','info');
   addLog('劳动力市场：'+st.total+'家企业（大型'+st.byScale.large+'·中型'+st.byScale.medium+'·小型'+st.byScale.small+
     '｜头部'+st.byTier.high+'·重点'+st.byTier.mid+'·草根'+st.byTier.low+'），每职业约'+st.avgPerJob+'个招聘方。','info');
+  autoSaveSlot();
+}
+function confirmNewGameInSlot(){
+  if(pendingNewSlot<0)pendingNewSlot=selectedSlotIndex;
+  syncPlayerSchoolEdu();
+  const eduSel=document.getElementById('playerEduSelect');
+  const edu=eduSel.value;
+  const school=getPlayerSchoolFromUI();
+  if(edu!=='高中/中专'&&!(EDU_SCHOOL_ALLOW[edu]||[]).includes(school)){
+    alert('请先选学历，再选符合的院校：'+(EDU_SCHOOL_HINT[edu]||''));
+    return;
+  }
+  const nameInp=document.getElementById('playerNameInput');
+  const playerName=((nameInp&&nameInp.value)||'').trim()||'匿名';
+  createNewGame(pendingNewSlot,playerName,edu,school);
+  hideStartOverlay();
+  document.getElementById('charCreatePanel').style.display='none';
+  document.getElementById('slotGrid').style.display='grid';
 }
 
 function showTab(t){
@@ -1891,7 +2021,7 @@ function processEmployedWeek(){
   checkManualInjury();
 }
 
-function finishWeek(){ updateUI(); }
+function finishWeek(){autoSaveSlot();updateUI()}
 
 function updateMarket(){
   const ai=aiMultiplier(game.week);
@@ -1928,6 +2058,7 @@ function nextWeek(){
   if(game.week>=TOTAL_WEEKS){endGame('timeout');return}
   if(game.week%WEEKS_PER_MONTH===0)processMonthlyBills();
   if(game.week%52===0)addLog('—— '+getYear(game.week)+'年 ——','warn');
+  autoSaveSlot();
   updateUI();
 }
 
@@ -2268,7 +2399,7 @@ function endGame(trigger){
     ['被裁次数',game.layoffs],
   ].map(([k,v])=>'<div><span>'+k+'</span><span>'+v+'</span></div>').join('');
   document.getElementById('endOverlay').classList.remove('hidden');
-  if(!game._archived){archiveGameSave('ending');game._archived=true}
+  autoSaveSlot();
 }
 
 function addLog(msg,type){
@@ -2498,7 +2629,7 @@ function updateUI(){
   updateHeadhunterOption();
   updateOfferPreview();
 }
-initPlayerProfile();
+renderSlotGrid();
 syncPlayerSchoolEdu();
 renderRefPanel(-1);
 </script>
