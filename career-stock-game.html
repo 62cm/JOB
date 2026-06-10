@@ -146,7 +146,12 @@
   .intro-tip{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.25);border-radius:8px;padding:9px;margin-bottom:10px;font-size:.8rem;color:var(--muted)}
   .offer-box{background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:8px;margin:6px 0}
   .emp-card{background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3);border-radius:8px;padding:9px;margin-bottom:10px;font-size:.82rem}
-  .apply-method,.gamble-panel{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px;margin:6px 0}
+  .apply-method,.gamble-panel,.market-session{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:9px;margin:6px 0}
+  .market-hdr{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:8px 10px;margin:8px 0;background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.25);border-radius:6px;font-size:.82rem}
+  .market-hdr b{color:var(--yellow);font-size:1rem}
+  .market-booth{display:flex;gap:8px;align-items:flex-start;padding:8px;border-bottom:1px solid var(--border)}
+  .market-booth .booth-body{flex:1;font-size:.8rem}
+  .market-booth .btn{flex-shrink:0;font-size:.72rem;padding:4px 10px}
   .method-row{display:flex;align-items:center;gap:5px;margin:4px 0;cursor:pointer;flex-wrap:wrap}
   .apply-method select,.gamble-panel select,.gamble-panel input{background:var(--panel);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:.76rem}
   .cost-hint{color:var(--yellow);font-size:.76rem;margin-top:4px}
@@ -218,6 +223,7 @@
     <h2>职业股市 · 人生模拟</h2>
     <p class="storage-hint">存档保存在本机浏览器（GitHub Pages 在线玩同样有效，仅当前浏览器；换电脑或换浏览器无存档）</p>
     <p style="font-size:.85rem;color:var(--muted)"><strong>通关目标：</strong>30年还清房贷安度晚年。每周自动存档，共 3 个档位可选。</p>
+    <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 2026.06.09-stockfree · 若线上数值不对请 Ctrl+F5 强刷</p>
     <div class="slot-grid" id="slotGrid"></div>
     <div id="charCreatePanel" class="char-create-panel" style="display:none">
       <p style="font-weight:600;margin-bottom:8px">档位 <span id="newSlotLabel">1</span> · 新游戏设置</p>
@@ -321,17 +327,16 @@
       </div>
       <div class="apply-method" id="applyMethodPanel">
         <div style="font-weight:600;margin-bottom:4px">① 先选应聘渠道（付费后抽取本期招聘）</div>
-        <label class="method-row"><input type="radio" name="applyMethod" value="market" onchange="onApplyConfigChange()"> 线下人才市场 ¥200</label>
-        <label class="method-row"><input type="radio" name="applyMethod" value="app" checked onchange="onApplyConfigChange()"> 招聘APP（多选，每个¥100，最高¥500）</label>
+        <label class="method-row"><input type="radio" name="applyMethod" value="market" onchange="onApplyConfigChange()"> 线下人才市场 ¥200（入场随机刷岗·8小时·每家-10分钟）</label>
+        <label class="method-row"><input type="radio" name="applyMethod" value="app" checked onchange="onApplyConfigChange()"> 招聘APP（开通一个¥100/月，可多选平台）</label>
         <div id="appCheckboxes" style="margin-left:16px">
-          <label class="method-row"><input type="checkbox" name="appPick" value="boss" checked onchange="onApplyConfigChange()"> BOSS直聘 <span style="color:var(--muted)">优选脑力·头部/重点</span></label>
-          <label class="method-row"><input type="checkbox" name="appPick" value="lagou" checked onchange="onApplyConfigChange()"> 拉勾网 <span style="color:var(--muted)">优选互联网·脑力</span></label>
-          <label class="method-row"><input type="checkbox" name="appPick" value="liepin" onchange="onApplyConfigChange()"> 猎聘 <span style="color:var(--muted)">优选高管·头部</span></label>
-          <label class="method-row"><input type="checkbox" name="appPick" value="zhilian" onchange="onApplyConfigChange()"> 智联招聘 <span style="color:var(--muted)">优选中小·体力</span></label>
-          <label class="method-row"><input type="checkbox" name="appPick" value="51job" onchange="onApplyConfigChange()"> 前程无忧 <span style="color:var(--muted)">优选基层·中小</span></label>
+          <label class="method-row"><input type="checkbox" name="appPick" value="boss" checked onchange="onApplyConfigChange()"> BOSS直聘 <span style="color:var(--muted)">优选脑力·头部/重点</span> <span class="app-sub-hint" data-app="boss"></span></label>
+          <label class="method-row"><input type="checkbox" name="appPick" value="lagou" checked onchange="onApplyConfigChange()"> 拉勾网 <span style="color:var(--muted)">优选互联网·脑力</span> <span class="app-sub-hint" data-app="lagou"></span></label>
+          <label class="method-row"><input type="checkbox" name="appPick" value="liepin" onchange="onApplyConfigChange()"> 猎聘 <span style="color:var(--muted)">优选高管·头部</span> <span class="app-sub-hint" data-app="liepin"></span></label>
+          <label class="method-row"><input type="checkbox" name="appPick" value="zhilian" onchange="onApplyConfigChange()"> 智联招聘 <span style="color:var(--muted)">优选中小·体力</span> <span class="app-sub-hint" data-app="zhilian"></span></label>
+          <label class="method-row"><input type="checkbox" name="appPick" value="51job" onchange="onApplyConfigChange()"> 前程无忧 <span style="color:var(--muted)">优选基层·中小</span> <span class="app-sub-hint" data-app="51job"></span></label>
         </div>
         <label class="method-row" id="headhunterMethodRow"><input type="radio" name="applyMethod" value="headhunter" id="headhunterRadio" onchange="onApplyConfigChange()"> 猎头（入职成功收年薪20%） <span id="headhunterLockHint" style="font-size:.72rem"></span></label>
-        <label class="method-row" id="referralMethodRow" style="display:none"><input type="radio" name="applyMethod" value="referral" onchange="onApplyConfigChange()"> 内推（本周偶遇机会）</label>
         <div class="cost-hint" id="applyCostHint">简历费按渠道收取；面试费：普通¥0 / 专家¥100 / 总监¥200</div>
       </div>
       <div class="detail-panel" id="inboxPanel" style="display:none">
@@ -348,10 +353,11 @@
         <span><i style="background:rgba(248,81,73,.7)"></i>AI高</span>
         <span>方块大小≈就业人数</span>
       </div>
-      <p style="font-size:.72rem;color:var(--muted);margin-bottom:6px">每行业一大块 · 热度=100+就业前景% · 多选后选渠道投递</p>
+      <p style="font-size:.72rem;color:var(--muted);margin-bottom:6px">每行业一大块 · 热度=100+就业前景% · 线上APP需先选职业；线下市场入场随机刷岗</p>
       <div class="job-treemap" id="jobTreemap"></div>
       <div class="actions actions-sticky">
         <button class="btn btn-primary" id="btnApply" onclick="startApplyFlow()" disabled title="请先点击上方职业方块（可多选）">查看本期招聘</button>
+        <button class="btn btn-warn" id="btnReferral" style="display:none" onclick="openReferralModal()">🤝 内推机会</button>
         <button class="btn" id="btnStay" onclick="stayWeek()" disabled>坚守本周</button>
         <button class="btn" id="btnWait" onclick="waitWeek()" disabled>观望一周</button>
         <button class="btn btn-success" id="btnNext" onclick="nextWeek()" disabled>进入下周 →</button>
@@ -374,9 +380,36 @@
         </div>
       </div>
     </div>
+    <div id="marketOverlay" class="overlay hidden">
+      <div class="modal wide market-session">
+        <h2>🏢 线下人才市场</h2>
+        <div class="market-hdr">
+          <span>剩余 <b id="marketTimeLeft">8小时00分</b></span>
+          <span>已投递 <b id="marketApplyCount">0</b> / 48 家</span>
+          <span style="color:var(--muted)">投递/再逛 各-10分钟 · 1秒=1分钟</span>
+        </div>
+        <p style="font-size:.76rem;color:var(--muted);margin-bottom:8px">8个摊位随机刷出，不中意可「再逛逛」换一批。时间耗尽或离场后结束本周求职。</p>
+        <div class="modal-list" id="marketBoothList"></div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn" id="btnMarketRefresh" onclick="marketRefreshBooths()">再逛逛（-10分钟）</button>
+          <button class="btn btn-primary" onclick="leaveMarket()">离场结束</button>
+        </div>
+      </div>
+    </div>
+    <div id="referralModal" class="overlay hidden">
+      <div class="modal wide">
+        <h2>🤝 熟人内推</h2>
+        <p id="referralModalDesc">本周有人愿意帮你内推，通常只有一两个岗位。</p>
+        <div class="modal-list" id="referralModalList"></div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn-primary" id="btnConfirmReferral" onclick="confirmReferralApply()">投递内推</button>
+          <button class="btn" onclick="closeReferralModal()">暂不考虑</button>
+        </div>
+      </div>
+    </div>
     <div id="tabStock" style="display:none">
       <div class="finance-panel">
-        <p style="color:var(--muted);margin-bottom:8px">A股真实标的（参考市价），佣金万分之2。股价围绕参考价波动。</p>
+        <p style="color:var(--muted);margin-bottom:8px">A股真实标的（参考市价），佣金万分之2。股价围绕参考价波动。<b style="color:var(--green)">炒股随时可买卖，不占本周求职/赌博行动</b>，三个页签可随时切换。</p>
         <div id="stockList"></div>
       </div>
     </div>
@@ -458,7 +491,9 @@ const IMP_LABEL = {low:'普通',mid:'专家',high:'总监'};
 const ROLE_EXTRA = {intern:'实习',temp:'临时工'};
 const JOB_APPS = {boss:'BOSS直聘',zhilian:'智联招聘','51job':'前程无忧',lagou:'拉勾网',liepin:'猎聘'};
 const APP_COST_EACH = 100;
-const APP_COST_MAX = 500;
+const APP_SUB_WEEKS = WEEKS_PER_MONTH;
+const REFERRER_NAMES = ['张明','李芳','王强','刘洋','陈静','赵磊','孙婷','周浩','吴敏','郑凯','林雪','黄伟','何丽','马超'];
+const REFERRER_RELATIONS = ['大学室友','前同事','老同学','亲戚','球友','邻居','朋友的朋友','前领导介绍','读书会认识','健身房搭子','老乡','表姐夫'];
 // 优选标签：匹配时加成，不匹配仍可在该平台招聘/投递（基准×1）
 const APP_PREFERRED = {
   boss:{brainPrefer:true,manualPrefer:false,tierPrefer:['high','mid'],execPrefer:false,label:'优选脑力·头部/重点'},
@@ -469,6 +504,12 @@ const APP_PREFERRED = {
 };
 const PROB_REVEAL_FAILS = 100;
 const CHANNEL_DRAW_SIZE = {market:40,app:50,headhunter:28,referral:22};
+const MARKET_ENTRY_FEE = 200;
+const MARKET_TIME_BUDGET = 480;
+const MARKET_APPLY_MINUTES = 10;
+const MARKET_MAX_APPLIES = 48;
+const MARKET_BOOTHS = 8;
+const MARKET_SEC_PER_MIN = 1;
 const WOLF_OFFER_EXPIRES = 100;
 const STARTING_CASH = 20000;
 const MORTGAGE_MONTHS = 360;
@@ -487,6 +528,7 @@ const AFFAIR_CASH_THRESHOLD = 1000000;
 const AFFAIR_MARRIED_WEEKS = 7 * 52;
 const SAVE_SLOT_COUNT = 3;
 const LS_SLOTS = 'csg_slots_v3';
+const GAME_BUILD_ID = '2026.06.09-stockfree';
 const CHILD_RAISING_MONTHS = 216;
 const CHILD_LIVING_COST = 20000;
 const MANUAL_CATS = ['农林牧渔','制造业','建筑工程','交通运输','餐饮住宿','个人与生活服务'];
@@ -555,6 +597,7 @@ const CHIP_COLORS = {
 const DIE_PIP_POS = {1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
 const BET_ZONES = ['big','small','4','5','6','7','8','9'];
 let casinoRolling = false;
+let marketTimerId = null;
 const DICE_SUM_WAYS = {3:1,4:3,5:6,6:10,7:15,8:21,9:25,10:27,11:27,12:25,13:21,14:15,15:10,16:6,17:3,18:1};
 
 let game=null,selectedIdx=-1,selectedJobIdxs=new Set(),applyCategoryPicks=new Set(),currentSort='heat',currentCategory='全部',actionDone=false,currentTab='job',applyModalStep=0,pendingBatch=null;
@@ -873,6 +916,9 @@ function restoreGameState(g,corp){
   game.inbox=(game.inbox||[]).map(it=>({...it,offer:relinkOffer(it.offer,corp.byId)}));
   game.offers=(game.offers||[]).map(o=>({...o,offer:relinkOffer(o.offer,corp.byId)}));
   casinoRolling=false;pendingBatch=null;
+  stopMarketTimer();
+  if(game.marketActive){game.marketActive=false;game.marketBooths=[]}
+  const mo=document.getElementById('marketOverlay');if(mo)mo.classList.add('hidden');
 }
 function restoreUiState(ui){
   actionDone=!!(ui&&ui.actionDone);selectedIdx=ui&&ui.selectedIdx!=null?ui.selectedIdx:-1;
@@ -889,6 +935,9 @@ function loadSlotIntoGame(slot){
     const market=rec.game.market||initMarket(RAW_DATA);
     const corp=initCompanyUniverse(market);
     restoreGameState(rec.game,corp);
+    game.appSubscriptions=game.appSubscriptions||{};
+    if(game.referralThisWeek&&!game.referralOpportunity)game.referralOpportunity=null;
+    delete game.referralThisWeek;
     game.stockSeed=rec.stockSeed||stockSeedForSlot(slot);
     restoreUiState(rec.ui||{});
     currentSlotIndex=slot;selectedSlotIndex=slot;
@@ -1047,9 +1096,10 @@ function createNewGame(slot,playerName,edu,school){
     log:[],market,categoryPriceHistory:initCategoryTrends(),
     companyAll:corp.all,companyById:corp.byId,jobCompanies:corp.jobCompanies,companyStats:corp.stats,
     stocks:initStocks(stockSeed),portfolio:{},stockSpent:0,gambleSpent:0,gambleCount:0,
-    casinoActive:false,chipHand:emptyChipMap(),selectedChipDenom:null,tableBets:emptyTableBets(),
+    casinoActive:false,marketActive:false,marketTimeLeft:0,marketApplyCount:0,marketBooths:[],
+    chipHand:emptyChipMap(),selectedChipDenom:null,tableBets:emptyTableBets(),
     applications:[],inbox:[],offers:[],appliedCategories:{},resumeFailCount:0,showProbabilities:false,
-    wolfAchievement:false,expiredOfferCount:0,referralThisWeek:false,usedHeadhunterBatch:false
+    wolfAchievement:false,expiredOfferCount:0,referralOpportunity:null,appSubscriptions:{},usedHeadhunterBatch:false
   };
   selectedJobIdxs=new Set();applyCategoryPicks=new Set();actionDone=false;pendingBatch=null;
   buildCategories();renderJobs();renderCasino();updateUI();
@@ -1190,7 +1240,25 @@ function downgradeTier(t,s){return TIER_ORDER[Math.min(2,TIER_ORDER.indexOf(t)+s
 function upgradeImp(i,s){return IMP_ORDER[Math.min(2,IMP_ORDER.indexOf(i)+s)]}
 function getSwitchType(){const el=document.querySelector('input[name="switchType"]:checked');return el?el.value:'normal'}
 function getApplyMethod(){const el=document.querySelector('input[name="applyMethod"]:checked');return el?el.value:'app'}
-function onApplyConfigChange(){updateHeadhunterOption();updateOfferPreview();updateButtons()}
+function onApplyConfigChange(){updateHeadhunterOption();updateAppSubscriptionLabels();updateOfferPreview();updateButtons()}
+function isAppSubscribed(app){return game&&((game.appSubscriptions[app]||0)>game.week)}
+function getAppRenewalCost(apps){if(!apps||!apps.length)return 0;return apps.filter(a=>!isAppSubscribed(a)).length*APP_COST_EACH}
+function activateAppSubscriptions(apps){
+  apps.forEach(a=>{
+    if(isAppSubscribed(a))return;
+    const base=Math.max(game.week,game.appSubscriptions[a]||0);
+    game.appSubscriptions[a]=base+APP_SUB_WEEKS;
+  });
+}
+function updateAppSubscriptionLabels(){
+  document.querySelectorAll('.app-sub-hint').forEach(el=>{
+    const app=el.dataset.app;
+    if(!game){el.textContent='';return}
+    const exp=game.appSubscriptions[app];
+    if(exp>game.week)el.innerHTML='<span style="color:var(--green)">已开通至 '+getDateStr(exp)+'</span>';
+    else el.innerHTML='<span style="color:var(--yellow)">未开通·¥'+APP_COST_EACH+'/月</span>';
+  });
+}
 function hasSeniorWorkExperience(){
   const roles=[];
   if(game.employed&&game.employment)roles.push({tier:game.employment.tier,importance:game.employment.importance});
@@ -1214,12 +1282,94 @@ function updateHeadhunterOption(){
     if(app)app.checked=true;
   }
 }
+function generateReferralOpportunity(){
+  const eligible=game.market.map((j,i)=>i).filter(i=>{
+    const j=game.market[i];
+    return canApplyJob(j)&&!isOverAgeLimit(j);
+  });
+  if(!eligible.length)return null;
+  const count=Math.random()<0.12?2:1;
+  const positions=[], used=new Set();
+  for(let n=0;n<count;n++){
+    let ji=eligible[Math.floor(Math.random()*eligible.length)];
+    for(let t=0;t<12&&used.has(ji);t++)ji=eligible[Math.floor(Math.random()*eligible.length)];
+    if(used.has(ji))continue;
+    used.add(ji);
+    const job=game.market[ji];
+    let tier=job.heatPct>=112?'high':job.heatPct>=102?'mid':'low';
+    const co=pickCompany(ji,tier);
+    const r=seededR(ji*31+game.week*17+n);
+    const openings=genOpeningsForCompany(job,co,r);
+    const op=openings[Math.floor(r()*openings.length)];
+    const offer={company:co,tier:co.tier,importance:op.importance,annualPay:op.pay,roleExtra:op.roleExtra,
+      welfare:op.welfare,startDelayWeeks:op.startDelayWeeks,planned:op.planned,
+      newToIndustry:!game.industryExperience[job.category],
+      eduGap:Math.max(0,(EDU_RANK[job.education]||4)-(EDU_RANK[game.playerEducation]||4)),
+      interviewCost:INTERVIEW_COST[op.importance]};
+    positions.push({uid:'REF'+ji+'_'+co.id+'_'+n,jobIdx:ji,jobTitle:job.title,category:job.category,offer,
+      referrer:REFERRER_NAMES[Math.floor(Math.random()*REFERRER_NAMES.length)],
+      relation:REFERRER_RELATIONS[Math.floor(Math.random()*REFERRER_RELATIONS.length)]});
+  }
+  return positions.length?{week:game.week,positions}:null;
+}
 function rollReferralChance(){
   if(!game)return;
-  game.referralThisWeek=Math.random()<0.12||getBestHighRole()!==null;
-  const row=document.getElementById('referralMethodRow');
-  if(row)row.style.display=game.referralThisWeek?'flex':'none';
+  game.referralOpportunity=null;
+  let p=0.03;
+  if(game.married&&!game.divorced)p+=0.015;
+  if((game.careerHistory||[]).length)p+=0.01;
+  if(getBestHighRole())p+=0.015;
+  if(Math.random()<Math.min(0.07,p))game.referralOpportunity=generateReferralOpportunity();
+  updateReferralButton();
   updateHeadhunterOption();
+}
+function updateReferralButton(){
+  const btn=document.getElementById('btnReferral');
+  if(!btn)return;
+  const show=game&&game.referralOpportunity&&!actionDone&&!game.casinoActive&&!game.marketActive;
+  btn.style.display=show?'inline-block':'none';
+  btn.disabled=!show;
+}
+function renderReferralRow(item,checked){
+  const o=item.offer;
+  const imp=o.roleExtra?IMP_LABEL[o.importance]+'·'+ROLE_EXTRA[o.roleExtra]:IMP_LABEL[o.importance];
+  const pay=formatOfferPay(o);
+  return '<label class="company-row picked"><input type="radio" name="referralPick" class="referral-pick" data-uid="'+item.uid+'"'+(checked?' checked':'')+'>'+
+    '<div style="flex:1"><b>'+o.company.name+'</b> '+fmtCompanyBadge(o.company)+' · <b>'+imp+'</b><br>'+
+    '招：'+item.jobTitle+' · '+pay+' · 面试¥'+(o.interviewCost||0)+'<br>'+
+    '<span style="color:var(--accent)">介绍人：'+item.referrer+'（'+item.relation+'）</span><br>'+
+    '<span style="color:var(--muted)">'+o.welfare+'</span></div></label>';
+}
+function openReferralModal(){
+  if(!game||!game.referralOpportunity||actionDone||game.casinoActive||game.marketActive)return;
+  const opp=game.referralOpportunity;
+  document.getElementById('referralModalDesc').textContent='本周有 '+opp.positions.length+' 个内推岗位，介绍人愿帮你递简历（免费，回复更快）。';
+  document.getElementById('referralModalList').innerHTML=opp.positions.map((item,i)=>renderReferralRow(item,i===0)).join('');
+  document.getElementById('referralModal').classList.remove('hidden');
+}
+function closeReferralModal(){
+  document.getElementById('referralModal').classList.add('hidden');
+}
+function confirmReferralApply(){
+  if(!game||!game.referralOpportunity||actionDone)return;
+  const picked=document.querySelector('input[name="referralPick"]:checked');
+  if(!picked){addLog('请选择一个内推岗位','fail');return}
+  const item=game.referralOpportunity.positions.find(p=>p.uid===picked.dataset.uid);
+  if(!item){addLog('内推岗位无效','fail');return}
+  const id='ref_'+game.week+'_'+Math.floor(Math.random()*9999);
+  const replyIn=replyDelayWeeks(item.offer.tier,item.offer.importance);
+  game.applications.push({
+    id,jobIdx:item.jobIdx,offer:{...item.offer,method:'referral'},
+    status:'pending',applyWeek:game.week,replyWeek:game.week+replyIn,
+    interviewWeek:null,resultWeek:null,viaReferral:true,method:'referral',resumeCostLabel:'内推·'+item.referrer
+  });
+  game.totalApplications++;
+  game.appliedCategories[item.category]=true;
+  addLog('🤝 通过 '+item.referrer+'（'+item.relation+'）内推投递【'+item.jobTitle+'】@'+item.offer.company.name,'info');
+  game.referralOpportunity=null;
+  closeReferralModal();
+  actionDone=true;
+  finishWeek();
 }
 
 function getResumeCost(){
@@ -1227,12 +1377,11 @@ function getResumeCost(){
   if(m==='market') return {upfront:200,onSuccess:0,label:'线下人才市场'};
   if(m==='app'){
     const apps=getSelectedApps();
-    const n=Math.max(1,apps.length);
-    const fee=Math.min(APP_COST_MAX,n*APP_COST_EACH);
-    const label=apps.length?apps.map(a=>JOB_APPS[a]).join('+'):'招聘APP';
-    return {upfront:fee,onSuccess:0,label,apps:apps.length?apps:['boss']};
+    const active=apps.length?apps:['boss'];
+    const renewCost=getAppRenewalCost(active);
+    const label=active.map(a=>JOB_APPS[a]).join('+');
+    return {upfront:renewCost,onSuccess:0,label,apps:active,renewApps:active.filter(a=>!isAppSubscribed(a))};
   }
-  if(m==='referral') return {upfront:0,onSuccess:0,label:'内推',isReferral:true};
   return {upfront:0,onSuccess:0,label:'猎头',isHeadhunter:true};
 }
 function scoreListingForApps(job,co,importance,apps){
@@ -1313,9 +1462,7 @@ function genOpeningsForCompany(job,co,r){
   imps.forEach(imp=>{
     if(r()>weights[imp]+0.15)return;
     const roleExtra=openingRoleExtra(job,co,imp,r);
-    const basePay=calcAnnualPay(job,co.tier,imp);
-    const pay=roleExtra==='intern'?Math.round(basePay*0.55):
-      roleExtra==='temp'?Math.round(basePay/52):basePay;
+    const pay=calcAnnualPay(job,co.tier,imp);
     const startDelay=roleExtra==='temp'?0:r()<0.08?Math.floor(20+r()*8):Math.floor(1+r()*12);
     openings.push({importance:imp,roleExtra,pay,welfare:buildPositionWelfare(co.tier,imp,roleExtra),startDelayWeeks:startDelay,
       planned:r()<0.06});
@@ -1409,10 +1556,15 @@ function drawRecruitmentRound(jobIdxs,resumeCost){
   });
   return {listings,cats,drawSize:picked.length};
 }
+function formatOfferPay(offer){
+  if(offer.roleExtra==='temp')return '周薪¥'+Math.round(offer.annualPay/52).toLocaleString()+'（折合年薪¥'+offer.annualPay.toLocaleString()+'）';
+  if(offer.roleExtra==='intern')return '实习年薪¥'+Math.round(offer.annualPay*0.55).toLocaleString()+'（转正¥'+offer.annualPay.toLocaleString()+'）';
+  return '年薪¥'+offer.annualPay.toLocaleString();
+}
 function renderListingRow(item,checked){
   const o=item.offer;
   const imp=o.roleExtra?IMP_LABEL[o.importance]+'·'+ROLE_EXTRA[o.roleExtra]:IMP_LABEL[o.importance];
-  const pay=o.roleExtra==='temp'?'周薪¥'+o.annualPay.toLocaleString():'年薪¥'+o.annualPay.toLocaleString();
+  const pay=formatOfferPay(o);
   const start=o.planned?'预定·约'+o.startDelayWeeks+'周后':'上岗约'+o.startDelayWeeks+'周内';
   return '<label class="company-row picked"><input type="checkbox" class="listing-pick" data-uid="'+item.uid+'"'+(checked?' checked':'')+' onchange="updateListingPickCount()">'+
     '<div style="flex:1"><b>'+o.company.name+'</b> '+fmtCompanyBadge(o.company)+' · <b>'+imp+'</b><br>'+
@@ -1451,24 +1603,174 @@ function closeApplyModal(){
   }
   pendingBatch=null;
 }
-function startApplyFlow(){
-  if(!game){addLog('请先点击「开始人生模拟」','fail');return}
-  if(actionDone||game.gameOver)return;
-  if(game.casinoActive){addLog('在澳门赌桌，无法求职','warn');return}
-  if(game.homeless){addLog('流浪中无法求职','fail');return}
-  const jobIdxs=getJobsToApply();
-  if(!jobIdxs.length){addLog('请多选职业或行业','fail');return}
+function formatMarketTime(min){
+  const m=Math.max(0,Math.floor(min));
+  const h=Math.floor(m/60), r=m%60;
+  return h+'小时'+String(r).padStart(2,'0')+'分';
+}
+function canMarketSpendTime(){
+  return game&&game.marketActive&&game.marketTimeLeft>=MARKET_APPLY_MINUTES;
+}
+function canMarketApplyNow(){
+  return canMarketSpendTime()&&game.marketApplyCount<MARKET_MAX_APPLIES;
+}
+function generateRandomMarketBooth(){
+  const eligible=game.market.map((j,i)=>i).filter(i=>{
+    const j=game.market[i];
+    return canApplyJob(j)&&!isOverAgeLimit(j);
+  });
+  if(!eligible.length)return null;
+  const ji=eligible[Math.floor(Math.random()*eligible.length)];
+  const job=game.market[ji];
+  let tier=job.heatPct>=112?'high':job.heatPct>=102?'mid':'low';
+  if(Math.random()<0.28)tier=downgradeTier(tier,1);
+  const co=pickCompany(ji,tier);
+  const r=seededR(ji*997+game.week*13+Math.floor(Math.random()*99999));
+  const openings=genOpeningsForCompany(job,co,r);
+  const op=openings[Math.floor(Math.random()*openings.length)];
+  const offer={company:co,tier:co.tier,importance:op.importance,annualPay:op.pay,roleExtra:op.roleExtra,
+    welfare:op.welfare,startDelayWeeks:op.startDelayWeeks,planned:op.planned,
+    newToIndustry:!game.industryExperience[job.category],
+    eduGap:Math.max(0,(EDU_RANK[job.education]||4)-(EDU_RANK[game.playerEducation]||4)),
+    interviewCost:INTERVIEW_COST[op.importance],method:'market'};
+  return {uid:'M'+ji+'_'+co.id+'_'+Math.floor(Math.random()*1e6),jobIdx:ji,jobTitle:job.title,category:job.category,offer};
+}
+function fillMarketBooths(){
+  game.marketBooths=game.marketBooths||[];
+  while(game.marketBooths.length<MARKET_BOOTHS){
+    const b=generateRandomMarketBooth();
+    if(!b)break;
+    game.marketBooths.push(b);
+  }
+}
+function renderMarketBooth(item){
+  const o=item.offer;
+  const imp=o.roleExtra?IMP_LABEL[o.importance]+'·'+ROLE_EXTRA[o.roleExtra]:IMP_LABEL[o.importance];
+  const pay=formatOfferPay(o);
+  const can=canMarketApplyNow();
+  return '<div class="market-booth"><div class="booth-body"><b>'+o.company.name+'</b> '+fmtCompanyBadge(o.company)+' · <b>'+imp+'</b><br>'+
+    '招：<b>'+item.jobTitle+'</b>（'+item.category+'） · '+pay+' · 面试¥'+(o.interviewCost||0)+'<br>'+
+    '<span style="color:var(--muted)">'+o.welfare+'</span></div>'+
+    '<button class="btn btn-primary" onclick="marketApply(\''+item.uid+'\')"'+(can?'':' disabled')+'>投递<br>(-10分)</button></div>';
+}
+function renderMarket(){
+  if(!game||!game.marketActive)return;
+  const tl=document.getElementById('marketTimeLeft');
+  const ac=document.getElementById('marketApplyCount');
+  if(tl)tl.textContent=formatMarketTime(game.marketTimeLeft);
+  if(ac)ac.textContent=game.marketApplyCount;
+  const list=document.getElementById('marketBoothList');
+  if(list){
+    fillMarketBooths();
+    list.innerHTML=game.marketBooths.length?game.marketBooths.map(renderMarketBooth).join(''):
+      '<p style="color:var(--muted)">暂无可用摊位</p>';
+  }
+  const refreshBtn=document.getElementById('btnMarketRefresh');
+  if(refreshBtn)refreshBtn.disabled=!canMarketSpendTime();
+}
+function stopMarketTimer(){
+  if(marketTimerId){clearInterval(marketTimerId);marketTimerId=null;}
+}
+function startMarketTimer(){
+  stopMarketTimer();
+  marketTimerId=setInterval(()=>{
+    if(!game||!game.marketActive)return;
+    game.marketTimeLeft--;
+    const tl=document.getElementById('marketTimeLeft');
+    if(tl)tl.textContent=formatMarketTime(game.marketTimeLeft);
+    if(game.marketTimeLeft<=0){
+      addLog('人才市场关门，8小时已到。','warn');
+      leaveMarket();
+      return;
+    }
+    if(game.marketTimeLeft<MARKET_APPLY_MINUTES)renderMarket();
+  },MARKET_SEC_PER_MIN*1000);
+}
+function enterMarket(){
+  if(actionDone){addLog('本周已行动','warn');return}
+  if(game.marketActive)return;
+  if(game.casinoActive){addLog('在澳门赌桌，无法去人才市场','warn');return}
+  if(game.cash<MARKET_ENTRY_FEE){addLog('现金不足，入场费需 ¥'+MARKET_ENTRY_FEE,'fail');return}
+  game.cash-=MARKET_ENTRY_FEE;game.jobHuntSpent+=MARKET_ENTRY_FEE;
+  game.marketActive=true;game.marketTimeLeft=MARKET_TIME_BUDGET;game.marketApplyCount=0;game.marketBooths=[];
+  fillMarketBooths();
+  document.getElementById('marketOverlay').classList.remove('hidden');
+  renderMarket();
+  startMarketTimer();
+  addLog('🏢 进入人才市场（¥'+MARKET_ENTRY_FEE+'）。计时开始：8小时，投递或再逛逛各-10分钟，最多48家。','info');
+  updateButtons();
+}
+function marketRefreshBooths(){
+  if(!game||!game.marketActive)return;
+  if(game.marketTimeLeft<MARKET_APPLY_MINUTES){addLog('剩余时间不足10分钟，无法再逛','fail');return}
+  game.marketTimeLeft-=MARKET_APPLY_MINUTES;
+  game.marketBooths=[];
+  fillMarketBooths();
+  addLog('🔄 再逛逛，换一批摊位（-10分钟，剩 '+formatMarketTime(game.marketTimeLeft)+'）','info');
+  renderMarket();
+  if(game.marketTimeLeft<MARKET_APPLY_MINUTES)addLog('剩余时间不足再投递或再逛，建议离场。','warn');
+}
+function marketApply(uid){
+  if(!game||!game.marketActive)return;
+  if(game.marketTimeLeft<MARKET_APPLY_MINUTES){addLog('剩余时间不足10分钟，无法再投','fail');return}
+  if(game.marketApplyCount>=MARKET_MAX_APPLIES){addLog('已达48家投递上限','fail');return}
+  const idx=(game.marketBooths||[]).findIndex(b=>b.uid===uid);
+  if(idx<0)return;
+  const item=game.marketBooths[idx];
+  game.marketTimeLeft-=MARKET_APPLY_MINUTES;
+  game.marketApplyCount++;
+  const id='mkt_'+game.week+'_'+game.marketApplyCount+'_'+Math.floor(Math.random()*9999);
+  const replyIn=replyDelayWeeks(item.offer.tier,item.offer.importance)+(item.offer.planned?item.offer.startDelayWeeks:0);
+  game.applications.push({
+    id,jobIdx:item.jobIdx,offer:{...item.offer,method:'market'},
+    status:'pending',applyWeek:game.week,replyWeek:game.week+replyIn,
+    interviewWeek:null,resultWeek:null,viaReferral:false,method:'market',resumeCostLabel:'人才市场'
+  });
+  game.totalApplications++;
+  game.appliedCategories[item.category]=true;
+  addLog('📤 人才市场投递【'+item.jobTitle+'】@'+item.offer.company.name+'（-10分钟，剩 '+formatMarketTime(game.marketTimeLeft)+'）','info');
+  const nb=generateRandomMarketBooth();
+  if(nb)game.marketBooths[idx]=nb;else game.marketBooths.splice(idx,1);
+  renderMarket();
+  if(game.marketApplyCount>=MARKET_MAX_APPLIES){
+    addLog('已投满48家，自动离场。','info');
+    leaveMarket();
+  }else if(game.marketTimeLeft<MARKET_APPLY_MINUTES){
+    addLog('剩余时间不足再投一家，建议离场。','warn');
+  }
+}
+function leaveMarket(){
+  if(!game||!game.marketActive)return;
+  stopMarketTimer();
+  const n=game.marketApplyCount;
+  game.marketActive=false;game.marketBooths=[];
+  document.getElementById('marketOverlay').classList.add('hidden');
+  addLog('人才市场离场，本周共投递 '+n+' 份简历。','info');
+  actionDone=true;
+  updateButtons();
+  finishWeek();
+}
+function validateJobsForApply(jobIdxs){
   for(const ji of jobIdxs){
     const job=game.market[ji];
-    if(isOverAgeLimit(job)){addLog('【'+job.category+'】超龄，无法查看 '+job.title+' 相关招聘','fail');return}
-    if(!canApplyJob(job)){addLog('低保期间只能应聘体力劳动','fail');return}
+    if(isOverAgeLimit(job)){addLog('【'+job.category+'】超龄，无法查看 '+job.title+' 相关招聘','fail');return false}
+    if(!canApplyJob(job)){addLog('低保期间只能应聘体力劳动','fail');return false}
   }
+  return true;
+}
+function runApplyRound(jobIdxs){
+  if(!validateJobsForApply(jobIdxs))return;
   const rc=getResumeCost();
   if(getApplyMethod()==='headhunter'&&!canUseHeadhunter()){addLog('猎头仅限：C9/常春藤学历，或曾任专家/总监岗，或在头部/重点企业任职','fail');return}
   if(getApplyMethod()==='app'&&!getSelectedApps().length){addLog('请至少勾选一个招聘APP','fail');return}
-  if(rc.upfront>0&&game.cash<rc.upfront){addLog('现金不足，渠道费需 ¥'+rc.upfront,'fail');return}
+  if(rc.upfront>0&&game.cash<rc.upfront){
+    const tip=rc.renewApps&&rc.renewApps.length?'开通费需 ¥'+rc.upfront+'（'+rc.renewApps.map(a=>JOB_APPS[a]).join('、')+'）':'渠道费需 ¥'+rc.upfront;
+    addLog('现金不足，'+tip,'fail');return;
+  }
   if(rc.upfront>0){game.cash-=rc.upfront;game.jobHuntSpent+=rc.upfront}
-  addLog('📋 【'+rc.label+'】支付 ¥'+rc.upfront+'，正在抽取本期招聘…','info');
+  if(rc.renewApps&&rc.renewApps.length)activateAppSubscriptions(rc.renewApps);
+  const paidNote=rc.upfront>0?'已付 ¥'+rc.upfront+(rc.renewApps&&rc.renewApps.length?'（开通 '+rc.renewApps.map(a=>JOB_APPS[a]).join('、')+' 一个月）':''):'免费';
+  addLog('📋 【'+rc.label+'】'+paidNote+'，正在抽取本期招聘…','info');
   let batch;
   try{batch=drawRecruitmentRound(jobIdxs,rc)}
   catch(err){
@@ -1484,12 +1786,24 @@ function startApplyFlow(){
     return;
   }
   pendingBatch={...batch,resumeCost:rc,method:getApplyMethod(),paid:true,jobIdxs};
-  const modal=document.getElementById('applyModal');
   document.getElementById('applyModalTitle').textContent='本期招聘 · 勾选要投的岗位';
-  document.getElementById('applyModalDesc').textContent='渠道：'+rc.label+'（已付 ¥'+rc.upfront+'）· 抽取 '+batch.drawSize+' 家企业 · 共 '+batch.listings.length+' 个在招岗位 · 请按企业实际发布勾选';
+  document.getElementById('applyModalDesc').textContent='渠道：'+rc.label+'（'+paidNote+'）· 抽取 '+batch.drawSize+' 家企业 · 共 '+batch.listings.length+' 个在招岗位 · 请按企业实际发布勾选';
   document.getElementById('applyModalList').innerHTML=batch.listings.map(item=>renderListingRow(item,true)).join('');
   updateListingPickCount();
-  modal.classList.remove('hidden');
+  updateAppSubscriptionLabels();
+  document.getElementById('applyModal').classList.remove('hidden');
+}
+function startApplyFlow(){
+  if(!game){addLog('请先点击「开始人生模拟」','fail');return}
+  if(actionDone||game.gameOver)return;
+  if(game.casinoActive){addLog('在澳门赌桌，无法求职','warn');return}
+  if(game.marketActive){addLog('已在人才市场场内','warn');return}
+  if(game.homeless){addLog('流浪中无法求职','fail');return}
+  const method=getApplyMethod();
+  if(method==='market'){enterMarket();return}
+  const jobIdxs=getJobsToApply();
+  if(!jobIdxs.length){addLog('请先在上方多选职业或行业','fail');return}
+  runApplyRound(jobIdxs);
 }
 function confirmBatchApply(){
   if(!pendingBatch||actionDone)return;
@@ -1637,7 +1951,7 @@ function renderOffers(){
   panel.style.display='block';
   list.innerHTML=game.offers.map(o=>{
     const imp=o.offer.roleExtra?IMP_LABEL[o.offer.importance]+'·'+ROLE_EXTRA[o.offer.roleExtra]:IMP_LABEL[o.offer.importance];
-    return '<div class="offer-item"><b>'+o.offer.company.name+'</b> · '+imp+' · 年薪¥'+o.offer.annualPay.toLocaleString()+
+    return '<div class="offer-item"><b>'+o.offer.company.name+'</b> · '+imp+' · '+formatOfferPay(o.offer)+
       '<br>入职 '+getDateStr(o.startWeek)+' · 有效期至 '+getDateStr(o.expireWeek)+
       '<div style="margin-top:4px"><button class="btn btn-primary" onclick="acceptOffer(\''+o.id+'\')">接受</button>'+
       '<button class="btn" onclick="declineOffer(\''+o.id+'\')">拒绝</button></div></div>';
@@ -1726,8 +2040,7 @@ function weeklySalary(job,emp){
   if(emp.roleExtra==='intern')base=Math.round(base*0.55);
   let vol=1;
   if(emp.roleExtra==='temp')vol=0.88+((game.week+job.idx*3)%12)/80;
-  if(emp.roleExtra==='temp')return Math.round(base*heat*vol*(1-game.familyStress*game.stressMultiplier*.0006));
-  return Math.round(base/52*heat*vol*(1-game.familyStress*game.stressMultiplier*.0006));
+  return Math.round((base/52)*heat*vol*(1-game.familyStress*game.stressMultiplier*.0006));
 }
 
 function getMonthlyExpenses(){
@@ -1998,8 +2311,8 @@ function hirePlayer(jobIdx,offer,viaReferral){
   updateHeadhunterOption();
 }
 
-function stayWeek(){if(actionDone||!game.employed||game.casinoActive)return;actionDone=true;processEmployedWeek();finishWeek()}
-function waitWeek(){if(actionDone||game.employed||game.casinoActive)return;addLog('观望一周…','info');actionDone=true;finishWeek()}
+function stayWeek(){if(actionDone||!game.employed||game.casinoActive||game.marketActive)return;actionDone=true;processEmployedWeek();finishWeek()}
+function waitWeek(){if(actionDone||game.employed||game.casinoActive||game.marketActive)return;addLog('观望一周…','info');actionDone=true;finishWeek()}
 
 function processEmployedWeek(){
   if(!game.employed)return;
@@ -2100,8 +2413,7 @@ function nextWeek(){
 function stockCommission(amt){return Math.max(.01,amt*.0002)}
 
 function tradeStock(sym,action,shares){
-  if(actionDone){addLog('本周已行动','warn');return}
-  if(game.casinoActive){addLog('在澳门赌桌，无法炒股','warn');return}
+  if(!game||game.gameOver)return;
   const s=game.stocks.find(x=>x.symbol===sym); if(!s)return;
   shares=Math.floor(shares)||0; if(shares<=0)return;
   if(action==='buy'){
@@ -2117,7 +2429,11 @@ function tradeStock(sym,action,shares){
     game.portfolio[sym]=held-shares; if(game.portfolio[sym]<=0)delete game.portfolio[sym];
     addLog('卖出 '+s.name+' ×'+shares+' 净收¥'+net.toFixed(2),'info');
   }
-  actionDone=true; finishWeek();
+  autoSaveSlot();
+  renderStocks();
+  document.getElementById('statCash').textContent='¥'+game.cash.toLocaleString();
+  document.getElementById('statMoney').textContent='¥'+game.money.toLocaleString();
+  renderHeaderProgress();
 }
 
 function renderStocks(){
@@ -2285,6 +2601,7 @@ function renderCasino(){
 
 function enterCasino(){
   if(actionDone){addLog('本周已行动','warn');return}
+  if(game.marketActive){addLog('在人才市场，无法去澳门','warn');return}
   if(game.casinoActive)return;
   if(game.cash<MACAU_ENTRY){addLog('澳门五日游需 ¥'+MACAU_ENTRY,'fail');return}
   game.cash-=MACAU_ENTRY; game.gambleSpent+=MACAU_ENTRY; game.gambleCount++;
@@ -2542,9 +2859,18 @@ function renderJobs(){
 function updateOfferPreview(){
   if(!game)return;
   const rc=getResumeCost();
+  const method=getApplyMethod();
   const hint=document.getElementById('applyCostHint');
-  if(hint)hint.textContent='先选渠道（¥'+rc.upfront+'）→ 抽取企业 → 勾选投递 · APP标注为优选方向，各类企业均可能出现在任一平台 · 面试：普通¥0/专家¥100/总监¥200'+
-    (rc.isHeadhunter?' · 入职收年薪20%':'');
+  if(hint){
+    let txt='';
+    if(method==='market')txt='线下：付¥200入场 → 随机8摊 → 投递或再逛逛各-10分钟（共8小时/最多48家）· 1秒=1分钟';
+    else if(method==='app'){
+      const renew=rc.renewApps&&rc.renewApps.length;
+      txt='线上：先选职业 → 勾选APP'+(renew?'（本次开通 '+renew+' 个，¥'+rc.upfront+'）':'（已开通APP免费投递）')+' → 抽取企业 → 勾选投递';
+    }else txt='猎头：先选职业 → 抽取企业 → 勾选投递 · 入职收年薪20%';
+    hint.textContent=txt+' · 面试：普通¥0/专家¥100/总监¥200 · 内推为独立按钮，偶发出现';
+  }
+  updateAppSubscriptionLabels();
   if(selectedIdx>=0)showDetail(selectedIdx);
 }
 
@@ -2590,16 +2916,21 @@ function showDetail(idx){
 function updateButtons(){
   const btn=document.getElementById('btnApply');
   if(!btn)return;
+  const method=game?getApplyMethod():'app';
   const n=selectedJobIdxs.size||(selectedIdx>=0?1:0);
   const hasPick=n>0||applyCategoryPicks.size>0;
-  btn.disabled=actionDone||!hasPick||!game||game.casinoActive;
-  btn.textContent='查看本期招聘';
+  const needsPick=method==='app'||method==='headhunter';
+  btn.disabled=actionDone||!game||game.casinoActive||game.marketActive||(needsPick&&!hasPick);
+  btn.textContent=method==='market'?'前往人才市场':method==='headhunter'?'猎头寻访':'查看本期招聘';
+  updateReferralButton();
   const hint=document.getElementById('applyPickHint');
   if(hint){
     if(!game)hint.textContent='请先开始游戏';
     else if(game.casinoActive)hint.textContent='在澳门赌桌 · 离桌结款后进入下周';
+    else if(game.marketActive)hint.textContent='在人才市场 · 投递或点「离场结束」';
     else if(actionDone)hint.textContent='本周已行动，请进入下周';
-    else if(!hasPick)hint.textContent='↑ 点击职业方块多选，或左侧点行业标签';
+    else if(method==='market')hint.textContent='线下渠道：点「前往人才市场」付¥200入场，随机刷岗限时投递';
+    else if(!hasPick)hint.textContent='↑ 线上/猎头：先点击职业方块多选，或左侧点行业标签';
     else hint.textContent='已选 '+(n||'行业'+applyCategoryPicks.size)+' · 选渠道后点按钮抽取企业招聘';
   }
   document.getElementById('btnStay').disabled=actionDone||!game.employed||game.casinoActive;
@@ -2650,7 +2981,8 @@ function updateUI(){
     const e=game.employment,j=game.market[e.jobIdx];
     empCard.style.display='block';
     const role=e.roleExtra?IMP_LABEL[e.importance]+'·'+ROLE_EXTRA[e.roleExtra]:IMP_LABEL[e.importance];
-    empCard.innerHTML='<b>'+j.title+'</b> @ '+e.company.name+' · 年薪¥'+e.annualPay.toLocaleString()+
+    const payLbl=e.roleExtra==='temp'?'周薪¥'+Math.round(e.annualPay/52).toLocaleString():e.roleExtra==='intern'?'实习年薪¥'+Math.round(e.annualPay*0.55).toLocaleString():'年薪¥'+e.annualPay.toLocaleString();
+    empCard.innerHTML='<b>'+j.title+'</b> @ '+e.company.name+' · '+payLbl+
       ' <span class="badge badge-tier-'+e.tier[0]+'">'+TIER_LABEL[e.tier]+'</span>'+
       ' <span class="badge badge-scale-'+e.company.scale[0]+'">'+SCALE_LABEL[e.company.scale]+'</span>'+
       ' <span class="badge badge-imp-'+e.importance[0]+'">'+role+'</span>'+
@@ -2658,7 +2990,7 @@ function updateUI(){
   }else empCard.style.display='none';
 
   document.getElementById('actionTip').innerHTML=actionDone
-    ?'<strong>本周已行动</strong> → 进入下周 · 查看招聘回复选面试':'<strong>'+getDateStr(game.week)+'</strong>：多选职业/行业→选渠道付费→勾选本期在招岗位→等回复→面试';
+    ?'<strong>本周已行动</strong> → 进入下周 · 查看招聘回复选面试 · 炒股页签仍可随时交易':'<strong>'+getDateStr(game.week)+'</strong>：求职/赌博占本周行动；炒股随时可切换买卖';
   if(game.employed&&selectedIdx<0)selectedIdx=game.employment.jobIdx;
   renderHeaderProgress(); renderJobs(); renderStocks(); renderCasino(); renderInbox(); renderOffers(); updateButtons();
   updateHeadhunterOption();
