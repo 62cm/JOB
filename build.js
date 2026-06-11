@@ -8,7 +8,7 @@ const AFFAIR_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'affair-system.js
 const CONTACTS_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'contacts-system.js'), 'utf8');
 const SPOUSE_FINANCE_SRC = fs.readFileSync(path.join(__dirname, 'spouse-finance.js'), 'utf8');
 const FERTILITY_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'fertility-system.js'), 'utf8');
-const GAME_BUILD_ID = '2026.06.09-outdoor-preg';
+const GAME_BUILD_ID = '2026.06.09-std-stranger';
 
 const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -1029,6 +1029,12 @@ const DATE_COST = 500;
 const INTIMACY_INITIAL = 80;
 const DIVORCE_MORTGAGE_PAYMENT = 12000;
 const SEX_WEEKLY_LIMIT = 7;
+const PARTNER_STD_ON_AFFAIR_CHANCE = 0.40;
+const PLAYER_STD_FROM_PARTNER_CHANCE = 0.12;
+const PLAYER_STD_FROM_STRANGER_CHANCE = 0.01;
+const STD_CURE_COST = 3000;
+const STD_STRESS_WEEKS = 12;
+const STD_TREATMENT_VISITS = 4;
 const PREGNANCY_CHANCE_SAFE = 0.06;
 const PREGNANCY_CHANCE_RAW = 0.20;
 const PREGNANCY_CHANCE_PROC_CREATE = 0.35;
@@ -1884,6 +1890,8 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
     playerGender:playerGender||'male',partnerGender:partnerGender||'female',
     hiredOnTempStats:false,partnerSoftRice:0,imprisonedUntilWeek:0,
     outdoorAffairPregnancy:false,partnerKnowsPlayerPregnant:false,
+    partnerAffairActive:false,partnerStdActive:false,
+    stdActive:false,stdWeeksInfected:0,stdTreatmentVisits:0,stdLastTreatmentWeek:-1,
     snackStock:0,snackReboundPortions:0,partnerSnackReboundPortions:0
   };
   game.partnerDisplayName=typeof pickPartnerDisplayName==='function'?pickPartnerDisplayName(partnerGender||'female'):'小艾';
@@ -2347,7 +2355,7 @@ function familyChildStatusHtml(){
     rows.push('<div class="companion-row"><span>备孕</span><span style="color:var(--green)">进行中</span></div>');
   if(game.pregnant){
     const pn=game.partnerDisplayName||'伴侣';
-    const who=game.pregnantSubject==='player'?'你':pn;
+    const who=game.pregnantSubject==='player'?'你':(game.pregnantSubject==='partner'?pn:'');
     let preg='孕期中 · '+who+'怀孕 · 剩余 '+game.pregnancyWeeksLeft+' 周';
     const net=game.pregnancyIntimacyNet||0;
     if(net)preg+=' · 孕期亲密度净'+(net>=0?'+':'')+net;
@@ -2402,7 +2410,9 @@ function renderCompanionPanel(){
     '<div class="companion-row"><span>你聊骚累计</span><span>'+(game.flirtPeopleTotal||0)+' 人</span></div>'+
     '<div class="companion-row"><span>伴侣聊骚累计</span><span>'+(game.companionFlirtTotal||0)+' 次</span></div>'+
     (game.livingOffSpouse?'<div class="companion-row"><span style="color:var(--orange)">吃软饭中</span><span>每周亲密度-5</span></div>':'')+
-    (game.affairActive?'<div class="companion-row"><span style="color:var(--red)">婚外情</span><span>进行中</span></div>':'')+
+    (game.partnerAffairActive?'<div class="companion-row"><span style="color:var(--red)">伴侣婚外情</span><span>进行中'+(game.partnerStdActive?' · 已感染性病':'')+'</span></div>':'')+
+    (game.affairActive?'<div class="companion-row"><span style="color:var(--red)">你的婚外情</span><span>进行中</span></div>':'')+
+    (game.stdActive?'<div class="companion-row"><span style="color:var(--orange)">你的性病</span><span>'+stdTreatmentStatusText()+'</span></div>':'')+
     '<div style="margin-top:8px"><button class="btn" onclick="confirmPlayerDivorce()">主动离婚</button>'+
     '<span style="font-size:.65rem;color:var(--muted);margin-left:6px">保留房产·房贷¥'+DIVORCE_MORTGAGE_PAYMENT+'/月</span></div></div>';
   }else if(game.divorced){
@@ -2533,6 +2543,12 @@ function migrateLoadedGameState(){
   if(game.imprisonedUntilWeek==null)game.imprisonedUntilWeek=0;
   if(game.outdoorAffairPregnancy==null)game.outdoorAffairPregnancy=false;
   if(game.partnerKnowsPlayerPregnant==null)game.partnerKnowsPlayerPregnant=false;
+  if(game.partnerAffairActive==null)game.partnerAffairActive=false;
+  if(game.partnerStdActive==null)game.partnerStdActive=false;
+  if(game.stdActive==null)game.stdActive=false;
+  if(game.stdWeeksInfected==null)game.stdWeeksInfected=game.stdWeeksLeft||0;
+  if(game.stdTreatmentVisits==null)game.stdTreatmentVisits=0;
+  if(game.stdLastTreatmentWeek==null)game.stdLastTreatmentWeek=-1;
   if(game.snackStock==null)game.snackStock=0;
   if(game.snackReboundPortions==null)game.snackReboundPortions=game.snackReboundDay?1:0;
   if(game.partnerSnackReboundPortions==null)game.partnerSnackReboundPortions=0;
@@ -5265,7 +5281,7 @@ function transferAssetsToPlayer(fromActor,cap){
 function finalizeDivorce(opts){
   if(!game||game.divorced)return;
   const o=opts||{};
-  game.divorced=true;game.married=false;game.affairActive=false;game.livingOffSpouse=false;
+  game.divorced=true;game.married=false;game.affairActive=false;game.partnerAffairActive=false;game.partnerStdActive=false;game.livingOffSpouse=false;
   game.longDistance=false;
   game.spouseIntimacy=0;
   game.lastDateWeek=0;
@@ -5316,11 +5332,130 @@ function partnerRequestsDivorce(reason,opts){
     }
   }
 }
+function isSameSexCouple(){
+  return !!(game&&game.married&&!game.divorced&&game.playerGender===game.partnerGender);
+}
+function isSameSexFemaleCouple(){
+  return isSameSexCouple()&&game.playerGender==='female';
+}
+function isSameSexMaleCouple(){
+  return isSameSexCouple()&&game.playerGender==='male';
+}
+function partnerHasExtramaritalAffair(){
+  if(!game||!game.married||game.divorced)return false;
+  if(game.partnerAffairActive)return true;
+  if((game.companionFlirtTotal||0)>=100&&game.affairActive&&game.affairTriggered)return true;
+  return false;
+}
+function sexSafeOptionLabel(){
+  if(isSameSexFemaleCouple())return '角色扮演';
+  return '戴套';
+}
+function sexRiskOptionLabel(short){
+  if(isSameSexMaleCouple())return short?'不戴套':'不戴套（不会怀孕）';
+  if(isSameSexCouple())return short?'玩具':'玩具（额外减压）';
+  return short?'未戴套':'不戴套（额外减压）';
+}
+function sexSessionStressLabel(noCondom){
+  if(!noCondom)return isSameSexFemaleCouple()?'角色扮演 ':'戴套 ';
+  if(isSameSexMaleCouple())return '不戴套 ';
+  if(isSameSexCouple())return '玩具 ';
+  return '不戴套 ';
+}
+function tryInfectPartnerWithStd(){
+  if(!game||!partnerHasExtramaritalAffair()||game.partnerStdActive)return false;
+  if(Math.random()>=PARTNER_STD_ON_AFFAIR_CHANCE)return false;
+  game.partnerStdActive=true;
+  addLog('🦠 伴侣在婚外情中先感染了性病','warn');
+  return true;
+}
+function infectPlayerWithStd(reason){
+  if(!game||game.stdActive)return false;
+  game.stdActive=true;
+  game.stdWeeksInfected=0;
+  game.stdTreatmentVisits=0;
+  game.stdLastTreatmentWeek=-1;
+  addStress(6,'感染性病 ');
+  addLog('🦠 '+reason+' · 压力+6 · 需连续四周去医院并付 ¥'+STD_CURE_COST+' 治愈','fail');
+  return true;
+}
+function tryContractStdFromPartner(){
+  if(!game||!game.married||game.divorced||game.stdActive)return false;
+  if(!partnerHasExtramaritalAffair()||!game.partnerStdActive)return false;
+  if(Math.random()>=PLAYER_STD_FROM_PARTNER_CHANCE)return false;
+  return infectPlayerWithStd('伴侣已患性病，你被传染');
+}
+function tryContractStdFromStranger(contactName){
+  if(!game||game.stdActive)return false;
+  if(Math.random()>=PLAYER_STD_FROM_STRANGER_CHANCE)return false;
+  const who=contactName||'陌生人';
+  return infectPlayerWithStd('与'+who+'亲热后感染性病');
+}
+function tickStdTreatmentGapCheck(){
+  if(!game||!game.stdActive)return;
+  const v=game.stdTreatmentVisits||0;
+  if(v<=0)return;
+  const last=game.stdLastTreatmentWeek;
+  if(last>=0&&game.week>last+1){
+    game.stdTreatmentVisits=0;
+    game.stdLastTreatmentWeek=-1;
+    addLog('🏥 性病治疗中断（须每周连续就诊），进度清零','warn');
+  }
+}
+function tickStdWeekly(){
+  tickStdTreatmentGapCheck();
+  if(!game||!game.stdActive)return;
+  game.stdWeeksInfected=(game.stdWeeksInfected||0)+1;
+  if(game.stdWeeksInfected<=STD_STRESS_WEEKS)addStress(2,'性病 ');
+}
+function stdTreatmentStatusText(){
+  if(!game||!game.stdActive)return '';
+  const v=game.stdTreatmentVisits||0;
+  return '治疗 '+v+'/'+STD_TREATMENT_VISITS+' 周 · 第4次付 ¥'+STD_CURE_COST+' · 须每周连续就诊';
+}
+function playerStdHospitalVisit(){
+  if(!game||!game.stdActive){addLog('当前无需性病就诊','warn');return}
+  const d=typeof ensureDailyState==='function'?ensureDailyState():null;
+  if(!d){addLog('请在日常页安排就诊','fail');return}
+  if(d.phase==='rest'){addLog('休息时段无法去医院，请选白天/晚上/通宵','fail');return}
+  if(typeof dailyUseMainActivity==='function'&&!dailyUseMainActivity())return;
+  if(game.stdLastTreatmentWeek===game.week){
+    if(typeof dailyReleaseMainActivity==='function')dailyReleaseMainActivity();
+    addLog('本周已去过医院','warn');
+    return;
+  }
+  tickStdTreatmentGapCheck();
+  const next=(game.stdTreatmentVisits||0)+1;
+  if(next>=STD_TREATMENT_VISITS){
+    if(typeof spendCash==='function'&&!spendCash(STD_CURE_COST,'性病治愈')){
+      if(typeof dailyReleaseMainActivity==='function')dailyReleaseMainActivity();
+      addLog('治愈需 ¥'+STD_CURE_COST.toLocaleString()+'，现金不足','fail');
+      return;
+    }
+    game.stdActive=false;
+    game.stdTreatmentVisits=0;
+    game.stdLastTreatmentWeek=-1;
+    game.stdWeeksInfected=0;
+    addLog('🏥 完成连续四周治疗，性病已治愈','success');
+  }else{
+    game.stdTreatmentVisits=next;
+    game.stdLastTreatmentWeek=game.week;
+    addLog('🏥 性病治疗第 '+next+'/'+STD_TREATMENT_VISITS+' 周（满四次付 ¥'+STD_CURE_COST+' 治愈）','info');
+  }
+  if(typeof dailyAdvanceAfterSlotAction==='function')dailyAdvanceAfterSlotAction();
+  else if(typeof updateUI==='function')updateUI();
+  else if(typeof autoSaveSlot==='function')autoSaveSlot();
+}
+function pregnancyWhoLabel(){
+  if(!game||!game.pregnant)return '';
+  if(game.pregnantSubject==='player')return '你';
+  return game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+}
 function resolvePregnantSubject(){
   if(!game)return null;
-  if(game.playerGender==='female'&&game.partnerGender==='male')return 'player';
-  if(game.playerGender==='male'&&game.partnerGender==='female')return 'partner';
-  if(game.playerGender==='female'&&game.partnerGender==='female')return 'player';
+  if(isSameSexCouple())return null;
+  if(game.playerGender==='female')return 'player';
+  if(game.playerGender==='male')return 'partner';
   return null;
 }
 function isFemalePregnancy(){
@@ -5349,9 +5484,10 @@ function tryPregnancyLayoff(subject){
     if(c.log)c.log.unshift({date:getDateStr(game.week),msg:'怀孕后遭辞退 @'+(co?co.name:'公司'),type:'fail'});
   }
 }
-function startPregnancy(fromAffair){
+function startPregnancy(fromAffair,forceSubject){
   if(!game||game.pregnant||game.hasChildren||game.homeless)return false;
-  const subject=resolvePregnantSubject();
+  let subject=forceSubject||resolvePregnantSubject();
+  if(forceSubject==='player'&&game.playerGender!=='female')subject=resolvePregnantSubject();
   if(!subject){
     game.hasChildren=true;
     game.childRaisingMonthsLeft=CHILD_RAISING_MONTHS;
@@ -5366,7 +5502,7 @@ function startPregnancy(fromAffair){
   game.pregnancyIntimacyNet=0;
   syncAffairState();
   addStress(STRESS_CHILD_BIRTH,'怀孕 ');
-  const who=subject==='player'?'你':COMPANION_NAME;
+  const who=subject==='player'?'你':pregnancyWhoLabel();
   addLog('👶 '+(fromAffair?'婚外情':'')+who+'怀孕！孕期'+PREGNANCY_MONTHS+'个月，每周亲密度±1波动','success');
   tryPregnancyLayoff(subject);
   game.procreateIntentWeek=-1;
@@ -5402,12 +5538,13 @@ function completePregnancyBirth(){
 }
 function tryConceiveFromSex(noCondom,fromAffair){
   if(!game||game.pregnant||game.hasChildren||game.homeless)return false;
-  if(!fromAffair&&typeof isSameSexCouple==='function'&&isSameSexCouple())return false;
+  if(!fromAffair&&isSameSexCouple())return false;
   if(!fromAffair&&(!game.married||game.divorced))return false;
   let p=noCondom?PREGNANCY_CHANCE_RAW:PREGNANCY_CHANCE_SAFE;
   if(game.procreateIntentWeek===game.week&&noCondom)p=Math.max(p,PREGNANCY_CHANCE_PROC_CREATE);
   if(fromAffair)p=Math.max(p,AFFAIR_PREGNANCY_CHANCE||0.15);
   if(Math.random()>=p)return false;
+  if(game.playerGender==='female')return startPregnancy(fromAffair,'player');
   return startPregnancy(fromAffair);
 }
 function runSexSession(noCondom){
@@ -5416,10 +5553,7 @@ function runSexSession(noCondom){
     return {harmony:false};
   }
   addStress(-5,'做爱 ');
-  if(noCondom){
-    const toys=typeof isSameSexCouple==='function'&&isSameSexCouple();
-    addStress(-10,toys?'玩具 ':'不戴套 ');
-  }
+  if(noCondom)addStress(-10,sexSessionStressLabel(true));
   return {harmony:true};
 }
 function sexSessionsLeft(){
@@ -5498,9 +5632,20 @@ function promptMakeLove(batch){
     addLog('本周剩余 '+sexSessionsLeft()+' 次','fail');return;
   }
   const procOn=game.procreateIntentWeek===game.week;
-  const sameSex=typeof isSameSexCouple==='function'&&isSameSexCouple();
-  let html='亲密度 <b>'+game.spouseIntimacy+'</b><br>戴套：每次 -5 压力 · 20% 不和谐 +10<br>'+
-    (sameSex?'玩具：额外 -10 压力 · <span style="color:var(--muted)">不会怀孕</span>':'不戴套：额外 -10 压力，怀孕几率更高');
+  const sameSex=isSameSexCouple();
+  const partnerAffair=partnerHasExtramaritalAffair();
+  let html='亲密度 <b>'+game.spouseIntimacy+'</b><br>'+
+    sexSafeOptionLabel()+'：每次 -5 压力 · 20% 不和谐 +10<br>'+
+    (sameSex
+      ?(isSameSexMaleCouple()
+        ?'不戴套：额外 -10 压力 · <span style="color:var(--muted)">不会怀孕</span>'
+        :'玩具：额外 -10 压力 · <span style="color:var(--muted)">不会怀孕</span>')
+      :'不戴套：额外 -10 压力，怀孕几率更高');
+  if(partnerAffair&&game.partnerStdActive){
+    html+='<br><span style="color:var(--red)">伴侣已患性病 · 亲密后 '+Math.round(PLAYER_STD_FROM_PARTNER_CHANCE*100)+'% 传染给你</span>';
+  }else if(partnerAffair){
+    html+='<br><span class="fold-meta">伴侣有婚外情但未患性病时，你不会被传染</span>';
+  }
   if(procOn&&!sameSex){
     html+='<br><span style="color:var(--green)">🍼 本月备孕中</span>';
     html+='<br><span style="color:var(--orange)">备孕期若戴套：亲密度-20，伴侣怀疑出轨（聊骚/出轨史提高被抓概率）</span>';
@@ -5509,8 +5654,8 @@ function promptMakeLove(batch){
     icon:'💕',title:'夫妻生活 ×'+batch,
     html:html,
     buttons:[
-      {text:'戴套',fn:'makeLoveBatch('+batch+',false)'},
-      {text:(sameSex?'玩具（额外减压）':'不戴套（额外减压）'),primary:true,fn:'makeLoveBatch('+batch+',true)'}
+      {text:sexSafeOptionLabel(),fn:'makeLoveBatch('+batch+',false)'},
+      {text:sexRiskOptionLabel(false),primary:true,fn:'makeLoveBatch('+batch+',true)'}
     ]
   });
 }
@@ -5531,21 +5676,24 @@ function makeLoveBatch(batch,noCondom){
     const r=runSexSession(!!noCondom);
     if(r&&!r.harmony)harmony=false;
     c.sexSessions=(c.sexSessions||0)+1;
-    if(!conceived&&!game.hasChildren&&!game.pregnant)conceived=tryConceiveFromSex(!!noCondom,false);
+    tryContractStdFromPartner();
+    if(!conceived&&!game.hasChildren&&!game.pregnant&&!isSameSexCouple())conceived=tryConceiveFromSex(!!noCondom,false);
   }
   const pendingH=game._dailySexPendingHours||0;
   if(pendingH&&typeof dailyAddHours==='function')dailyAddHours(pendingH,false);
   game._dailySexPendingHours=0;
-  const sameSex=typeof isSameSexCouple==='function'&&isSameSexCouple();
-  let html='戴套 · 每次 -5 压力'+(harmony?'':' · <span style="color:var(--red)">不和谐 +10</span>');
-  if(noCondom)html+='<br>'+(sameSex?'玩具':'未戴套')+' · 额外减压';
+  const sameSex=isSameSexCouple();
+  let html=sexSafeOptionLabel()+' · 每次 -5 压力'+(harmony?'':' · <span style="color:var(--red)">不和谐 +10</span>');
+  if(noCondom)html+='<br>'+sexRiskOptionLabel(true)+' · 额外减压';
+  if(game.stdActive)html+='<br><span style="color:var(--red)">🦠 性病感染中 · '+stdTreatmentStatusText()+'</span>';
   if(procBetrayal&&!sameSex){
     const betray=resolveProcCreateCondomBetrayal();
     html+='<br><br>'+betray.html;
   }
   if(conceived)html+='<br><b style="color:var(--green)">怀孕！</b>';
   if(pendingH)html+='<br><span class="fold-meta">占用 '+pendingH+'h</span>';
-  addLog('💕 做爱 ×'+batch+(noCondom?(sameSex?'（玩具）':'（未戴套）'):'')+(conceived?' · 怀孕！':''),'info');
+  const optTag=noCondom?('（'+sexRiskOptionLabel(true)+'）'):('（'+sexSafeOptionLabel()+'）');
+  addLog('💕 做爱 ×'+batch+optTag+(conceived?' · 怀孕！':''),'info');
   showConsumeModal({icon:'💕',title:'做爱',html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
   renderSpendingPanel();updateUI();
 }
@@ -5579,7 +5727,9 @@ function tickMarriageWeekly(){
   syncSpouseIntimacyToCompanion();
   if(typeof tickAffairRelationships==='function')tickAffairRelationships();
   if(game.pregnant)tickPregnancyWeekly();
+  tickStdWeekly();
   if(game.married&&!game.divorced){
+    if(game.partnerAffairActive&&!game.partnerStdActive&&Math.random()<0.08)tryInfectPartnerWithStd();
     if(game.longDistance)adjustSpouseIntimacy(-1);
     if(game.livingOffSpouse){
       adjustSpouseIntimacy(-5);
@@ -5591,7 +5741,8 @@ function tickMarriageWeekly(){
     }
     if((game.companionFlirtTotal||0)>=100&&Math.random()<0.04){
       if(Math.random()<0.45){
-        game.affairActive=true;game.affairTriggered=true;
+        game.affairActive=true;game.affairTriggered=true;game.partnerAffairActive=true;
+        tryInfectPartnerWithStd();
         addLog('💋 伴侣聊骚达100+，出轨了！月支出翻倍。','stress');
         if(Math.random()<0.25)tryConceiveFromSex(false,true);
       }else if(Math.random()<0.5){
@@ -7787,12 +7938,15 @@ function updateUI(){
     '<div><b>本月 ¥'+exp.total.toLocaleString()+'</b> · '+exp.label+'</div>'+
     (game.ownsHome&&!game.mortgagePaidOff?'<div>房贷进度 '+game.mortgagePaymentsMade+'/'+MORTGAGE_MONTHS+'</div>':'')+
     (game.pregnant?'<div style="color:var(--green)">怀孕中 · 剩 '+game.pregnancyWeeksLeft+' 周 · 亲密度每周±1'+
-      (game.pregnantSubject==='player'?' · 你':' · '+COMPANION_NAME)+' · 净波动 '+(game.pregnancyIntimacyNet||0)+'</div>':'')+
+      ' · '+pregnancyWhoLabel()+' · 净波动 '+(game.pregnancyIntimacyNet||0)+'</div>':'')+
     (game.hasChildren&&game.childRaisingMonthsLeft>0?'<div>育儿剩余 '+game.childRaisingMonthsLeft+' 月</div>':'')+
     (game.married&&!game.divorced?'<div>夫妻亲密度 <b style="color:'+(intim>=60?'var(--green)':intim>=0?'var(--yellow)':'var(--red)')+'">'+intim+'</b> · 约会+1 · 一月未约会-'+(game.longDistance?'10':'5')+'</div>':'')+
     (game.fertilityOrder?'<div style="color:var(--green)">'+(game.fertilityOrder.type==='surrogacy'?'代孕':'试管')+'进行中 · 预计 '+getDateStr(game.fertilityOrder.dueWeek)+' 交货</div>':'')+
     (game.procreateIntentWeek===game.week?'<div style="color:var(--green)">本月备孕中（须做爱）</div>':'')+
-    (game.affairActive?'<div style="color:var(--red)">婚外情中 · 月支出×2</div>':'')+
+    (game.partnerAffairActive?'<div style="color:var(--red)">伴侣婚外情'+(game.partnerStdActive?' · 伴侣已患性病':'')+'</div>':'')+
+    (game.affairActive&&!game.partnerAffairActive?'<div style="color:var(--red)">婚外情中 · 月支出×2</div>':'')+
+    (game.affairActive&&game.partnerAffairActive?'<div style="color:var(--red)">双方婚外情 · 月支出×2</div>':'')+
+    (game.stdActive?'<div style="color:var(--orange)">性病 · '+stdTreatmentStatusText()+(game.stdWeeksInfected<=STD_STRESS_WEEKS?' · 每周压力+2':' · 超过'+STD_STRESS_WEEKS+'周不再加压')+' · 日常去医院</div>':'')+
     (game.livingOffSpouse?'<div style="color:var(--orange)">吃软饭中 · 每周亲密度-5</div>':'')+
     (game.longDistance?'<div style="color:var(--orange)">异地婚恋 · 每周+1压力 · 可线上约会</div>':'')+
     (game.stats?'<div>肉体<b>'+effStat('body')+'</b> 心智<b>'+effStat('mind')+'</b> 精神<b>'+effStat('spirit')+'</b> · 车'+(game.ownedCar?CAR_SHOP[game.ownedCar].name:'无')+' · '+(game.phone&&PHONE_SHOP[game.phone]?PHONE_SHOP[game.phone].name:'无手机')+'</div>':'')+

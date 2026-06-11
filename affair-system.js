@@ -131,7 +131,7 @@ function tryAffairEncounterPregnancy(c,loc){
     }
     if(game.playerGender==='female'&&(c.gender==='male'||!c.gender)){
       game.outdoorAffairPregnancy=true;
-      if(typeof startPregnancy==='function')startPregnancy(true);
+      if(typeof startPregnancy==='function')startPregnancy(true,'player');
       addLog('🤰 户外亲热后你怀孕了（可消费页堕胎，12周内）','warn');
       return true;
     }
@@ -463,6 +463,7 @@ function resolveAffairLocation(c,loc){
   const c0=ensureConsumption();
   if(c0)c0.sexSessions=(c0.sexSessions||0)+1;
   tryAffairEncounterPregnancy(c,loc);
+  if(typeof tryContractStdFromStranger==='function')tryContractStdFromStranger(c.name);
   addLog('💋 与 '+c.name+' 幽会（'+affairLocLabel(loc)+'）','info');
   if(game.daily){
     if(game.daily.phase==='allnight')renderDailyPanel();

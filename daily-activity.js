@@ -95,6 +95,9 @@ function isPlayerAtHomeNow(ph){
   if(typeof isPlayerAwayFromPartner==='function'&&isPlayerAwayFromPartner())return false;
   return true;
 }
+function dailyStdHospitalVisit(){
+  if(typeof playerStdHospitalVisit==='function')playerStdHospitalVisit();
+}
 function dailyZoneOut(){
   const d=ensureDailyState(),ph=d.phase;
   if(ph==='rest'){addLog('休息时段请选睡觉或通宵','fail');return}
@@ -1314,8 +1317,15 @@ function renderDailyHomeMenu(phase){
   h+='<button class="btn" onclick="dailyBackToMain()">← 返回</button>';
   return h;
 }
+function renderStdHospitalBtn(){
+  if(!game||!game.stdActive)return '';
+  const v=game.stdTreatmentVisits||0;
+  const done=game.stdLastTreatmentWeek===game.week;
+  return '<button class="btn btn-warn" '+(done?'disabled':'')+' onclick="dailyStdHospitalVisit()">🏥 去医院（性病 '+v+'/'+((typeof STD_TREATMENT_VISITS!=='undefined')?STD_TREATMENT_VISITS:4)+' 周'+(v>=3?' · 付¥'+((typeof STD_CURE_COST!=='undefined')?STD_CURE_COST:3000):'')+'）'+(done?' · 本周已诊':'')+'</button> ';
+}
 function renderDailyMainActions(phase,d,sched){
   let h='';
+  if(game&&game.stdActive)h+='<p style="color:var(--orange);font-size:.72rem">🦠 性病：须每周用一个时段去医院，连续四周，第4次付 ¥'+((typeof STD_CURE_COST!=='undefined')?STD_CURE_COST:3000)+' 治愈；中断从头来</p>';
   if(d.slotHoursUsed>0)h+='<p style="color:var(--yellow);font-size:.78rem">'+dailySlotHoursLabel()+' · 做爱(2h)/自慰(不占时)仍可进行</p>';
   if(phase==='rest'){
     h+='<button class="btn btn-primary" onclick="finishDay(\'sleep\')">😴 休息（8h）</button>';
@@ -1333,11 +1343,13 @@ function renderDailyMainActions(phase,d,sched){
       h+='<button class="btn" onclick="dailyOpenCategory(\'out\')">🚶 外出</button>';
       h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">🏠 宅家</button>';
       h+='<button class="btn" onclick="dailyOpenCategory(\'job\')">📋 应聘求职</button>';
+      h+=renderStdHospitalBtn();
     }else if(dailySlotHoursLeft()>0){
       h+=partnerLocTag(phase);
       h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">🏠 继续宅家（剩'+dailySlotHoursLeft()+'h）</button>';
     }
     h+='<button class="btn" onclick="dailyZoneOut()">😶 发呆（跳下一时段 · 压力-1）</button>';
+    h+=renderStdHospitalBtn();
     h+='<button class="btn" onclick="dailyOpenCategory(\'contacts\')">📇 通讯录</button>';
     h+='<button class="btn btn-warn" onclick="finishAllnightNoSleep()">☀ 通宵不睡（进入白天）</button>';
     h+='<button class="btn btn-primary" onclick="finishAllnightSleepThrough()">😴 入睡（睡过白天→晚上）</button>';
@@ -1356,11 +1368,13 @@ function renderDailyMainActions(phase,d,sched){
       h+='<button class="btn" onclick="dailyOpenCategory(\'out\')">🚶 外出</button>';
       h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">🏠 宅家</button>';
       h+='<button class="btn" onclick="dailyOpenCategory(\'job\')">📋 应聘求职</button>';
+      h+=renderStdHospitalBtn();
     }else if(dailySlotHoursLeft()>0){
       h+=partnerLocTag(phase);
       h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">🏠 继续宅家（剩'+dailySlotHoursLeft()+'h）</button>';
     }
     h+='<button class="btn" onclick="dailyZoneOut()">😶 发呆（跳下一时段 · 压力-1）</button>';
+    h+=renderStdHospitalBtn();
     h+='<button class="btn" onclick="dailyOpenCategory(\'contacts\')">📇 通讯录</button>';
     return h;
   }
@@ -1379,11 +1393,13 @@ function renderDailyMainActions(phase,d,sched){
       h+='<button class="btn" onclick="dailyOpenCategory(\'out\')">🚶 外出</button>';
       h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">🏠 宅家</button>';
       h+='<button class="btn" onclick="dailyOpenCategory(\'job\')">📋 应聘求职</button>';
+      h+=renderStdHospitalBtn();
     }else if(dailySlotHoursLeft()>0){
       h+=partnerLocTag(phase);
       h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">🏠 继续宅家（剩'+dailySlotHoursLeft()+'h）</button>';
     }
     h+='<button class="btn" onclick="dailyZoneOut()">😶 发呆（跳下一时段 · 压力-1）</button>';
+    h+=renderStdHospitalBtn();
     h+='<button class="btn" onclick="dailyOpenCategory(\'contacts\')">📇 通讯录</button>';
     return h;
   }
