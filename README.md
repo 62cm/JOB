@@ -37,5 +37,11 @@ node build.js
 | `build.js` | 构建脚本，生成 HTML |
 | `data.json` | 职业数据 |
 | `real-companies.js` | 企业与股票数据 |
-| `index.html` | GitHub Pages 入口（由 build 生成） |
+| `daily-activity.js` | 日常活动（宅家/外出/时段） |
+| `affair-system.js` | 艳遇、偷情、户外怀孕要挟 |
+| `contacts-system.js` | 通讯录 |
+| `auto-life.js` | 自动生活快进 |
+| `fertility-system.js` | 代孕/试管/备孕/同性生育 |
+| `spouse-finance.js` | 伴侣零花钱、借钱理财 |
+| `index.html` | GitHub Pages 入口（由 build 生成，已内嵌上述 JS） |
 | `deploy-github.bat` | 一键构建并 push |
