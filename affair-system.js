@@ -85,6 +85,56 @@ function getMakeLoveBlockReason(skipIntimacy){
   if(!skipIntimacy&&(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0)return '亲密度过低（≤0），对方拒绝';
   return null;
 }
+const NOKIA_PHONE_CHECK_CASH=10000;
+function maybePartnerPhoneCheckOnNokia(context){
+  if(!game||!game.married||game.divorced)return false;
+  if(game.phone!=='nokia'||game.cash<=NOKIA_PHONE_CHECK_CASH)return false;
+  let p=context==='switch'?0.18:0.10;
+  const ph=game.daily&&game.daily.phase;
+  if(isSpouseAtHome(ph))p+=0.08;
+  p=Math.min(0.45,p);
+  if(Math.random()>=p)return false;
+  return partnerDiscoversPhoneAffairs();
+}
+function partnerDiscoversPhoneAffairs(){
+  const lovers=(game.contacts||[]).filter(c=>
+    (c.affairCount||0)>0||c.affairStatus==='affair'||c.affairStatus==='fwb'||c.affairStatus==='married_affair'
+  );
+  if(!lovers.length){
+    if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-1);
+    if(typeof addStress==='function')addStress(2,'被查手机 ');
+    addLog('📱 伴侣翻了你的经典诺基亚，没发现情人记录 · 亲密度-1','info');
+    return false;
+  }
+  const names=lovers.map(c=>c.name).slice(0,3).join('、');
+  if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-5);
+  if(typeof addStress==='function')addStress(5,'被发现 ');
+  addLog('🚨 伴侣检查经典诺基亚，发现情人/炮友：'+names+' · 亲密度-5 · 压力+5','fail');
+  if(Math.random()<0.45&&typeof partnerRequestsDivorce==='function'){
+    partnerRequestsDivorce('💔 伴侣从你经典诺基亚里发现情人记录，提出离婚。',{playerPaysHalf:true});
+    return true;
+  }
+  return true;
+}
+function rollPartnerCaughtAffair(context){
+  if(!game||!game.married||game.divorced)return false;
+  let p=0;
+  if(game.phone==='nokia')p+=(context==='phone'?0.26:0.10);
+  const ph=game.daily&&game.daily.phase;
+  if(isSpouseAtHome(ph)){
+    p+=(context==='phone'?0.20:0.16);
+  }
+  p=Math.min(0.72,p);
+  if(p<=0||Math.random()>=p)return false;
+  if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-3);
+  if(typeof addStress==='function')addStress(3,'被发现 ');
+  const what=context==='phone'?'联系情人':'聊骚';
+  addLog('🚨 伴侣发现你'+what+' · 亲密度-3 · 压力+3','fail');
+  if(p>=0.38&&Math.random()<0.32&&typeof partnerRequestsDivorce==='function'){
+    partnerRequestsDivorce('💔 伴侣发现你'+what+'，提出离婚。',{playerPaysHalf:true});
+  }
+  return true;
+}
 function ensureContactAffairFields(c){
   if(!c)return null;
   if(c.body==null)c.body=42+Math.floor(Math.random()*38);

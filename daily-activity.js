@@ -8,9 +8,9 @@ const CAR_SHOP={
   sports:{name:'跑车',price:900000,commute:'car'}
 };
 const PHONE_SHOP={
-  nokia:{name:'诺基亚',price:100,noApp:true,noTaxi:true},
+  nokia:{name:'经典诺基亚',price:399,noApp:true,noTaxi:true},
   xiaomi:{name:'小米',price:2000,default:true},
-  huawei:{name:'华为超屌屏',price:18000,posBias:0.12,negBias:-0.05,paidUp:0.08,loseMult:1.4,photoDate:true},
+  huawei:{name:'华为超D屏',price:18000,posBias:0.12,negBias:-0.05,paidUp:0.08,loseMult:1.4,photoDate:true},
   iphone:{name:'iPhone 20 Pro Max',price:10000,costMult:1.2,negBias:-0.12,loseMult:1.3,photoDate:true}
 };
 const SURROGACY_LOCAL=500000;
@@ -41,7 +41,7 @@ function rollAllnightSuddenDeath(streak){
 function defaultDailyState(){
   return{dayIndex:0,phase:'morning',allnightStreak:0,workSkipDays:0,workedDays:0,weekWorkWarned:false,workedToday:false,jobHuntedToday:false,jobHuntCount:0,subMenu:null,
     slotHoursUsed:0,slotSexUsed:false,slotMasturbateUsed:false,slotSnackUsed:false,snackPortionsToday:0,partnerSnackPortionsToday:0,
-    slotContactsUsed:{},slotNoAnswerContacts:{},slotActivity:null,inOvertime:false,overtimeSlack:0};
+    slotContactsUsed:{},slotNoAnswerContacts:{},slotActivity:null,inOvertime:false,overtimeSlack:0,phoneSwitchedThisSlot:false};
 }
 function dailySlotHoursLeft(){
   const d=game&&game.daily;return SLOT_HOURS_TOTAL-((d&&d.slotHoursUsed)||0);
@@ -53,7 +53,7 @@ function dailySlotHoursLabel(){
 function resetDailySlotFlags(){
   const d=ensureDailyState();if(!d)return;
   d.slotHoursUsed=0;d.slotSexUsed=false;d.slotMasturbateUsed=false;d.slotSnackUsed=false;
-  d.slotActivity=null;d.inOvertime=false;
+  d.slotActivity=null;d.inOvertime=false;d.phoneSwitchedThisSlot=false;
 }
 function dailySlotBlocked(){return dailySlotHoursLeft()<=0}
 function dailyCanUseHours(h){
@@ -149,13 +149,26 @@ function confirmPartnerRecall(goHome){
   addLog('📞 没理会'+pn+' · 亲密度-1 · 压力-1','warn');
   if(menu)continueDailyOpenCategory(menu);
 }
+function getEmploymentOtProfile(){
+  if(!game||!game.employed||!game.employment)return null;
+  if(game.employment.otProfile)return game.employment.otProfile;
+  const t=game.employment.tier||'mid';
+  if(typeof legacyOvertimeProfile==='function'){
+    const job=currentJob();
+    return legacyOvertimeProfile(t,game.employment.importance,game.employment.roleExtra,game.employment.company,job);
+  }
+  return{forcedEveningProb:t==='high'?0.74:t==='mid'?0.44:0.30,otPayProb:t==='high'?0.58:t==='mid'?0.40:0.24,otPayMult:1,otLabel:t==='high'?'加班常态化':t==='mid'?'周末偶尔加班':'加班费不稳定'};
+}
+function fmtOtPct(p){return Math.round((p||0)*100)+'%'}
 function showOvertimeChoiceModal(){
   const d=ensureDailyState();
+  const ot=getEmploymentOtProfile();
   d.inOvertime=true;
   d.slotActivity='overtime';
+  const hint=ot?'<p class="fold-meta" style="margin:0 0 6px">本岗：'+ot.otLabel+' · 加班费概率约 '+fmtOtPct(ot.otPayProb)+'</p>':'';
   showConsumeModal({
     icon:'🏢',title:'加班中',
-    html:'你在公司加班，可以摸鱼、拼命，或给伴侣打电话。',
+    html:hint+'你在公司加班，可以摸鱼、拼命，或给伴侣打电话。',
     buttons:[
       {text:'摸鱼（压力-1 · 裁员风险↑）',fn:'overtimeSlack()'},
       {text:'拼命（压力+1 · 可能加班费）',fn:'overtimeGrind()'},
@@ -173,8 +186,11 @@ function overtimeSlack(){
 }
 function overtimeGrind(){
   addStress(1,'拼命 ');
-  if(Math.random()<0.42){
-    const bonus=200+Math.floor(Math.random()*1200);
+  const ot=getEmploymentOtProfile();
+  const payProb=ot?ot.otPayProb:0.42;
+  const payMult=ot?ot.otPayMult||1:1;
+  if(Math.random()<payProb){
+    const bonus=Math.round((200+Math.floor(Math.random()*1200))*payMult);
     game.cash+=bonus;game.money+=bonus;
     addLog('💰 加班费 ¥'+bonus.toLocaleString(),'success');
   }else addLog('💼 拼命加班，没有额外报酬','info');
@@ -234,17 +250,23 @@ function dailyRunScrollSessions(fn,hours){
 }
 function dailyLeisureScroll(fn,hours){
   hours=Math.max(1,Math.floor(hours)||1);
+  if(phoneBlocksHomeLeisure()){
+    addLog('经典诺基亚无法在家刷视频/游戏/聊骚/短剧','fail');
+    return;
+  }
   if(hours===SLOT_BATCH_HOURS){
     if(!dailyCanUseHours(SLOT_BATCH_HOURS))return;
     const html=dailyRunScrollSessions(fn,SLOT_BATCH_HOURS);
     dailyAddHours(SLOT_BATCH_HOURS,true);
     if(html)showConsumeModal({icon:'📱',title:'连刷8小时',html:html+'<br><span style="color:var(--green)">时段已满，进入下一时段</span>',buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
+    if(fn==='consumeFlirt'&&typeof rollPartnerCaughtAffair==='function')rollPartnerCaughtAffair('flirt');
     return;
   }
   if(!dailyCanUseHours(1))return;
   const html=dailyRunScrollSessions(fn,1);
   dailyAddHours(1,false);
   if(html)showConsumeModal({icon:'📱',title:'1小时',html:html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
+  if(fn==='consumeFlirt'&&typeof rollPartnerCaughtAffair==='function')rollPartnerCaughtAffair('flirt');
 }
 function snackEatModalHtml(title,playerR,partnerR){
   let html='<b>'+title+'</b><br>你：吃 <b>'+playerR.portions+'</b> 份';
@@ -368,8 +390,18 @@ function dailyTryMasturbate(){
   renderDailyPanel();
   return true;
 }
+function nokiaPhoneDescText(){
+  const cash=typeof NOKIA_PHONE_CHECK_CASH!=='undefined'?NOKIA_PHONE_CHECK_CASH:10000;
+  return '¥399<br>'+
+    '加成：使用中临时肉体+1、心智+1、精神+1（切换其它手机立即消失）<br>'+
+    '限制：无招聘APP（有电脑可电脑应聘）· 通勤仅地铁 · 不可宅家刷短视频/短剧/聊骚/手游<br>'+
+    '暴露：宅家聊骚被抓概率+10% · 通讯录联系情人+26%（伴侣在家再+16%/+20%）<br>'+
+    '查机：现金&gt;¥'+cash.toLocaleString()+'时，换机约18% · 每进入新时段约10% · 伴侣在家+8%<br>'+
+    '被查：未发现情人亲密度-1压力+2 · 发现情人亲-5压+5约45%离婚';
+}
 function phoneDesc(key){
   const p=PHONE_SHOP[key];if(!p)return '';
+  if(key==='nokia')return nokiaPhoneDescText();
   const bits=['¥'+p.price.toLocaleString()];
   if(p.noApp)bits.push('无招聘APP');
   else bits.push('可用APP');
@@ -414,6 +446,7 @@ function dailyOpenCategory(menu){
   if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning)return;
   if(typeof isPlayerImprisoned==='function'&&isPlayerImprisoned()){addLog('监禁中无法安排日程','fail');return}
   if(menu==='contacts'){
+    if(!hasUsablePhone()){addLog('暂无可用手机，无法使用通讯录','fail');return}
     if(typeof openContactsModal==='function')openContactsModal();
     return;
   }
@@ -618,7 +651,7 @@ function ensureDailyState(){
   if(!game.tempStats)game.tempStats=defaultTempStats();
   if(!game.contacts)game.contacts=[];
   if(game.ownedCar==null)game.ownedCar=null;
-  if(!game.phone)game.phone='xiaomi';
+  ensurePhoneState();
   if(!game.playerGender)game.playerGender='male';
   if(!game.partnerGender)game.partnerGender='female';
   return game.daily;
@@ -714,7 +747,123 @@ function resetWeeklyDaily(){
     maybeTickStocksForDay(0);
   }
 }
-function phoneCfg(){return PHONE_SHOP[game.phone]||PHONE_SHOP.xiaomi}
+function ensurePhoneState(){
+  if(!game)return;
+  if(!game.ownedPhones||!game.ownedPhones.length)game.ownedPhones=['xiaomi'];
+  if(!game.ownedPhones.includes('xiaomi'))game.ownedPhones.unshift('xiaomi');
+  if(game.phone&&!game.ownedPhones.includes(game.phone))game.phone=null;
+  if(!game.phone&&game.ownedPhones.length)game.phone=game.ownedPhones[0];
+  if(game.phonePanelOpen==null)game.phonePanelOpen=false;
+  syncNokiaTempBonus();
+}
+function applyPhonePanelFold(){
+  if(!game)return;
+  const open=!!game.phonePanelOpen;
+  const body=document.querySelector('#dailyPanel .phone-fold-body');
+  const chev=document.querySelector('#dailyPanel .phone-fold-chev');
+  const meta=document.querySelector('#dailyPanel .phone-fold-cur');
+  if(body)body.style.display=open?'block':'none';
+  if(chev)chev.textContent=open?'▼':'▶';
+  if(meta)meta.style.display=open?'':'none';
+}
+function hasUsablePhone(){
+  ensurePhoneState();
+  return !!(game.phone&&game.ownedPhones&&game.ownedPhones.includes(game.phone));
+}
+function syncNokiaTempBonus(){
+  if(!game||typeof addTempStat!=='function')return;
+  const on=game.phone==='nokia';
+  if(on&&!game.nokiaBonusActive){
+    addTempStat('body',1);addTempStat('mind',1);addTempStat('spirit',1);
+    game.nokiaBonusActive=true;
+  }else if(!on&&game.nokiaBonusActive){
+    addTempStat('body',-1);addTempStat('mind',-1);addTempStat('spirit',-1);
+    game.nokiaBonusActive=false;
+  }
+}
+function phoneBlocksHomeLeisure(){
+  return !!(game&&game.phone==='nokia');
+}
+function canUseJobApp(){
+  if(typeof hasUsablePhone!=='function'||!hasUsablePhone())return false;
+  const cfg=phoneCfg();
+  if(!cfg.noApp)return true;
+  return game.phone==='nokia'&&!!game.ownsComputer;
+}
+function jobAppBlockMessage(){
+  if(typeof hasUsablePhone==='function'&&!hasUsablePhone())return '无可用手机，无法使用招聘APP';
+  if(canUseJobApp())return '';
+  const pn=game.phone&&PHONE_SHOP[game.phone]?PHONE_SHOP[game.phone].name:'当前手机';
+  if(game.phone==='nokia')return pn+'无法用招聘APP（已购电脑可用电脑应聘，或白天去人才市场）';
+  return pn+'无法使用招聘APP，请更换手机或白天去人才市场';
+}
+function loseCurrentPhone(){
+  if(!game||!game.phone)return;
+  ensurePhoneState();
+  const lost=game.phone,p=PHONE_SHOP[lost];
+  game.ownedPhones=game.ownedPhones.filter(k=>k!==lost);
+  if(lost==='nokia'&&game.nokiaBonusActive){
+    if(typeof addTempStat==='function'){addTempStat('body',-1);addTempStat('mind',-1);addTempStat('spirit',-1)}
+    game.nokiaBonusActive=false;
+  }
+  game.phone=game.ownedPhones.length?game.ownedPhones[0]:null;
+  syncNokiaTempBonus();
+  if(!game.phone)addLog('📱 '+(p?p.name:'手机')+' 丢失！暂无可用手机，无法使用通讯录','fail');
+  else addLog('📱 '+(p?p.name:'手机')+' 丢失！已切换至 '+PHONE_SHOP[game.phone].name,'fail');
+}
+function phoneCfg(){
+  ensurePhoneState();
+  if(!game.phone)return {noApp:true,noTaxi:true,costMult:1,loseMult:1};
+  return PHONE_SHOP[game.phone]||PHONE_SHOP.xiaomi;
+}
+function togglePhonePanel(){
+  if(!game)return;
+  game.phonePanelOpen=!game.phonePanelOpen;
+  applyPhonePanelFold();
+}
+function switchPhone(key){
+  ensurePhoneState();
+  const d=ensureDailyState(),p=PHONE_SHOP[key];
+  if(!p){addLog('未知手机','fail');return}
+  if(!game.ownedPhones.includes(key)){addLog('尚未拥有 '+p.name+'，请先购买','fail');return}
+  if(d.phoneSwitchedThisSlot){addLog('本时段已换过手机','fail');return}
+  if(game.phone===key){addLog('已是当前手机','warn');return}
+  if(game.phone==='nokia'&&game.nokiaBonusActive&&typeof addTempStat==='function'){
+    addTempStat('body',-1);addTempStat('mind',-1);addTempStat('spirit',-1);
+    game.nokiaBonusActive=false;
+  }
+  game.phone=key;
+  syncNokiaTempBonus();
+  d.phoneSwitchedThisSlot=true;
+  addStress(10,'换手机 ');
+  addLog('📱 切换至 '+p.name+' · 压力+10','info');
+  if(key==='nokia'&&typeof maybePartnerPhoneCheckOnNokia==='function')maybePartnerPhoneCheckOnNokia('switch');
+  renderDailyPanel();
+}
+function renderPhonePanel(){
+  ensurePhoneState();
+  const d=ensureDailyState();
+  const open=!!game.phonePanelOpen;
+  const cur=game.phone&&PHONE_SHOP[game.phone]?PHONE_SHOP[game.phone].name:'无';
+  let h='<div class="daily-shop phone-fold"><div class="phone-fold-hdr" onclick="togglePhonePanel()"><b>换手机</b>';
+  h+='<span class="phone-fold-cur fold-meta"'+(open?'':' style="display:none"')+'> · 当前 '+cur+'</span>';
+  h+='<span class="phone-fold-chev" style="margin-left:auto;color:var(--muted)">'+(open?'▼':'▶')+'</span></div>';
+  h+='<div class="phone-fold-body"'+(open?'':' style="display:none"')+'>';
+  if(!hasUsablePhone())h+='<p style="color:var(--red);margin:0 0 6px">暂无可用手机，无法使用通讯录</p>';
+  Object.keys(PHONE_SHOP).forEach(k=>{
+    const p=PHONE_SHOP[k],owned=game.ownedPhones.includes(k),active=game.phone===k;
+    h+='<div style="margin:4px 0">';
+    if(owned){
+      h+='<button class="btn" '+(active||d.phoneSwitchedThisSlot?'disabled':'')+' onclick="switchPhone(\''+k+'\')">'+(active?'✓ ':'')+p.name+'</button>';
+    }else{
+      h+='<button class="btn" onclick="buyPhone(\''+k+'\')">购买 '+p.name+' ¥'+p.price.toLocaleString()+'</button>';
+    }
+      h+=(k==='nokia'?'<div class="fold-meta nokia-phone-desc">'+phoneDesc(k)+'</div>':' <span class="fold-meta">'+phoneDesc(k)+'</span>')+'</div>';
+  });
+  if(d.phoneSwitchedThisSlot)h+='<p class="fold-meta">本时段已换过手机</p>';
+  h+='</div></div>';
+  return h;
+}
 function spendWithPhoneMult(amt,label){
   const mult=phoneCfg().costMult||1;
   return spendCash(Math.round(amt*mult),label);
@@ -735,7 +884,7 @@ function commuteMorning(){
 function maybeMeetOnCommute(){
   if(Math.random()<0.18)meetRandomPerson('通勤');
   if(Math.random()<0.04&&isManualJob(game.employment?game.market[game.employment.jobIdx]:null)){
-    if(Math.random()<0.5*phoneCfg().loseMult){game.phone='nokia';addLog('📱 手机丢失！只剩诺基亚','fail')}
+    if(phoneCfg()&&Math.random()<0.5*phoneCfg().loseMult)loseCurrentPhone();
   }
 }
 function meetRandomPerson(where,baseChance){
@@ -764,6 +913,7 @@ function advanceDailyPhase(nextPhase){
   d.subMenu=null;
   resetDailySlotFlags();
   if(typeof resetContactSlotFlags==='function')resetContactSlotFlags();
+  if(game.phone==='nokia'&&game.cash>10000&&typeof maybePartnerPhoneCheckOnNokia==='function')maybePartnerPhoneCheckOnNokia('phase');
   renderDailyPanel();
 }
 function finishDay(restType){
@@ -963,10 +1113,12 @@ function dailyEveningShiftWork(){
 function dailyEveningWorkEvent(){
   if(!game.employed){dailyAdvanceAfterSlotAction();return}
   if(!dailyUseMainActivity())return;
-  if(Math.random()<0.5){
+  const ot=getEmploymentOtProfile();
+  const otProb=ot?ot.forcedEveningProb:0.5;
+  if(Math.random()<otProb){
     addStress(1,'加班 ');
     addTempStat('spirit',-1,'🌃 被迫加班');
-    addLog('🌃 被迫加班 · 压力+1','warn');
+    addLog('🌃 被迫加班 · 压力+1'+(ot?'（'+ot.otLabel+'）':''),'warn');
     showOvertimeChoiceModal();
     return;
   }else{
@@ -1007,7 +1159,8 @@ function dailyJobHunt(slot,method){
     runApplyRound(jobIdxs,{slot,forceMethod:'headhunter',drawMult:1});
     return;
   }
-  if(game.phone==='nokia'||phoneCfg().noApp){addLog('诺基亚无法用APP，请白天去人才市场','fail');game.dailyApplyContext=null;dailyReleaseMainActivity();return}
+  if(!canUseJobApp()){addLog(jobAppBlockMessage(),'fail');game.dailyApplyContext=null;dailyReleaseMainActivity();return}
+  if(game.phone==='nokia'&&game.ownsComputer)addLog('💻 用电脑登录招聘APP','info');
   const ar=document.querySelector('input[name="applyMethod"][value="app"]');
   if(ar)ar.checked=true;
   runApplyRound(jobIdxs,{slot,forceMethod:'app',drawMult:slot==='allnight'?2:1});
@@ -1216,7 +1369,9 @@ function renderDailyMainActions(phase,d,sched){
         h+='<p class="fold-meta">'+(wk?'周末':'今晚')+'需上班</p>';
         h+='<button class="btn btn-primary" onclick="dailyEveningShiftWork()">💼 '+(wk?'加班/晚班':'晚班上班')+'</button>';
       }else if(game.employed&&d.workedToday&&!wk){
-        h+='<button class="btn btn-primary" onclick="dailyEveningWorkEvent()">🏢 加班/联谊</button>';
+        const ot=getEmploymentOtProfile();
+        const otHint=ot?' <span class="fold-meta">（'+ot.otLabel+' · 加班约'+fmtOtPct(ot.forcedEveningProb)+'）</span>':'';
+        h+='<button class="btn btn-primary" onclick="dailyEveningWorkEvent()">🏢 加班/联谊</button>'+otHint;
       }
       h+=partnerLocTag(phase);
       h+='<button class="btn" onclick="dailyOpenCategory(\'out\')">🚶 外出</button>';
@@ -1241,11 +1396,13 @@ function buyCar(key){
   renderDailyPanel();renderSpendingPanel();
 }
 function buyPhone(key){
+  ensurePhoneState();
   const p=PHONE_SHOP[key];if(!p||!game)return;
-  if(game.phone===key){addLog('已是当前手机','warn');return}
+  if(game.ownedPhones.includes(key)){switchPhone(key);return}
   if(!spendCash(p.price,'购买'+p.name))return;
-  game.phone=key;
-  addLog('📱 更换'+p.name,'success');
+  game.ownedPhones.push(key);
+  switchPhone(key);
+  addLog('📱 购入'+p.name+' ¥'+p.price.toLocaleString(),'success');
   renderDailyPanel();
 }
 function renderDailyPanel(){
@@ -1301,17 +1458,20 @@ function renderDailyPanel(){
   html+='<div class="daily-shop"><b>购车</b> ';
   Object.keys(CAR_SHOP).forEach(k=>{const c=CAR_SHOP[k];html+='<button class="btn" onclick="buyCar(\''+k+'\')">'+c.name+' ¥'+(c.price/10000)+'万</button> ';});
   html+=(game.ownedCar?' <span class="fold-meta">已购 '+CAR_SHOP[game.ownedCar].name+'</span>':'')+'</div>';
-  html+='<div class="daily-shop"><b>手机</b> 当前：<b>'+(PHONE_SHOP[game.phone]||PHONE_SHOP.xiaomi).name+'</b> · '+phoneDesc(game.phone)+'</div>';
-  html+='<div class="daily-shop" style="font-size:.72rem">';
-  Object.keys(PHONE_SHOP).forEach(k=>{
-    if(k===game.phone)return;
-    html+='<div style="margin:4px 0"><button class="btn" onclick="buyPhone(\''+k+'\')">换 '+PHONE_SHOP[k].name+'</button> <span class="fold-meta">'+phoneDesc(k)+'</span></div>';
-  });
-  html+='</div>';
+  html+=renderPhonePanel();
   if(typeof renderContactsBlock==='function')html+=renderContactsBlock();
   el.innerHTML=html;
 }
 function migrateDailyState(){
+  if(game){
+    if(!game.ownedPhones||!game.ownedPhones.length){
+      game.ownedPhones=game.phone?[game.phone]:['xiaomi'];
+      if(!game.ownedPhones.includes('xiaomi'))game.ownedPhones.unshift('xiaomi');
+    }
+    if(game.phonePanelOpen==null)game.phonePanelOpen=false;
+    if(game.nokiaBonusActive==null)game.nokiaBonusActive=false;
+    ensurePhoneState();
+  }
   const d=ensureDailyState();
   if(d){
     if(d.slotHoursUsed==null)d.slotHoursUsed=d.slotActionUsed?8:0;

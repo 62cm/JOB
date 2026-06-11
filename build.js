@@ -6,7 +6,8 @@ const DAILY_ACTIVITY_SRC = fs.readFileSync(path.join(__dirname, 'daily-activity.
 const AUTO_LIFE_SRC = fs.readFileSync(path.join(__dirname, 'auto-life.js'), 'utf8');
 const AFFAIR_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'affair-system.js'), 'utf8');
 const CONTACTS_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'contacts-system.js'), 'utf8');
-const GAME_BUILD_ID = '2026.06.09-allnight-death';
+const SPOUSE_FINANCE_SRC = fs.readFileSync(path.join(__dirname, 'spouse-finance.js'), 'utf8');
+const GAME_BUILD_ID = '2026.06.09-slot-fix';
 
 const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -236,6 +237,11 @@ const html = `<!DOCTYPE html>
   .cal-ev-mini.cal-planned{background:rgba(88,166,255,.15);color:var(--blue)}
   .cal-ev-mini.cal-invite{background:rgba(210,153,34,.15);color:var(--yellow)}
   .cal-ev-mini.cal-confirmed{background:rgba(63,185,80,.12);color:var(--green)}
+  .cal-ev-mini.cal-spouse-loan{background:rgba(163,113,247,.15);color:var(--accent)}
+  .cal-spouse-loan-list{border-color:rgba(163,113,247,.35);background:rgba(163,113,247,.04)}
+  .cal-spouse-loan-hdr{color:var(--accent)}
+  .cal-spouse-overdue{color:var(--red)!important}
+  .cal-ev.cal-spouse-loan{background:rgba(163,113,247,.12);color:var(--accent);border-left:2px solid var(--accent)}
   .spending-panel{font-size:.72rem}
   .companion-panel{font-size:.78rem}
   .companion-hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--panel)}
@@ -360,6 +366,9 @@ const html = `<!DOCTYPE html>
   .daily-partner-inline .partner-em{font-size:1.15em;margin-right:2px}
   .daily-partner-inline{font-size:.72rem;color:var(--muted);padding:4px 8px;border:1px dashed var(--border);border-radius:6px;white-space:nowrap}
   .daily-shop,.daily-contacts{font-size:.78rem;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+  .phone-fold-hdr{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:2px 0}
+  .phone-fold-body{margin-top:6px;font-size:.72rem}
+  .nokia-phone-desc{display:block;margin-top:4px;line-height:1.45;font-size:.7rem}
   .daily-contact-list{max-height:320px;overflow-y:auto;margin-top:4px}
   .daily-contact{padding:3px 0;border-bottom:1px dashed var(--border)}
   .contacts-modal{max-width:440px;max-height:88vh;text-align:left}
@@ -1121,6 +1130,75 @@ const WELFARE_BY_TIER = {
   mid:{hours:'9:00-18:30',ot:'周末偶尔加班',leave:'年假10天',ins:'五险一金',meal:'午餐补贴',bonus:'年终奖1-3薪'},
   low:{hours:'轮班/不定时',ot:'加班费不稳定',leave:'法定最低',ins:'五险（部分缺失）',meal:'无',bonus:'看老板心情'}
 };
+const INTERNET_JOB_CATS=['信息技术','文化传媒','销售零售与电商'];
+function clampOt(v,lo,hi){return Math.max(lo,Math.min(hi,v))}
+function otLabelFromProbs(forced,pay,roleExtra){
+  if(roleExtra==='temp')return pay>=0.35?'排班加班·按班结算':'排班不定时·加班费不稳';
+  if(roleExtra==='intern'){
+    if(forced>=0.55)return pay>=0.30?'实习常加班·有补贴':'实习常加班·补贴少';
+    return '实习期偶尔加班';
+  }
+  if(forced>=0.70&&pay<0.35)return '加班常态化·加班费少';
+  if(forced>=0.70)return '加班常态化';
+  if(forced>=0.52)return '工作日常加班';
+  if(forced>=0.35)return '周末偶尔加班';
+  if(pay<0.28)return '加班费不稳定';
+  return '基本准时下班';
+}
+function hoursLabelFromProbs(forced,tier,roleExtra){
+  if(roleExtra==='temp')return '排班制';
+  if(roleExtra==='intern')return forced>=0.55?'9:00-20:00':'9:00-18:00';
+  if(forced>=0.72)return '9:00-21:00弹性';
+  if(forced>=0.55)return '9:00-20:00';
+  if(forced>=0.38)return '9:00-18:30';
+  if(tier==='low')return '轮班/不定时';
+  return '9:00-18:00';
+}
+function computeOvertimeProfile(tier,importance,roleExtra,company,job,rng){
+  const r=typeof rng==='function'?rng:()=>Math.random();
+  let forced=tier==='high'?0.74:tier==='mid'?0.44:0.30;
+  let pay=tier==='high'?0.58:tier==='mid'?0.40:0.24;
+  if(importance==='high'){forced+=0.10;pay+=0.08}
+  else if(importance==='mid'){forced+=0.04;pay+=0.03}
+  else{forced-=0.05;pay-=0.04}
+  if(company){
+    if(company.scale==='large'){forced+=0.07;pay+=0.04}
+    else if(company.scale==='small'){forced-=0.05;pay-=0.06}
+  }
+  if(job){
+    if(job.exposure>=8){forced+=0.10;pay-=0.04}
+    else if(job.exposure>=6){forced+=0.06}
+    if(INTERNET_JOB_CATS.includes(job.category))forced+=0.06;
+    if(job.heatPct>=115)forced+=0.05;
+  }
+  if(roleExtra==='intern'){forced+=0.08;pay-=0.15}
+  else if(roleExtra==='temp'){forced-=0.08;pay=0.38;forced=clampOt(forced,0.15,0.55)}
+  forced+= (r()-0.5)*0.14;
+  pay+= (r()-0.5)*0.12;
+  forced=clampOt(forced,0.10,0.92);
+  pay=clampOt(pay,0.08,0.80);
+  const otLabel=otLabelFromProbs(forced,pay,roleExtra);
+  const hoursLabel=hoursLabelFromProbs(forced,tier,roleExtra);
+  const otPayMult=tier==='high'?1.15:tier==='mid'?1.0:0.85;
+  return{forcedEveningProb:forced,otPayProb:pay,otLabel,hoursLabel,otPayMult};
+}
+function legacyOvertimeProfile(tier,importance,roleExtra,company,job){
+  return computeOvertimeProfile(tier||'mid',importance||'low',roleExtra||null,company||null,job||null,()=>0.5);
+}
+function buildPositionWelfare(tier,importance,roleExtra,company,job,rng){
+  const ot=computeOvertimeProfile(tier,importance,roleExtra,company,job,rng);
+  const w=WELFARE_BY_TIER[tier];
+  const imp=IMP_LABEL[importance];
+  const extra=roleExtra==='intern'?' · 实习期薪资约55%·转正不确定':roleExtra==='temp'?' · 周薪结算·随时裁退':'';
+  const welfare='工时'+ot.hoursLabel+' · '+ot.otLabel+' · '+w.leave+' · '+w.ins+' · '+w.meal+' · '+w.bonus+' · '+imp+'岗'+extra;
+  return{welfare,otProfile:ot};
+}
+function ensureOfferOtProfile(offer,job){
+  if(!offer||offer.otProfile)return;
+  const built=buildPositionWelfare(offer.tier,offer.importance,offer.roleExtra,offer.company,job,()=>0.5);
+  offer.otProfile=built.otProfile;
+  offer.welfare=built.welfare;
+}
 const HOUSE_EDGE = 0.05;
 const MACAU_ENTRY = 2000;
 const SPECTATE_AI_MS = 20000;
@@ -1488,7 +1566,7 @@ function serializeGameState(){
 function serializeUiState(){
   return{actionDone,selectedIdx,selectedJobIdxs:[...selectedJobIdxs],applyCategoryPicks:[...applyCategoryPicks],
     currentSort,currentCategory,currentTab,calendarView,calendarYear,calendarMonth,refPanelCollapsed,industryFilterCollapsed,portfolioFoldCollapsed,interviewSortMode,
-    inboxFold:{...inboxFoldOpen},financeFoldOpen,plannedExpanded:[...plannedExpandedCompanies]};
+    inboxFold:{...inboxFoldOpen},financeFoldOpen,phonePanelOpen:!!(game&&game.phonePanelOpen),plannedExpanded:[...plannedExpandedCompanies]};
 }
 function buildSlotMeta(){
   const job=game.employed&&game.employment?game.market[game.employment.jobIdx]:null;
@@ -1572,6 +1650,7 @@ function restoreUiState(ui){
   if(ui&&ui.inboxFold)inboxFoldOpen={expired:false,ghost:false,rejected:false,...ui.inboxFold};
   else inboxFoldOpen={expired:false,ghost:false,rejected:false};
   financeFoldOpen=!!(ui&&ui.financeFoldOpen);
+  if(ui&&ui.phonePanelOpen!=null&&game)game.phonePanelOpen=!!ui.phonePanelOpen;
   plannedExpandedCompanies=new Set((ui&&ui.plannedExpanded)||[]);
   applyRefPanelCollapse();
   applyPortfolioFoldCollapse();
@@ -1800,14 +1879,16 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
     companion:createCompanionState(edu,school),
     monthLedger:null,monthLedgerHistory:[],
     stats:rollRandomStats(),partnerStats:rollRandomStats(),tempStats:defaultTempStats(),daily:defaultDailyState(),
-    contacts:[],ownedCar:null,phone:'xiaomi',
+    contacts:[],ownedCar:null,phone:'xiaomi',ownedPhones:['xiaomi'],phonePanelOpen:false,nokiaBonusActive:false,
     playerGender:playerGender||'male',partnerGender:partnerGender||'female',
     hiredOnTempStats:false,partnerSoftRice:0,imprisonedUntilWeek:0,
     snackStock:0,snackReboundPortions:0,partnerSnackReboundPortions:0
   };
-  game.partnerDisplayName=pickPartnerDisplayName(partnerGender||'female');
-  game.bffName=pickBffName(playerGender||'male');
+  game.partnerDisplayName=typeof pickPartnerDisplayName==='function'?pickPartnerDisplayName(partnerGender||'female'):'小艾';
+  game.bffName=typeof pickBffName==='function'?pickBffName(playerGender||'male'):'大壮';
   game.contactLoans=[];
+  game.spouseLoans=[];
+  game.lastPocketMoneyWeek=-1;
   if(game.companion){
     game.companion.stats=rollRandomStats();
     game.companion.spouseIntimacy=INTIMACY_INITIAL;
@@ -1820,9 +1901,16 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
   if(typeof initCoreContacts==='function')initCoreContacts();
   selectedJobIdxs=new Set();applyCategoryPicks=new Set();actionDone=false;pendingBatch=null;
   calendarView='month';syncCalendarMonthToGame();
-  buildCategories();renderJobs();renderCasino();updateUI();
-  showTab('daily');
-  rollReferralChance();
+  game.phonePanelOpen=false;
+  try{
+    buildCategories();renderJobs();renderCasino();updateUI();
+    showTab('daily');
+    rollReferralChance();
+  }catch(e){
+    console.error('createNewGame UI',e);
+    addLog('⚠ 界面初始化异常：'+(e.message||e)+' · 已尝试继续','warn');
+    try{showTab('daily')}catch(e2){console.error(e2)}
+  }
   const schoolLabel=schoolLabelFor(game.playerSchool);
   const st=corp.stats;
   addLog('2024年，'+START_AGE+'岁的'+game.playerName+'带着 ¥'+STARTING_CASH.toLocaleString()+'、'+game.playerEducation+'（'+schoolLabel+'）出发。','info');
@@ -1836,8 +1924,16 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
 }
 function confirmNewGameInSlot(){
   if(pendingNewSlot<0)pendingNewSlot=selectedSlotIndex;
-  syncPlayerSchoolEdu();
+  if(pendingNewSlot<0){
+    alert('请先在档位页点击「新游戏」或「重开新档」');
+    return;
+  }
   const eduSel=document.getElementById('playerEduSelect');
+  if(!eduSel){
+    alert('界面未加载完整，请 Ctrl+F5 强刷后重试');
+    return;
+  }
+  syncPlayerSchoolEdu();
   const edu=eduSel.value;
   const school=getPlayerSchoolFromUI();
   if(edu!=='高中/中专'&&!(EDU_SCHOOL_ALLOW[edu]||[]).includes(school)){
@@ -1847,10 +1943,17 @@ function confirmNewGameInSlot(){
   const nameInp=document.getElementById('playerNameInput');
   const playerName=((nameInp&&nameInp.value)||'').trim()||'匿名';
   const pg=document.getElementById('playerGenderSelect'),sg=document.getElementById('partnerGenderSelect');
-  createNewGame(pendingNewSlot,playerName,edu,school,pg?pg.value:'male',sg?sg.value:'female');
+  try{
+    createNewGame(pendingNewSlot,playerName,edu,school,pg?pg.value:'male',sg?sg.value:'female');
+  }catch(e){
+    console.error('confirmNewGameInSlot',e);
+    alert('开新档失败：'+(e.message||e)+'\\n请 Ctrl+F5 强刷；仍失败请打开浏览器控制台(F12)查看报错');
+    return;
+  }
   hideStartOverlay();
-  document.getElementById('charCreatePanel').style.display='none';
-  document.getElementById('slotGrid').style.display='grid';
+  const cp=document.getElementById('charCreatePanel'),sg2=document.getElementById('slotGrid');
+  if(cp)cp.style.display='none';
+  if(sg2)sg2.style.display='grid';
 }
 
 function showTab(t){
@@ -2289,6 +2392,7 @@ function renderCompanionPanel(){
     }else if(c){
       html+='<div class="companion-emp" style="border-color:var(--border);background:var(--panel)"><span style="color:var(--muted)">当前待业 · 在 '+PLAYER_HOME_CITY+'</span></div>';
     }
+    if(typeof renderSpouseFinanceCompanionHtml==='function')html+=renderSpouseFinanceCompanionHtml();
     html+='<div class="companion-section"><h4>关系</h4>'+
     '<div class="companion-row"><span>你聊骚累计</span><span>'+(game.flirtPeopleTotal||0)+' 人</span></div>'+
     '<div class="companion-row"><span>伴侣聊骚累计</span><span>'+(game.companionFlirtTotal||0)+' 次</span></div>'+
@@ -2409,6 +2513,7 @@ function migrateLoadedGameState(){
   if(game.spouseIntimacy==null)game.spouseIntimacy=INTIMACY_INITIAL;
   if(game.divorced){game.spouseIntimacy=0;if(game.companion)game.companion.spouseIntimacy=0}
   if(!game.contactLoans)game.contactLoans=[];
+  if(typeof migrateSpouseFinance==='function')migrateSpouseFinance();
   if(!game.partnerDisplayName&&game.married&&!game.divorced)game.partnerDisplayName=pickPartnerDisplayName(game.partnerGender||'female');
   game.lastDateWeek=game.lastDateWeek||0;
   game.livingOffSpouse=!!game.livingOffSpouse;
@@ -2439,6 +2544,16 @@ function migrateLoadedGameState(){
     }
     if(game.employment.company&&!game.employment.company.city)
       game.employment.company.city=inferCityFromCompany(game.employment.company);
+    if(!game.employment.otProfile){
+      const job=game.market[game.employment.jobIdx];
+      game.employment.otProfile=legacyOvertimeProfile(game.employment.tier,game.employment.importance,game.employment.roleExtra,game.employment.company,job);
+    }
+  }
+  if(game.pendingHire&&game.pendingHire.offer)ensureOfferOtProfile(game.pendingHire.offer,game.market[game.pendingHire.jobIdx]);
+  (game.offers||[]).forEach(o=>{if(o.offer)ensureOfferOtProfile(o.offer,game.market[o.jobIdx])});
+  (game.applications||[]).forEach(a=>{if(a.offer)ensureOfferOtProfile(a.offer,game.market[a.jobIdx])});
+  if(game.referralOpportunity&&game.referralOpportunity.positions){
+    game.referralOpportunity.positions.forEach(p=>{if(p.offer)ensureOfferOtProfile(p.offer,game.market[p.jobIdx])});
   }
   if(!game.pendingHire)game.pendingHire=null;
   (game.offers||[]).forEach(o=>{
@@ -2698,7 +2813,7 @@ function generateReferralOpportunity(){
     const openings=genOpeningsForCompany(job,co,r);
     const op=openings[Math.floor(r()*openings.length)];
     const offer={company:co,tier:co.tier,importance:op.importance,annualPay:op.pay,roleExtra:op.roleExtra,
-      welfare:op.welfare,startDelayWeeks:op.startDelayWeeks,planned:op.planned,
+      welfare:op.welfare,otProfile:op.otProfile,startDelayWeeks:op.startDelayWeeks,planned:op.planned,
       newToIndustry:!game.industryExperience[job.category],
       eduGap:Math.max(0,(EDU_RANK[job.education]||4)-(EDU_RANK[game.playerEducation]||4)),
       };
@@ -2849,12 +2964,6 @@ function computeOffer(job,opts={}){
   const annualPay=calcAnnualPay(job,tier,importance);
   return {company,tier,importance,annualPay,newToIndustry,eduGap,preferSmaller};
 }
-function buildPositionWelfare(tier,importance,roleExtra){
-  const w=WELFARE_BY_TIER[tier];
-  const imp=IMP_LABEL[importance];
-  let extra=roleExtra==='intern'?' · 实习期薪资约55%·转正不确定':roleExtra==='temp'?' · 周薪结算·随时裁退':'';
-  return '工时'+w.hours+' · '+w.ot+' · '+w.leave+' · '+w.ins+' · '+w.meal+' · '+w.bonus+' · '+imp+'岗'+extra;
-}
 function seededR(seed){return seededRand(seed)}
 function genOpeningsForCompany(job,co,r){
   const openings=[];
@@ -2882,10 +2991,14 @@ function genOpeningsForCompany(job,co,r){
       planned=false;
       startDelay=Math.floor(1+r()*10);
     }
-    openings.push({importance:imp,roleExtra,pay,welfare:buildPositionWelfare(co.tier,imp,roleExtra),startDelayWeeks:startDelay,planned});
+    const wf=buildPositionWelfare(co.tier,imp,roleExtra,co,job,r);
+    openings.push({importance:imp,roleExtra,pay,welfare:wf.welfare,otProfile:wf.otProfile,startDelayWeeks:startDelay,planned});
   });
-  if(!openings.length)openings.push({importance:'low',roleExtra:isManualJob(job)&&r()<0.4?'temp':null,
-    pay:calcAnnualPay(job,co.tier,'low'),welfare:buildPositionWelfare(co.tier,'low',null),startDelayWeeks:Math.floor(1+r()*8),planned:false});
+  if(!openings.length){
+    const wf=buildPositionWelfare(co.tier,'low',isManualJob(job)&&r()<0.4?'temp':null,co,job,r);
+    openings.push({importance:'low',roleExtra:isManualJob(job)&&r()<0.4?'temp':null,
+      pay:calcAnnualPay(job,co.tier,'low'),welfare:wf.welfare,otProfile:wf.otProfile,startDelayWeeks:Math.floor(1+r()*8),planned:false});
+  }
   return openings;
 }
 function tierImpGap(offer){
@@ -3201,7 +3314,7 @@ function drawRecruitmentRound(jobIdxs,resumeCost,opts){
     const r=seededR(ji*1009+ci*17+game.week);
     genOpeningsForCompany(job,co,r).forEach((op,oi)=>{
       const offer={company:co,tier:co.tier,importance:op.importance,annualPay:op.pay,roleExtra:op.roleExtra,
-        welfare:op.welfare,startDelayWeeks:op.startDelayWeeks,planned:op.planned,
+        welfare:op.welfare,otProfile:op.otProfile,startDelayWeeks:op.startDelayWeeks,planned:op.planned,
         newToIndustry:!game.industryExperience[job.category],eduGap:Math.max(0,(EDU_RANK[job.education]||4)-(EDU_RANK[game.playerEducation]||4)),
         apps};
       listings.push({uid:'L'+ji+'_'+co.id+'_'+oi,jobIdx:ji,jobTitle:job.title,category:job.category,offer});
@@ -3313,7 +3426,7 @@ function generateRandomMarketBooth(){
   const openings=genOpeningsForCompany(job,co,r);
   const op=openings[Math.floor(Math.random()*openings.length)];
   const offer={company:co,tier:co.tier,importance:op.importance,annualPay:op.pay,roleExtra:op.roleExtra,
-    welfare:op.welfare,startDelayWeeks:op.startDelayWeeks,planned:op.planned,
+    welfare:op.welfare,otProfile:op.otProfile,startDelayWeeks:op.startDelayWeeks,planned:op.planned,
     newToIndustry:!game.industryExperience[job.category],
     eduGap:Math.max(0,(EDU_RANK[job.education]||4)-(EDU_RANK[game.playerEducation]||4)),
     method:'market'};
@@ -3510,7 +3623,7 @@ function startApplyFlow(){
   if((method==='market'||method==='headhunter')&&game.daily&&game.daily.phase!=='morning'){
     addLog('线下人才市场与猎头仅限白天；晚上/通宵请用招聘APP','fail');return;
   }
-  if(method==='app'&&(game.phone==='nokia'||phoneCfg().noApp)){addLog('诺基亚无法使用招聘APP，请更换手机或白天去人才市场','fail');return}
+  if(method==='app'&&(typeof canUseJobApp!=='function'?!game.phone:!canUseJobApp())){addLog(typeof jobAppBlockMessage==='function'?jobAppBlockMessage():'无法使用招聘APP','fail');return}
   if(method==='market'){enterMarket(false);return}
   const jobIdxs=getJobsToApply();
   if(!jobIdxs.length){addLog('请先在上方多选职业或行业','fail');return}
@@ -4222,7 +4335,7 @@ function renderCalPlannedList(plannedPending){
   });
   return html+'</div>';
 }
-function renderCalDayMiniEvents(plItems,ivItems,max){
+function renderCalDayMiniEvents(plItems,ivItems,max,spouseItems){
   let html='',n=0;
   plItems.forEach(a=>{
     if(n>=max)return;
@@ -4238,12 +4351,19 @@ function renderCalDayMiniEvents(plItems,ivItems,max){
     html+='<div class="cal-ev-mini cal-'+st+'" title="'+sl+' '+a.offer.company.name+' · '+title+'">'+sl+' '+a.offer.company.name+'</div>';
     n++;
   });
+  (spouseItems||[]).forEach(l=>{
+    if(n>=max)return;
+    const slbl=l.amount>=1000?(Math.round(l.amount/100)/10+'k'):('¥'+l.amount);
+    html+='<div class="cal-ev-mini cal-spouse-loan" title="归还伴侣借款 ¥'+l.amount.toLocaleString()+'">💍 '+slbl+'</div>';
+    n++;
+  });
   return html;
 }
-function renderMonthCalendarHtml(plannedPending,interviews){
+function renderMonthCalendarHtml(plannedPending,interviews,spouseLoans){
   const w=game.week;
   const first=new Date(calendarYear,calendarMonth,1);
   const last=new Date(calendarYear,calendarMonth+1,0);
+  spouseLoans=spouseLoans||[];
   let html='<div class="cal-month">';
   html+='<div class="cal-month-hdr" onclick="event.stopPropagation()">';
   html+='<button type="button" class="btn cal-nav" onclick="event.stopPropagation();shiftCalendarMonth(-1)">‹</button>';
@@ -4257,26 +4377,29 @@ function renderMonthCalendarHtml(plannedPending,interviews){
     const gw=dateToGameWeek(d);
     const pl=plannedPending.filter(a=>a.replyWeek===gw);
     const iv=interviews.filter(a=>a.interviewWeek===gw);
+    const sl=spouseLoans.filter(l=>l.dueWeek===gw);
     let cls='cal-day';
     if(gw===w)cls+=' cal-cur-week';
     if(gw<w)cls+=' cal-out';
     html+='<div class="'+cls+'"><span class="cal-day-num">'+day+'</span>';
-    if(pl.length||iv.length)html+='<div class="cal-day-evs">'+renderCalDayMiniEvents(pl,iv,2)+'</div>';
+    if(pl.length||iv.length||sl.length)html+='<div class="cal-day-evs">'+renderCalDayMiniEvents(pl,iv,2,sl)+'</div>';
     html+='</div>';
   }
   return html+'</div></div>';
 }
-function renderWeekCalendarHtml(plannedPending,interviews){
+function renderWeekCalendarHtml(plannedPending,interviews,spouseLoans){
   const w=game.week;
+  spouseLoans=spouseLoans||[];
   let html='<div class="cal-weeks">';
   for(let i=-1;i<=5;i++){
     const cw=w+i;
     const isCur=cw===w;
     const ivItems=interviews.filter(a=>a.interviewWeek===cw);
     const plItems=plannedPending.filter(a=>a.replyWeek===cw);
+    const slItems=spouseLoans.filter(l=>l.dueWeek===cw);
     html+='<div class="cal-week'+(isCur?' cal-cur':'')+'">';
     html+='<div class="cal-date">'+getDateStr(cw)+(isCur?' · 本周':'')+'</div>';
-    if(ivItems.length||plItems.length){
+    if(ivItems.length||plItems.length||slItems.length){
       html+='<div class="cal-events">';
       plItems.forEach(a=>{
         const title=calAppTitle(a);
@@ -4287,6 +4410,9 @@ function renderWeekCalendarHtml(plannedPending,interviews){
         const st=a.status==='interview_confirmed'?'confirmed':'invite';
         const sl=interviewSlotLabel(a.interviewSlot);
         html+='<div class="cal-ev cal-'+st+'" title="'+a.offer.company.name+'">'+sl+' '+a.offer.company.name+' · '+title+'</div>';
+      });
+      slItems.forEach(l=>{
+        html+='<div class="cal-ev cal-spouse-loan" title="归还伴侣借款">💍 还伴侣 ¥'+l.amount.toLocaleString()+'</div>';
       });
       html+='</div>';
     }else if(cw>=w)html+='<div class="cal-empty">—</div>';
@@ -4300,13 +4426,15 @@ function renderInterviewCalendar(){
   const plannedPending=getPlannedPendingEntries();
   const weekInterviews=getInterviewCalendarEntries();
   const monthInterviews=getAllCalendarInterviewEntries();
-  const hasAny=plannedPending.length||monthInterviews.length;
+  const spouseLoans=typeof getSpouseLoanCalendarEntries==='function'?getSpouseLoanCalendarEntries():[];
+  const hasAny=plannedPending.length||monthInterviews.length||spouseLoans.length;
   let html='<div class="cal-shell">';
   html+='<div class="cal-view-tabs"><button type="button" class="btn cal-view-btn'+(calendarView==='month'?' active':'')+'" onclick="setCalendarView(\\'month\\')">月历</button>'+
     '<button type="button" class="btn cal-view-btn'+(calendarView==='week'?' active':'')+'" onclick="setCalendarView(\\'week\\')">星期历</button></div>';
-  if(!hasAny)html+='<div style="color:var(--muted);font-size:.7rem;margin-bottom:6px">暂无求职日程</div>';
+  if(!hasAny)html+='<div style="color:var(--muted);font-size:.7rem;margin-bottom:6px">暂无日程</div>';
   html+=renderCalPlannedList(plannedPending);
-  html+=calendarView==='month'?renderMonthCalendarHtml(plannedPending,monthInterviews):renderWeekCalendarHtml(plannedPending,weekInterviews);
+  html+=typeof renderSpouseLoanCalList==='function'?renderSpouseLoanCalList(spouseLoans):'';
+  html+=calendarView==='month'?renderMonthCalendarHtml(plannedPending,monthInterviews,spouseLoans):renderWeekCalendarHtml(plannedPending,weekInterviews,spouseLoans);
   html+='</div>';
   el.innerHTML=html;
 }
@@ -5749,6 +5877,7 @@ function hirePlayer(jobIdx,offer,viaReferral){
   game.employed=true;
   game.employment={jobIdx,company:offer.company,tier:offer.tier,importance:offer.importance,
     roleExtra:offer.roleExtra||null,annualPay:offer.annualPay,
+    otProfile:offer.otProfile||legacyOvertimeProfile(offer.tier,offer.importance,offer.roleExtra,offer.company,job),
     internWeeksLeft:internWeeks,weeksInIndustry:game.industryExperience[job.category]||0,weeksInCompany:0,weeksInRole:0};
   game.successfulHires++;
   if(was)game.switches++;
@@ -5870,6 +5999,7 @@ function advanceOneWeek(){
   checkCashStressMilestones();
   if(typeof autoLifeRunning==='undefined'||!autoLifeRunning)tickCompanionWeek();
   if(typeof tickContactLoans==='function')tickContactLoans();
+  if(typeof tickSpouseLoans==='function')tickSpouseLoans();
   return true;
 }
 function nextWeek(){
@@ -7675,7 +7805,7 @@ function updateUI(){
     (game.affairActive?'<div style="color:var(--red)">婚外情中 · 月支出×2</div>':'')+
     (game.livingOffSpouse?'<div style="color:var(--orange)">吃软饭中 · 每周亲密度-5</div>':'')+
     (game.longDistance?'<div style="color:var(--orange)">异地婚恋 · 每周+1压力 · 可线上约会</div>':'')+
-    (game.stats?'<div>肉体<b>'+effStat('body')+'</b> 心智<b>'+effStat('mind')+'</b> 精神<b>'+effStat('spirit')+'</b> · 车'+(game.ownedCar?CAR_SHOP[game.ownedCar].name:'无')+' · '+(PHONE_SHOP[game.phone]||PHONE_SHOP.xiaomi).name+'</div>':'')+
+    (game.stats?'<div>肉体<b>'+effStat('body')+'</b> 心智<b>'+effStat('mind')+'</b> 精神<b>'+effStat('spirit')+'</b> · 车'+(game.ownedCar?CAR_SHOP[game.ownedCar].name:'无')+' · '+(game.phone&&PHONE_SHOP[game.phone]?PHONE_SHOP[game.phone].name:'无手机')+'</div>':'')+
     '<div style="font-size:.7rem;color:var(--muted)">'+
       (game.employed&&game.longDistance?'工作在 '+game.playerCity+' · 伴侣定居 '+PLAYER_HOME_CITY:
         game.employed?'在 '+game.playerCity+' 工作 · 同城':'无业 · 在 '+PLAYER_HOME_CITY+' 本地')+
@@ -7692,11 +7822,13 @@ function updateUI(){
     empCard.style.display='block';
     const role=e.roleExtra?IMP_LABEL[e.importance]+'·'+ROLE_EXTRA[e.roleExtra]:IMP_LABEL[e.importance];
     const payLbl=e.roleExtra==='temp'?'周薪¥'+Math.round(e.annualPay/52).toLocaleString():e.roleExtra==='intern'?'实习年薪¥'+Math.round(e.annualPay*0.55).toLocaleString():'年薪¥'+e.annualPay.toLocaleString();
+    const otLbl=e.otProfile?e.otProfile.otLabel:(e.tier==='high'?'加班常态化':e.tier==='mid'?'周末偶尔加班':'加班费不稳定');
     empCard.innerHTML='<b>'+j.title+'</b> @ '+e.company.name+' · '+payLbl+
       ' <span class="badge badge-tier-'+e.tier[0]+'">'+TIER_LABEL[e.tier]+'</span>'+
       ' <span class="badge badge-scale-'+e.company.scale[0]+'">'+SCALE_LABEL[e.company.scale]+'</span>'+
       ' <span class="badge badge-imp-'+e.importance[0]+'">'+role+'</span>'+
-      (e.internWeeksLeft>0?' <span style="color:var(--yellow)">实习剩'+e.internWeeksLeft+'周</span>':'');
+      (e.internWeeksLeft>0?' <span style="color:var(--yellow)">实习剩'+e.internWeeksLeft+'周</span>':'')+
+      '<div style="font-size:.7rem;color:var(--muted);margin-top:2px">加班：'+otLbl+'</div>';
   }else empCard.style.display='none';
 
   const d=game.daily||{dayIndex:0,phase:'morning'};
@@ -7714,6 +7846,7 @@ function updateUI(){
 ${DAILY_ACTIVITY_SRC}
 ${AFFAIR_SYSTEM_SRC}
 ${CONTACTS_SYSTEM_SRC}
+${SPOUSE_FINANCE_SRC}
 ${AUTO_LIFE_SRC}
 renderSlotGrid();
 syncPlayerSchoolEdu();

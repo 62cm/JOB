@@ -158,6 +158,7 @@ function sortedContacts(){return sortedContactsForModal()}
 function escContactId(id){return String(id||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
 function openContactsModal(){
   if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning)return;
+  if(typeof hasUsablePhone==='function'&&!hasUsablePhone()){addLog('暂无可用手机，无法使用通讯录','fail');return}
   if(typeof isPlayerImprisoned==='function'&&isPlayerImprisoned()){addLog('监禁中无法使用通讯录','fail');return}
   const el=document.getElementById('contactsOverlay');
   if(!el)return;
@@ -472,6 +473,7 @@ function tickContactLoans(){
   });
 }
 function callIntimateContact(c){
+  if(typeof rollPartnerCaughtAffair==='function'&&rollPartnerCaughtAffair('phone'))return;
   if(Math.random()<CONTACT_NO_ANSWER_CHANCE){
     markContactNoAnswer(c.id);
     addLog('📞 '+c.name+' 未接电话','warn');
@@ -524,8 +526,10 @@ function renderContactsBlock(){
   initCoreContacts();
   const n=(game.contacts||[]).length;
   if(!n)return '';
+  const noPhone=typeof hasUsablePhone==='function'&&!hasUsablePhone();
   return '<div class="daily-contacts"><b>通讯录</b>（'+n+'人） '+
-    '<button class="btn" style="font-size:.7rem;padding:2px 8px" onclick="openContactsModal()">打开</button></div>';
+    '<button class="btn" style="font-size:.7rem;padding:2px 8px" '+(noPhone?'disabled':'')+' onclick="openContactsModal()">打开</button>'+
+    (noPhone?'<span class="fold-meta" style="color:var(--red)"> · 无可用手机</span>':'')+'</div>';
 }
 function migrateContactsSystem(){
   if(!game)return;
