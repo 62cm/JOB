@@ -230,12 +230,25 @@ function callContactFromModal(id){
   callContact(id);
   closeContactsModal();
 }
+function canCallSpouse(){
+  if(!game||game.divorced||!game.married)return {ok:false,reason:'无伴侣'};
+  if(typeof isPlayerWorkingNow==='function'&&isPlayerWorkingNow())return {ok:false,reason:'上班中无法给伴侣打电话'};
+  const ph=game.daily&&game.daily.phase||'morning';
+  if(typeof isPartnerOutAndAbout==='function'&&isPartnerOutAndAbout(ph))return {ok:true};
+  if(typeof isSpouseAtHome==='function'&&isSpouseAtHome(ph)&&typeof isPlayerAtHomeNow==='function'&&isPlayerAtHomeNow(ph))
+    return {ok:false,reason:'都在家，打电话没效果'};
+  return {ok:true};
+}
 function canCallContact(c){
   if(!c||!game||game.gameOver)return {ok:false,reason:'无法联系'};
   if(wasContactCalled(c.id))return {ok:false,reason:'本时段已联系过'};
   if(wasContactNoAnswer(c.id))return {ok:false,reason:'对方未接，本时段不能再拨'};
   const ph=game.daily&&game.daily.phase;
   if(c.kind==='parents'&&ph!=='morning'&&ph!=='evening')return {ok:false,reason:'爸妈仅白天/晚上可联系'};
+  if(c.kind==='spouse'||c.id===CORE_CONTACT_IDS.spouse){
+    const chk=canCallSpouse();
+    if(!chk.ok)return chk;
+  }
   return {ok:true};
 }
 function callContact(id){
@@ -303,25 +316,33 @@ function callExSpouse(c){
   addLog('📞 联系'+role+' '+c.name,'info');
   showConsumeModal({icon:'💔',title:'联系'+role,html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
 }
-function callSpouse(c){
+function callSpouse(c,fromOvertime){
   if(game.divorced||!game.married){addLog('已离异','fail');return}
+  if(!fromOvertime){
+    const chk=canCallSpouse();
+    if(!chk.ok){addLog(chk.reason,'fail');return}
+  }
   const ph=game.daily&&game.daily.phase||'morning';
   let delta=0,note='';
-  if(isPlayerAwayFromPartner()&&isSpouseAtHome(ph)){
-    delta=1;note='你在外/异地，伴侣在家守候';
-  }else if(isCompanionWorkSlot(ph)){
-    delta=-1;note='伴侣正在上班';
-  }else if(isPartnerOutAndAbout(ph)){
+  if(isPartnerOutAndAbout(ph)){
     delta=Math.random()<0.5?1:-1;
     note=delta>0?'伴侣在外面，聊得开心':'伴侣在外面，语气敷衍';
+  }else if(isPlayerAwayFromPartner()&&isSpouseAtHome(ph)){
+    delta=1;note='你在外/异地，伴侣在家守候';
+  }else if(isCompanionWorkSlot(ph)){
+    delta=-1;note='伴侣正在上班，没聊几句就挂了';
+  }else if(isSpouseAtHome(ph)&&typeof isPlayerAtHomeNow==='function'&&isPlayerAtHomeNow(ph)){
+    delta=0;note='都在家，随便聊了几句，没什么变化';
+  }else if(isSpouseAtHome(ph)&&typeof isPlayerAtHomeNow==='function'&&!isPlayerAtHomeNow(ph)){
+    delta=0;note='伴侣在家，你在外面…电话没聊出什么';
   }else{
-    delta=Math.random()<0.6?0:1;
-    note='通了电话，互报平安';
+    delta=Math.random()<0.35?1:0;
+    note=delta?'通了电话，互报平安':'聊了聊，气氛平平';
   }
   if(delta)adjustSpouseIntimacy(delta);
-  const html='<b>'+c.name+'</b><br>'+note+(delta?('<br>亲密度 '+(delta>0?'+':'')+delta+'（现 '+game.spouseIntimacy+'）'):'');
+  const html='<b>'+c.name+'</b><br>'+note+(delta?('<br>亲密度 '+(delta>0?'+':'')+delta+'（现 '+game.spouseIntimacy+'）'):'<br>亲密度无变化');
   addLog('📞 联系伴侣 · '+note+(delta?(' · 亲密度'+(delta>0?'+':'')+delta):''),'info');
-  showConsumeModal({icon:'💑',title:'联系伴侣',html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
+  showConsumeModal({icon:'💑',title:fromOvertime?'加班时联系伴侣':'联系伴侣',html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
 }
 function showBffOutingPicker(contactId){
   let html='<p>和 <b>'+(game.bffName||'基友/闺蜜')+'</b> 约去哪儿？</p><div class="affair-loc-grid">';

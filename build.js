@@ -6,7 +6,7 @@ const DAILY_ACTIVITY_SRC = fs.readFileSync(path.join(__dirname, 'daily-activity.
 const AUTO_LIFE_SRC = fs.readFileSync(path.join(__dirname, 'auto-life.js'), 'utf8');
 const AFFAIR_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'affair-system.js'), 'utf8');
 const CONTACTS_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'contacts-system.js'), 'utf8');
-const GAME_BUILD_ID = '2026.06.09-spouse-remark';
+const GAME_BUILD_ID = '2026.06.09-allnight-death';
 
 const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -963,7 +963,7 @@ const APP_PREFERRED = {
 };
 const PROB_REVEAL_FAILS = 100;
 const CHANNEL_DRAW_SIZE = {market:40,app:50,headhunter:28,referral:22};
-const APP_DRAW_FRACTION = 0.2;
+const ALLNIGHT_JOB_PAY_BIAS = 2.8;
 const MARKET_ENTRY_FEE = 200;
 const MARKET_TIME_BUDGET = 480;
 const MARKET_APPLY_MINUTES = 10;
@@ -3155,8 +3155,8 @@ function drawRecruitmentRound(jobIdxs,resumeCost,opts){
   const listings=[];
   const cats=new Set();
   const method=opts.forceMethod||getApplyMethod();
+  const isAllnight=opts.slot==='allnight';
   let drawSize=CHANNEL_DRAW_SIZE[method]||45;
-  if(method==='app')drawSize=Math.max(1,Math.round(drawSize*APP_DRAW_FRACTION));
   if(opts.drawMult)drawSize=Math.max(1,Math.round(drawSize*opts.drawMult));
   const apps=resumeCost.apps||getSelectedApps();
   const candidates=[];
@@ -3174,7 +3174,12 @@ function drawRecruitmentRound(jobIdxs,resumeCost,opts){
     });
   });
   const rng=seededRand(game.week*317+jobIdxs.length);
-  candidates.sort((a,b)=>scoreListingForApps(b.job,b.co,'low',apps)-scoreListingForApps(a.job,a.co,'low',apps)+(rng()-0.5)*0.8);
+  const candScore=(c)=>{
+    let s=scoreListingForApps(c.job,c.co,'low',apps);
+    if(isAllnight)s+=(c.job.pay||0)/70000*ALLNIGHT_JOB_PAY_BIAS;
+    return s;
+  };
+  candidates.sort((a,b)=>candScore(b)-candScore(a)+(rng()-0.5)*0.8);
   const picked=[];
   const usedCo=new Set();
   for(const c of candidates){
@@ -5545,7 +5550,7 @@ function checkVictory(){
 function determineEnding(){
   if(game.endingType==='overwork')return {
     type:'overwork',title:'通宵后的清晨',
-    desc:'连续五天熬夜加班，心脏在凌晨停止跳动。桌上还亮着未关的屏幕，咖啡杯尚有余温。'
+    desc:'连日通宵不眠，心脏在凌晨停止跳动。桌上还亮着未关的屏幕，咖啡杯尚有余温。'
   };
   if(game.homeless)return {
     type:'bridge',title:'桥洞底的寒夜',
