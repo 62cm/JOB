@@ -527,7 +527,7 @@
     <h2>职业股市 · 人生模拟</h2>
     <p class="storage-hint">存档保存在本机浏览器（GitHub Pages 在线玩同样有效，仅当前浏览器；换电脑或换浏览器无存档）</p>
     <p style="font-size:.85rem;color:var(--muted)"><strong>通关目标：</strong>30年还清房贷安度晚年。每周自动存档，共 3 个档位可选。</p>
-    <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 2026.06.09-slot-fix · 若线上数值不对请 Ctrl+F5 强刷</p>
+    <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 2026.06.09-outdoor-preg · 若线上数值不对请 Ctrl+F5 强刷</p>
     <div class="slot-grid" id="slotGrid"></div>
     <div id="charCreatePanel" class="char-create-panel" style="display:none">
       <p style="font-weight:600;margin-bottom:8px">档位 <span id="newSlotLabel">1</span> · 新游戏设置</p>
@@ -911,7 +911,7 @@
     </div>
     <div id="tabLife" style="display:none">
       <div class="finance-panel">
-        <p style="color:var(--muted);margin-bottom:8px">备孕、零食囤货（10/100/1000份折扣）、游戏机/电脑。进食请在「日常→宅家」（每10压力多吃1份；无囤货可点外卖）。夫妻亲密度初始80，一月不约会会降低。</p>
+        <p style="color:var(--muted);margin-bottom:8px">备孕/代孕/试管、零食囤货（10/100/1000份折扣）、游戏机/电脑。同性伴侣做爱可选玩具（不怀孕）。进食请在「日常→宅家」。夫妻亲密度初始80，一月不约会会降低。</p>
         <div class="spending-panel" id="spendingPanel"></div>
       </div>
     </div>
@@ -1069,7 +1069,7 @@ const AFFAIR_CASH_THRESHOLD = 1000000;
 const AFFAIR_MARRIED_WEEKS = 7 * 52;
 const SAVE_SLOT_COUNT = 3;
 const LS_SLOTS = 'csg_slots_v3';
-const GAME_BUILD_ID = '2026.06.09-slot-fix';
+const GAME_BUILD_ID = '2026.06.09-outdoor-preg';
 const CHILD_RAISING_MONTHS = 216;
 const CHILD_LIVING_COST = 20000;
 const MANUAL_CATS = ['农林牧渔','制造业','建筑工程','交通运输','餐饮住宿','个人与生活服务'];
@@ -1871,6 +1871,7 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
     contacts:[],ownedCar:null,phone:'xiaomi',ownedPhones:['xiaomi'],phonePanelOpen:false,nokiaBonusActive:false,
     playerGender:playerGender||'male',partnerGender:partnerGender||'female',
     hiredOnTempStats:false,partnerSoftRice:0,imprisonedUntilWeek:0,
+    outdoorAffairPregnancy:false,partnerKnowsPlayerPregnant:false,
     snackStock:0,snackReboundPortions:0,partnerSnackReboundPortions:0
   };
   game.partnerDisplayName=typeof pickPartnerDisplayName==='function'?pickPartnerDisplayName(partnerGender||'female'):'小艾';
@@ -1878,6 +1879,7 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
   game.contactLoans=[];
   game.spouseLoans=[];
   game.lastPocketMoneyWeek=-1;
+  game.fertilityOrder=null;
   if(game.companion){
     game.companion.stats=rollRandomStats();
     game.companion.spouseIntimacy=INTIMACY_INITIAL;
@@ -2327,7 +2329,9 @@ function tickCompanionWeek(){
 function familyChildStatusHtml(){
   if(!game)return '';
   const rows=[];
-  if(game.procreateIntentWeek===game.week&&!game.pregnant&&!game.hasChildren)
+  const fertRow=typeof fertilityStatusCompanionRow==='function'?fertilityStatusCompanionRow():'';
+  if(fertRow)rows.push(fertRow);
+  else if(game.procreateIntentWeek===game.week&&!game.pregnant&&!game.hasChildren)
     rows.push('<div class="companion-row"><span>备孕</span><span style="color:var(--green)">进行中</span></div>');
   if(game.pregnant){
     const pn=game.partnerDisplayName||'伴侣';
@@ -2399,8 +2403,8 @@ function renderCompanionPanel(){
     html+='<div style="color:var(--muted);padding:12px 0">单身，暂无配偶。</div>';
   }
   html+=familyChildStatusHtml();
-  if(!game.pregnant&&!game.hasChildren&&game.procreateIntentWeek!==game.week)
-    html+='<div class="companion-section" style="margin-top:8px"><div style="color:var(--muted);font-size:.72rem">暂无孩子。备孕请在「消费」页操作。</div></div>';
+  if(!game.pregnant&&!game.hasChildren&&!game.fertilityOrder&&game.procreateIntentWeek!==game.week)
+    html+='<div class="companion-section" style="margin-top:8px"><div style="color:var(--muted);font-size:.72rem">暂无孩子。备孕/代孕/试管请在「消费」页操作。</div></div>';
   el.innerHTML=html;
 }
 function ensureConsumption(){if(!game)return null;if(!game.consumption)game.consumption=defaultConsumptionState();return game.consumption}
@@ -2503,6 +2507,7 @@ function migrateLoadedGameState(){
   if(game.divorced){game.spouseIntimacy=0;if(game.companion)game.companion.spouseIntimacy=0}
   if(!game.contactLoans)game.contactLoans=[];
   if(typeof migrateSpouseFinance==='function')migrateSpouseFinance();
+  if(typeof migrateFertility==='function')migrateFertility();
   if(!game.partnerDisplayName&&game.married&&!game.divorced)game.partnerDisplayName=pickPartnerDisplayName(game.partnerGender||'female');
   game.lastDateWeek=game.lastDateWeek||0;
   game.livingOffSpouse=!!game.livingOffSpouse;
@@ -2514,6 +2519,8 @@ function migrateLoadedGameState(){
   if(game.pregnancyIntimacyNet==null)game.pregnancyIntimacyNet=0;
   if(!game.pregnant)game.pregnantSubject=null;
   if(game.imprisonedUntilWeek==null)game.imprisonedUntilWeek=0;
+  if(game.outdoorAffairPregnancy==null)game.outdoorAffairPregnancy=false;
+  if(game.partnerKnowsPlayerPregnant==null)game.partnerKnowsPlayerPregnant=false;
   if(game.snackStock==null)game.snackStock=0;
   if(game.snackReboundPortions==null)game.snackReboundPortions=game.snackReboundDay?1:0;
   if(game.partnerSnackReboundPortions==null)game.partnerSnackReboundPortions=0;
@@ -4212,11 +4219,14 @@ function renderSpendingPanel(){
   const scrollLeft=scrollSessionsLeft();
   const scrollOff=scrollLeft<=0;
   const stock=game.snackStock||0;
-  const rows=[
-    {label:'备孕 ¥'+PROC_CREATE_COST,meta:(game.procreateIntentWeek===game.week?'备孕中 · ':'')+'在宅家备孕 · 下次做爱怀孕率提升',btn:game.procreateIntentWeek===game.week?'备孕中':'备孕',fn:'setProcreateIntent()',off:!game.married||game.divorced||game.hasChildren||game.pregnant||game.procreateIntentWeek===game.week},
+  const fertRows=typeof renderFertilitySpendingRows==='function'?renderFertilitySpendingRows():[
+    {label:'备孕 ¥'+PROC_CREATE_COST,meta:'在宅家备孕',btn:'备孕',fn:'setProcreateIntent()',off:!game.married||game.divorced||game.hasChildren||game.pregnant}
+  ];
+  const abortRow=typeof renderAbortionSpendingRow==='function'?renderAbortionSpendingRow():null;
+  const rows=fertRows.concat(abortRow?[abortRow]:[]).concat([
     {label:game.ownsConsole?'游戏机（已购）':'游戏机 ¥'+CONSOLE_COST,meta:game.ownsConsole?'在宅家时段使用 · 本周'+(c.consolePlayed?'已玩':'可玩'):'一次性购买',btn:game.ownsConsole?'已购':'买',fn:'buyGameConsole()',off:!!game.ownsConsole},
     {label:game.ownsComputer?'电脑（已购）':'电脑 ¥'+COMPUTER_COST,meta:game.ownsComputer?'在宅家时段使用 · 本周'+(c.computerUsed?'已用':'可用'):'一次性购买',btn:game.ownsComputer?'已购':'买',fn:'buyComputer()',off:!!game.ownsComputer}
-  ];
+  ]);
   let html='<div class="spend-row"><div><div>🍿 零食囤货 · 库存 <b>'+stock+'</b> 份</div>'+
     '<div class="spend-meta">单价 ¥'+SNACK_UNIT_COST+'/份 · 宅家进食消耗 · 每10压力多吃1份 · 隔天反弹（份数×2压力）</div></div>'+
     '<div class="spend-btns">'+
@@ -5352,6 +5362,7 @@ function startPregnancy(fromAffair){
 }
 function tickPregnancyWeekly(){
   if(!game||!game.pregnant||game.pregnancyWeeksLeft<=0)return;
+  if(typeof tickOutdoorPregnancyWeekly==='function')tickOutdoorPregnancyWeekly();
   const swing=Math.random()<0.5?1:-1;
   game.pregnancyIntimacyNet=(game.pregnancyIntimacyNet||0)+swing;
   adjustSpouseIntimacy(swing,'孕期波动 ');
@@ -5367,6 +5378,8 @@ function completePregnancyBirth(){
   game.hasChildren=true;
   game.childRaisingMonthsLeft=CHILD_RAISING_MONTHS;
   game.pregnancyIntimacyNet=0;
+  game.outdoorAffairPregnancy=false;
+  game.partnerKnowsPlayerPregnant=false;
   if(net<0){
     adjustSpouseIntimacy(PREGNANCY_POSTPARTUM_INTIMACY_BONUS,'产后关怀补偿 ');
     addLog('👶 孩子降生！孕期亲密度净减 '+Math.abs(net)+'，产后整体补偿 +'+PREGNANCY_POSTPARTUM_INTIMACY_BONUS,'success');
@@ -5377,6 +5390,7 @@ function completePregnancyBirth(){
 }
 function tryConceiveFromSex(noCondom,fromAffair){
   if(!game||game.pregnant||game.hasChildren||game.homeless)return false;
+  if(!fromAffair&&typeof isSameSexCouple==='function'&&isSameSexCouple())return false;
   if(!fromAffair&&(!game.married||game.divorced))return false;
   let p=noCondom?PREGNANCY_CHANCE_RAW:PREGNANCY_CHANCE_SAFE;
   if(game.procreateIntentWeek===game.week&&noCondom)p=Math.max(p,PREGNANCY_CHANCE_PROC_CREATE);
@@ -5390,7 +5404,10 @@ function runSexSession(noCondom){
     return {harmony:false};
   }
   addStress(-5,'做爱 ');
-  if(noCondom)addStress(-10,'不戴套 ');
+  if(noCondom){
+    const toys=typeof isSameSexCouple==='function'&&isSameSexCouple();
+    addStress(-10,toys?'玩具 ':'不戴套 ');
+  }
   return {harmony:true};
 }
 function sexSessionsLeft(){
@@ -5469,8 +5486,10 @@ function promptMakeLove(batch){
     addLog('本周剩余 '+sexSessionsLeft()+' 次','fail');return;
   }
   const procOn=game.procreateIntentWeek===game.week;
-  let html='亲密度 <b>'+game.spouseIntimacy+'</b><br>戴套：每次 -5 压力 · 20% 不和谐 +10<br>不戴套：额外 -10 压力，怀孕几率更高';
-  if(procOn){
+  const sameSex=typeof isSameSexCouple==='function'&&isSameSexCouple();
+  let html='亲密度 <b>'+game.spouseIntimacy+'</b><br>戴套：每次 -5 压力 · 20% 不和谐 +10<br>'+
+    (sameSex?'玩具：额外 -10 压力 · <span style="color:var(--muted)">不会怀孕</span>':'不戴套：额外 -10 压力，怀孕几率更高');
+  if(procOn&&!sameSex){
     html+='<br><span style="color:var(--green)">🍼 本月备孕中</span>';
     html+='<br><span style="color:var(--orange)">备孕期若戴套：亲密度-20，伴侣怀疑出轨（聊骚/出轨史提高被抓概率）</span>';
   }
@@ -5479,7 +5498,7 @@ function promptMakeLove(batch){
     html:html,
     buttons:[
       {text:'戴套',fn:'makeLoveBatch('+batch+',false)'},
-      {text:'不戴套（额外减压）',primary:true,fn:'makeLoveBatch('+batch+',true)'}
+      {text:(sameSex?'玩具（额外减压）':'不戴套（额外减压）'),primary:true,fn:'makeLoveBatch('+batch+',true)'}
     ]
   });
 }
@@ -5505,15 +5524,16 @@ function makeLoveBatch(batch,noCondom){
   const pendingH=game._dailySexPendingHours||0;
   if(pendingH&&typeof dailyAddHours==='function')dailyAddHours(pendingH,false);
   game._dailySexPendingHours=0;
+  const sameSex=typeof isSameSexCouple==='function'&&isSameSexCouple();
   let html='戴套 · 每次 -5 压力'+(harmony?'':' · <span style="color:var(--red)">不和谐 +10</span>');
-  if(noCondom)html+='<br>未戴套 · 额外减压';
-  if(procBetrayal){
+  if(noCondom)html+='<br>'+(sameSex?'玩具':'未戴套')+' · 额外减压';
+  if(procBetrayal&&!sameSex){
     const betray=resolveProcCreateCondomBetrayal();
     html+='<br><br>'+betray.html;
   }
   if(conceived)html+='<br><b style="color:var(--green)">怀孕！</b>';
   if(pendingH)html+='<br><span class="fold-meta">占用 '+pendingH+'h</span>';
-  addLog('💕 做爱 ×'+batch+(noCondom?'（未戴套）':'')+(conceived?' · 怀孕！':''),'info');
+  addLog('💕 做爱 ×'+batch+(noCondom?(sameSex?'（玩具）':'（未戴套）'):'')+(conceived?' · 怀孕！':''),'info');
   showConsumeModal({icon:'💕',title:'做爱',html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
   renderSpendingPanel();updateUI();
 }
@@ -5532,41 +5552,8 @@ function masturbateBatch(batch){
   renderSpendingPanel();updateUI();
 }
 function setProcreateIntent(){
-  if(!game||game.gameOver||!game.married||game.divorced){addLog('仅已婚可备孕','fail');return}
-  if(game.pregnant){addLog('孕期中','fail');return}
-  if(game.hasChildren){addLog('已有孩子','fail');return}
-  if(game.playerGender===game.partnerGender){
-    showConsumeModal({
-      icon:'👶',title:'同性伴侣生育 · 代孕',
-      html:'本地代孕 ¥'+(SURROGACY_LOCAL/10000)+'万 · 国外代孕 ¥'+(SURROGACY_FOREIGN/10000)+'万',
-      buttons:[
-        {text:'本地代孕',fn:'confirmSurrogacy(false)'},
-        {text:'国外代孕',primary:true,fn:'confirmSurrogacy(true)'}
-      ]
-    });
-    return;
-  }
-  if(game.procreateIntentWeek===game.week){addLog('已在备孕中','warn');return}
-  if(!spendCash(PROC_CREATE_COST,'备孕'))return;
-  game.procreateIntentWeek=game.week;
-  addLog('🍼 备孕中（花费 ¥'+PROC_CREATE_COST+'）· 下次做爱怀孕率提升','info');
-  showConsumeModal({
-    icon:'🍼',title:'备孕中',
-    html:'已花费 <b>¥'+PROC_CREATE_COST+'</b><br>本月下次做爱怀孕几率大幅提升',
-    buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]
-  });
-  updateUI();
-}
-function confirmSurrogacy(foreign){
-  closeConsumeModal();
-  if(!game||game.hasChildren)return;
-  const cost=foreign?SURROGACY_FOREIGN:SURROGACY_LOCAL;
-  if(!spendCash(cost,foreign?'国外代孕':'本地代孕'))return;
-  game.hasChildren=true;
-  game.childRaisingMonthsLeft=CHILD_RAISING_MONTHS;
-  addStress(STRESS_CHILD_BIRTH,'代孕 ');
-  addLog('👶 代孕成功！月生活费升至 ¥'+CHILD_LIVING_COST+'（持续18年）','success');
-  updateUI();
+  if(typeof routeProcreateIntent==='function'){routeProcreateIntent();return;}
+  setProcreateIntentNatural();
 }
 function renderIntimacyActionBtns(fn,label,forceOff){
   if(forceOff)return '<button class="btn" disabled>'+label+'</button><button class="btn" disabled>七连发</button>';
@@ -5989,6 +5976,7 @@ function advanceOneWeek(){
   if(typeof autoLifeRunning==='undefined'||!autoLifeRunning)tickCompanionWeek();
   if(typeof tickContactLoans==='function')tickContactLoans();
   if(typeof tickSpouseLoans==='function')tickSpouseLoans();
+  if(typeof tickFertilityOrders==='function')tickFertilityOrders();
   return true;
 }
 function nextWeek(){
@@ -7790,6 +7778,7 @@ function updateUI(){
       (game.pregnantSubject==='player'?' · 你':' · '+COMPANION_NAME)+' · 净波动 '+(game.pregnancyIntimacyNet||0)+'</div>':'')+
     (game.hasChildren&&game.childRaisingMonthsLeft>0?'<div>育儿剩余 '+game.childRaisingMonthsLeft+' 月</div>':'')+
     (game.married&&!game.divorced?'<div>夫妻亲密度 <b style="color:'+(intim>=60?'var(--green)':intim>=0?'var(--yellow)':'var(--red)')+'">'+intim+'</b> · 约会+1 · 一月未约会-'+(game.longDistance?'10':'5')+'</div>':'')+
+    (game.fertilityOrder?'<div style="color:var(--green)">'+(game.fertilityOrder.type==='surrogacy'?'代孕':'试管')+'进行中 · 预计 '+getDateStr(game.fertilityOrder.dueWeek)+' 交货</div>':'')+
     (game.procreateIntentWeek===game.week?'<div style="color:var(--green)">本月备孕中（须做爱）</div>':'')+
     (game.affairActive?'<div style="color:var(--red)">婚外情中 · 月支出×2</div>':'')+
     (game.livingOffSpouse?'<div style="color:var(--orange)">吃软饭中 · 每周亲密度-5</div>':'')+
@@ -7847,8 +7836,6 @@ const PHONE_SHOP={
   huawei:{name:'华为超D屏',price:18000,posBias:0.12,negBias:-0.05,paidUp:0.08,loseMult:1.4,photoDate:true},
   iphone:{name:'iPhone 20 Pro Max',price:10000,costMult:1.2,negBias:-0.12,loseMult:1.3,photoDate:true}
 };
-const SURROGACY_LOCAL=500000;
-const SURROGACY_FOREIGN=1000000;
 const STAT_MAX=120;
 const TEMP_STAT_RANGE=10;
 const STAT_LABEL={body:'肉体',mind:'心智',spirit:'精神'};
@@ -9100,7 +9087,8 @@ function renderDailyHomeMenu(phase){
   if(game.snackReboundPortions>0)h+='<p style="color:var(--orange);font-size:.72rem">⚠ 你昨日吃了 '+game.snackReboundPortions+' 份零食，今日进食反弹 +'+(game.snackReboundPortions*2)+' 压力</p>';
   if(game.partnerSnackReboundPortions>0)h+='<p style="color:var(--orange);font-size:.72rem">⚠ 伴侣昨日吃了 '+game.partnerSnackReboundPortions+' 份，今日反弹 +'+(game.partnerSnackReboundPortions*2)+'</p>';
   if((game.snackStock||0)>0)h+='<p class="fold-meta" style="font-size:.72rem">零食囤货 '+game.snackStock+' 份</p>';
-  if(game.procreateIntentWeek===game.week)h+='<p style="color:var(--green);font-size:.72rem">🍼 备孕中（下次做爱怀孕率提升）</p>';
+  if(game.fertilityOrder)h+='<p style="color:var(--green);font-size:.72rem">👶 '+(game.fertilityOrder.type==='surrogacy'?'代孕':'试管')+'进行中 · 预计 '+getDateStr(game.fertilityOrder.dueWeek)+' 交货</p>';
+  else if(game.procreateIntentWeek===game.week)h+='<p style="color:var(--green);font-size:.72rem">🍼 备孕中（下次做爱怀孕率提升）</p>';
   if(phase==='morning'){
     h+='<button class="btn" onclick="dailyPickHomeMorning(\'rest\')">🛋 休息1h（-1压力·临时精神+1）</button>';
     if(game.married&&!game.divorced){
@@ -9110,9 +9098,10 @@ function renderDailyHomeMenu(phase){
     }else if(game.divorced){
       h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeMorning(\'masturbate\')">🫥 自慰</button>';
     }
-    if(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren){
-      const procOn=game.procreateIntentWeek===game.week;
-      h+='<button class="btn" '+(procOn?'disabled':'')+' onclick="dailyPickHomeMorning(\'procreate\')">'+(procOn?'🍼 备孕中':'🍼 备孕¥'+(typeof PROC_CREATE_COST!=='undefined'?PROC_CREATE_COST:3000))+'</button>';
+    if(typeof showHomeFertilityBtn==='function'?showHomeFertilityBtn():(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren)){
+      const fertBusy=!!game.fertilityOrder||game.procreateIntentWeek===game.week;
+      const lbl=typeof homeFertilityBtnLabel==='function'?homeFertilityBtnLabel():'🍼 备孕';
+      h+='<button class="btn" '+(fertBusy?'disabled':'')+' onclick="dailyPickHomeMorning(\'procreate\')">'+lbl+'</button>';
     }
     h+=renderDailyHomeLeisureBtns('HomeMorning');
   }else if(phase==='allnight'){
@@ -9123,9 +9112,10 @@ function renderDailyHomeMenu(phase){
     }else if(game.divorced){
       h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeEvening(\'masturbate\')">🫥 自慰</button>';
     }
-    if(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren){
-      const procOn=game.procreateIntentWeek===game.week;
-      h+='<button class="btn" '+(procOn?'disabled':'')+' onclick="dailyPickHomeEvening(\'procreate\')">'+(procOn?'🍼 备孕中':'🍼 备孕¥'+(typeof PROC_CREATE_COST!=='undefined'?PROC_CREATE_COST:3000))+'</button>';
+    if(typeof showHomeFertilityBtn==='function'?showHomeFertilityBtn():(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren)){
+      const fertBusy=!!game.fertilityOrder||game.procreateIntentWeek===game.week;
+      const lbl=typeof homeFertilityBtnLabel==='function'?homeFertilityBtnLabel():'🍼 备孕';
+      h+='<button class="btn" '+(fertBusy?'disabled':'')+' onclick="dailyPickHomeEvening(\'procreate\')">'+lbl+'</button>';
     }
     h+=renderDailyHomeLeisureBtns('HomeEvening');
   }else{
@@ -9137,9 +9127,10 @@ function renderDailyHomeMenu(phase){
     }else if(game.divorced){
       h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeEvening(\'masturbate\')">🫥 自慰</button>';
     }
-    if(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren){
-      const procOn=game.procreateIntentWeek===game.week;
-      h+='<button class="btn" '+(procOn?'disabled':'')+' onclick="dailyPickHomeEvening(\'procreate\')">'+(procOn?'🍼 备孕中':'🍼 备孕¥'+(typeof PROC_CREATE_COST!=='undefined'?PROC_CREATE_COST:3000))+'</button>';
+    if(typeof showHomeFertilityBtn==='function'?showHomeFertilityBtn():(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren)){
+      const fertBusy=!!game.fertilityOrder||game.procreateIntentWeek===game.week;
+      const lbl=typeof homeFertilityBtnLabel==='function'?homeFertilityBtnLabel():'🍼 备孕';
+      h+='<button class="btn" '+(fertBusy?'disabled':'')+' onclick="dailyPickHomeEvening(\'procreate\')">'+lbl+'</button>';
     }
     h+=renderDailyHomeLeisureBtns('HomeEvening');
   }
@@ -9352,8 +9343,182 @@ const AFFAIR_MIN_WEEKS_FOR_PROPOSAL=26;
 const AFFAIR_WEDDING_DEADLINE_WEEKS=26;
 const IMPRISON_DAYS=15;
 const IMPRISON_WEEKS=2;
+const AFFAIR_OUTDOOR_PREGNANCY_CHANCE=0.01;
+const AFFAIR_PREGNANCY_PAYOFF=50000;
+const AFFAIR_PREGNANCY_MARRY_WEEKS=16;
+const ABORTION_COST=3000;
+const ABORTION_MAX_PREG_WEEKS=12;
+const AFFAIR_WEDDING_PREGNANCY_REVEAL=0.55;
 
 let pendingAffairContactId=null;
+
+function isOppositeSexContact(c){
+  if(!c||!game)return false;
+  const pg=game.playerGender==='female'?'female':'male';
+  const cg=c.gender==='female'?'female':'male';
+  return pg!==cg;
+}
+function oppositeAffairGender(){
+  return game&&game.playerGender==='female'?'male':'female';
+}
+function pregnancyWeeksElapsed(){
+  if(!game||!game.pregnant)return 0;
+  const total=typeof PREGNANCY_WEEKS!=='undefined'?PREGNANCY_WEEKS:40;
+  return total-(game.pregnancyWeeksLeft||0);
+}
+function canPlayerAbort(){
+  return !!(game&&game.pregnant&&game.pregnantSubject==='player'&&pregnancyWeeksElapsed()<=ABORTION_MAX_PREG_WEEKS);
+}
+function cutContactForever(c){
+  if(!c)return;
+  c.unreachable=true;
+  c.pendingPregnancyBlackmail=false;
+  c.pregnancyMarryAgreed=false;
+  if(c.affairStatus!=='married_affair')c.affairStatus='ended';
+  addLog('📵 '+c.name+' 已与你断绝联系，无法再联络','warn');
+}
+function applyPregnancyBlackmailRefuseFx(c,opts){
+  opts=opts||{};
+  if(typeof addStress==='function')addStress(20,'怀孕要挟 ');
+  if(game.married&&!game.divorced){
+    if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-12,'出轨曝光 ');
+    addLog('🚨 '+c.name+' 向你的伴侣告密出轨','fail');
+    if(Math.random()<0.55&&typeof partnerRequestsDivorce==='function'){
+      partnerRequestsDivorce('💔 '+c.name+' 告知伴侣你让她怀孕，提出离婚。',{playerPaysHalf:true});
+    }
+  }else if(opts.rape!==false){
+    imprisonActor(IMPRISON_WEEKS,'强奸指控');
+    if(typeof collectFromPlayer==='function')collectFromPlayer(10000,'强奸赔偿');
+    else if(game.cash>=10000){game.cash-=10000;addLog('赔偿 ¥1万','fail')}
+    addLog('⚖️ '+c.name+' 控告强奸 · 监禁'+IMPRISON_DAYS+'天','fail');
+  }
+}
+function triggerMaleImpregnateBlackmail(c){
+  if(!c)return;
+  c.pregnantByPlayer=true;
+  c.pendingPregnancyBlackmail=true;
+  const dl=game.week+AFFAIR_PREGNANCY_MARRY_WEEKS;
+  showConsumeModal({
+    icon:'🤰',title:c.name+' 怀孕了',
+    html:'户外亲热后她确认怀孕。<br>可选择：<b>限时结婚</b>（须在 '+getDateStr(dl)+' 前完婚）或 <b>支付 ¥'+AFFAIR_PREGNANCY_PAYOFF.toLocaleString()+'</b> 封口。<br>'+
+      '<span class="fold-meta">拒付封口费压力+20；无论是否付钱都将断绝联系。拒绝结婚压力+20'+(game.married&&!game.divorced?'，并告知伴侣':'，无伴侣则控告强奸')+'。</span>',
+    buttons:[
+      {text:'支付五万',fn:'pregBlackmailPay(\''+c.id+'\')'},
+      {text:'答应结婚',primary:true,fn:'pregBlackmailAgreeMarry(\''+c.id+'\')'},
+      {text:'拒绝',fn:'pregBlackmailRefuse(\''+c.id+'\')'}
+    ]
+  });
+}
+function pregBlackmailPay(contactId){
+  closeConsumeModal();
+  const c=findContact(contactId);
+  if(!c)return;
+  let paid=false;
+  if(typeof spendCash==='function')paid=spendCash(AFFAIR_PREGNANCY_PAYOFF,c.name+'怀孕封口费');
+  else if(game.cash>=AFFAIR_PREGNANCY_PAYOFF){
+    game.cash-=AFFAIR_PREGNANCY_PAYOFF;
+    if(typeof ledgerAddExpense==='function')ledgerAddExpense('affair','💸','怀孕封口费',AFFAIR_PREGNANCY_PAYOFF,false);
+    paid=true;
+  }
+  if(!paid&&typeof addStress==='function')addStress(20,'拒付封口费 ');
+  addLog(paid?'💸 已付 ¥'+AFFAIR_PREGNANCY_PAYOFF.toLocaleString()+' 封口费':'无力支付封口费 · 压力+20','fail');
+  cutContactForever(c);
+  if(typeof updateUI==='function')updateUI();
+}
+function pregBlackmailAgreeMarry(contactId){
+  closeConsumeModal();
+  const c=findContact(contactId);
+  if(!c)return;
+  c.pendingPregnancyBlackmail=false;
+  c.pregnancyMarryAgreed=true;
+  c.pregnantByPlayer=true;
+  c.affairStatus='proposal_pending';
+  c.marriageAgreedWeek=game.week;
+  c.pregnancyMarryDeadlineWeek=game.week+AFFAIR_PREGNANCY_MARRY_WEEKS;
+  addLog('💍 答应在 '+getDateStr(c.pregnancyMarryDeadlineWeek)+' 前与 '+c.name+' 结婚','info');
+  showConsumeModal({
+    icon:'💍',title:'限期结婚',
+    html:'请尽快办婚礼（¥'+(AFFAIR_WEDDING_COST/10000)+'万）。<br>婚后才知她是否真的怀孕。<br>'+
+      '<span style="color:var(--orange)">逾期视同拒绝结婚'+(game.married&&!game.divorced?'（不会被告强奸，但伴侣可能知情）':'（不会被告强奸）')+'</span>',
+    buttons:[
+      {text:'稍后',fn:'closeConsumeModal()'},
+      {text:'现在办婚礼',primary:true,fn:'promptAffairWedding(\''+c.id+'\')'}
+    ]
+  });
+}
+function pregBlackmailRefuse(contactId){
+  closeConsumeModal();
+  const c=findContact(contactId);
+  if(!c)return;
+  applyPregnancyBlackmailRefuseFx(c,{rape:true});
+  cutContactForever(c);
+  if(typeof updateUI==='function')updateUI();
+}
+function tryAffairEncounterPregnancy(c,loc){
+  if(!c||game.pregnant||game.hasChildren)return false;
+  if(loc==='outdoor'&&isOppositeSexContact(c)){
+    if(Math.random()>=AFFAIR_OUTDOOR_PREGNANCY_CHANCE)return false;
+    if(game.playerGender==='male'&&(c.gender==='female'||!c.gender)){
+      addLog('🤰 户外亲热后 '+c.name+' 怀孕了…','warn');
+      triggerMaleImpregnateBlackmail(c);
+      return true;
+    }
+    if(game.playerGender==='female'&&(c.gender==='male'||!c.gender)){
+      game.outdoorAffairPregnancy=true;
+      if(typeof startPregnancy==='function')startPregnancy(true);
+      addLog('🤰 户外亲热后你怀孕了（可消费页堕胎，12周内）','warn');
+      return true;
+    }
+    return false;
+  }
+  if(Math.random()<0.12&&typeof tryConceiveFromSex==='function')return tryConceiveFromSex(true,true);
+  return false;
+}
+function renderAbortionSpendingRow(){
+  if(!game||!game.pregnant||game.pregnantSubject!=='player')return null;
+  const wk=pregnancyWeeksElapsed();
+  const can=wk<=ABORTION_MAX_PREG_WEEKS;
+  return{
+    label:'堕胎 ¥'+ABORTION_COST,
+    meta:can?('孕期第 '+wk+' 周 · 12周内可堕胎'):'已超过12周 · 无法堕胎'+(game.married&&!game.divorced?' · 伴侣可能察觉':''),
+    btn:'堕胎',fn:'promptPlayerAbortion()',off:!can
+  };
+}
+function promptPlayerAbortion(){
+  if(!canPlayerAbort()){addLog('已超过12周或无法堕胎','fail');return}
+  if(!confirm('确定堕胎？费用 ¥'+ABORTION_COST+'（孕期第 '+pregnancyWeeksElapsed()+' 周）'))return;
+  if(typeof spendCash==='function'&&!spendCash(ABORTION_COST,'堕胎'))return;
+  game.pregnant=false;
+  game.pregnantSubject=null;
+  game.pregnancyWeeksLeft=0;
+  game.pregnancyIntimacyNet=0;
+  game.outdoorAffairPregnancy=false;
+  game.partnerKnowsPlayerPregnant=false;
+  addLog('🏥 堕胎完成 · 花费 ¥'+ABORTION_COST,'info');
+  if(typeof renderSpendingPanel==='function')renderSpendingPanel();
+  if(typeof updateUI==='function')updateUI();
+}
+function tickOutdoorPregnancyWeekly(){
+  if(!game||!game.pregnant||game.pregnantSubject!=='player')return;
+  if(pregnancyWeeksElapsed()>ABORTION_MAX_PREG_WEEKS&&!game.partnerKnowsPlayerPregnant&&game.married&&!game.divorced){
+    game.partnerKnowsPlayerPregnant=true;
+    if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-10,'隐瞒怀孕 ');
+    if(typeof addStress==='function')addStress(8,'怀孕曝光 ');
+    addLog('🚨 怀孕超过12周 · 伴侣发现你曾可堕胎却隐瞒','fail');
+  }
+}
+function tickAffairWifePregnancy(c){
+  if(!c||!c.wifePregnantConfirmed||!c.babyDueWeek)return;
+  if(game.week<c.babyDueWeek)return;
+  c.wifePregnantConfirmed=false;
+  c.babyDueWeek=0;
+  if(!game.hasChildren){
+    game.hasChildren=true;
+    game.childRaisingMonthsLeft=typeof CHILD_RAISING_MONTHS!=='undefined'?CHILD_RAISING_MONTHS:216;
+    addLog('👶 与 '+c.name+' 的孩子降生','success');
+    if(typeof addLog==='function')addLog('月生活费上升','info');
+  }
+}
 
 function imprisonActor(weeks,label){
   if(!game)return;
@@ -9488,6 +9653,7 @@ function ensureContactAffairFields(c){
   if(c.firstAffairWeek==null)c.firstAffairWeek=0;
   if(c.lastAffairWeek==null)c.lastAffairWeek=0;
   if(c.affairCount==null)c.affairCount=0;
+  if(c.unreachable==null)c.unreachable=false;
   return c;
 }
 function findContact(id){
@@ -9506,7 +9672,7 @@ function createAffairContact(where,existing){
   const id='ct_'+game.week+'_'+game.contacts.length+'_'+Math.floor(Math.random()*9999);
   const person={id,name:names[Math.floor(Math.random()*names.length)],jobTitle:job.title,category:job.category,
     company:co?co.name:'未知公司',income,metWeek:game.week,metWhere:where||'艳遇',
-    kind:'affair',gender:game.partnerGender||'female'};
+    kind:'affair',gender:oppositeAffairGender()};
   ensureContactAffairFields(person);
   if(typeof tagAffairContactGender==='function')tagAffairContactGender(person);
   game.contacts.push(person);
@@ -9630,7 +9796,7 @@ function resolveAffairLocation(c,loc){
   runSexSession(true);
   const c0=ensureConsumption();
   if(c0)c0.sexSessions=(c0.sexSessions||0)+1;
-  if(Math.random()<0.12&&!game.pregnant&&!game.hasChildren)tryConceiveFromSex(true,true);
+  tryAffairEncounterPregnancy(c,loc);
   addLog('💋 与 '+c.name+' 幽会（'+affairLocLabel(loc)+'）','info');
   if(game.daily){
     if(game.daily.phase==='allnight')renderDailyPanel();
@@ -9645,6 +9811,7 @@ function startContactAffair(contactId){
   if(!game||game.gameOver||isPlayerImprisoned()){addLog('当前无法偷情','fail');return}
   const c=findContact(contactId);
   if(!c){addLog('联系人不存在','fail');return}
+  if(c.unreachable){addLog(c.name+' 已与你断绝联系','fail');return}
   if((!game.married||game.divorced)&&c.affairStatus!=='fwb'&&!(c.affairCount>0)){
     addLog('需先发生艳遇或成为炮友后才能联系','fail');return;
   }
@@ -9656,8 +9823,16 @@ function startContactAffair(contactId){
 }
 function tickAffairRelationships(){
   if(!game||!game.contacts||!game.contacts.length)return;
+  if(typeof tickOutdoorPregnancyWeekly==='function')tickOutdoorPregnancyWeekly();
   game.contacts.forEach(c=>{
     ensureContactAffairFields(c);
+    tickAffairWifePregnancy(c);
+    if(c.pregnancyMarryAgreed&&c.pregnancyMarryDeadlineWeek&&game.week>=c.pregnancyMarryDeadlineWeek&&c.affairStatus!=='married_affair'){
+      addLog('💔 未在期限内与 '+c.name+' 结婚','fail');
+      applyPregnancyBlackmailRefuseFx(c,{rape:false});
+      cutContactForever(c);
+      return;
+    }
     if(c.affairStatus==='proposal_pending'&&c.marriageAgreedWeek){
       if(game.week%WEEKS_PER_MONTH===0){
         addLog('💍 '+c.name+' 催促你完婚（婚外情）','warn');
@@ -9746,6 +9921,19 @@ function completeAffairWedding(contactId){
   if(!spendCash(AFFAIR_WEDDING_COST,c.name+'婚礼'))return;
   c.affairStatus='married_affair';
   c.marriageAgreedWeek=0;
+  c.pregnancyMarryAgreed=false;
+  c.pendingPregnancyBlackmail=false;
+  if(c.pregnantByPlayer||c.pregnancyMarryAgreed){
+    if(Math.random()<AFFAIR_WEDDING_PREGNANCY_REVEAL){
+      c.wifePregnantConfirmed=true;
+      c.babyDueWeek=game.week+(typeof PREGNANCY_WEEKS!=='undefined'?PREGNANCY_WEEKS:40);
+      addLog('💒 婚后发现 '+c.name+' 已怀孕！','success');
+    }else{
+      addLog('💒 与 '+c.name+' 成婚，她并未怀孕','info');
+    }
+    c.pregnantByPlayer=false;
+    c.pregnancyMarryDeadlineWeek=0;
+  }
   game.affairActive=true;
   const theirStats=(c.body||0)+(c.mind||0)+(c.spirit||0);
   const myStats=effStat('body')+effStat('mind')+effStat('spirit');
@@ -9764,6 +9952,7 @@ function promptAffairWedding(contactId){
 }
 function renderContactAffairBtn(c){
   if(!game.married||game.divorced||isPlayerImprisoned())return '';
+  if(c.unreachable)return ' <span class="fold-meta" style="color:var(--muted)">已断绝</span>';
   if(c.affairStatus==='married_affair')return ' <span class="fold-meta">秘密成婚</span>';
   if(c.affairStatus==='proposal_pending')return ' <button class="btn" onclick="promptAffairWedding(\''+c.id+'\')">办婚礼</button>';
   if(c.affairStatus==='fwb')return ' <button class="btn" onclick="startContactAffair(\''+c.id+'\')">炮友</button>';
@@ -10251,6 +10440,7 @@ function tickContactLoans(){
   });
 }
 function callIntimateContact(c){
+  if(c&&c.unreachable){addLog(c.name+' 已与你断绝联系','fail');return}
   if(typeof rollPartnerCaughtAffair==='function'&&rollPartnerCaughtAffair('phone'))return;
   if(Math.random()<CONTACT_NO_ANSWER_CHANCE){
     markContactNoAnswer(c.id);
@@ -10546,6 +10736,207 @@ function tickSpouseLoans(){
     if(l.status==='pending'||l.status==='overdue')return true;
     return l.dueWeek!=null&&game.week-l.dueWeek<12;
   });
+}
+
+/* 生育：同性玩具、代孕、试管、借精 */
+const SURROGACY_LOCAL=500000;
+const SURROGACY_FOREIGN=1000000;
+const IVF_LOCAL=Math.round(SURROGACY_LOCAL/5);
+const IVF_FOREIGN=Math.round(SURROGACY_FOREIGN/5);
+const SPERM_NORMAL=100000;
+const SPERM_SUPER=200000;
+const FERTILITY_DELIVERY_MONTHS=12;
+const FERTILITY_DELIVERY_WEEKS=FERTILITY_DELIVERY_MONTHS*(typeof WEEKS_PER_MONTH!=='undefined'?WEEKS_PER_MONTH:4);
+
+function migrateFertility(){
+  if(!game)return;
+  if(game.fertilityOrder&&!game.fertilityOrder.type)game.fertilityOrder=null;
+}
+function isSameSexCouple(){
+  return !!(game&&game.married&&!game.divorced&&game.playerGender===game.partnerGender);
+}
+function isSameSexMaleCouple(){
+  return isSameSexCouple()&&game.playerGender==='male';
+}
+function isSameSexFemaleCouple(){
+  return isSameSexCouple()&&game.playerGender==='female';
+}
+function canStartFertilityOrder(){
+  return !!(game&&!game.pregnant&&!game.hasChildren&&!game.homeless&&!game.fertilityOrder&&!game.gameOver);
+}
+function fertilitySurrogacyEligible(){
+  if(!canStartFertilityOrder())return false;
+  if(game.married&&!game.divorced&&isSameSexMaleCouple())return true;
+  if(game.divorced&&game.playerGender==='male')return true;
+  return false;
+}
+function fertilityIvfEligible(){
+  if(!canStartFertilityOrder())return false;
+  if(game.married&&!game.divorced&&isSameSexFemaleCouple())return true;
+  if(game.divorced&&game.playerGender==='female')return true;
+  return false;
+}
+function fertilityNaturalProcreateEligible(){
+  if(!canStartFertilityOrder())return false;
+  return !!(game.married&&!game.divorced&&!isSameSexCouple());
+}
+function showHomeFertilityBtn(){
+  if(game.fertilityOrder)return true;
+  return fertilityNaturalProcreateEligible()||fertilitySurrogacyEligible()||fertilityIvfEligible();
+}
+function homeFertilityBtnLabel(){
+  if(game.fertilityOrder)return game.fertilityOrder.type==='surrogacy'?'👶 代孕中':'👶 试管中';
+  if(game.procreateIntentWeek===game.week)return '🍼 备孕中';
+  if(fertilitySurrogacyEligible())return '👶 代孕';
+  if(fertilityIvfEligible())return '👶 试管';
+  return '🍼 备孕¥'+(typeof PROC_CREATE_COST!=='undefined'?PROC_CREATE_COST:3000);
+}
+function fertilityOrderLabel(o){
+  if(!o)return '';
+  const loc=o.foreign?'国外':'国内';
+  if(o.type==='surrogacy')return loc+'代孕';
+  const sp=o.spermTier==='super'?'超级精子':'普通借精';
+  return loc+'试管·'+sp;
+}
+function renderFertilitySpendingRows(){
+  const rows=[];
+  if(game.fertilityOrder){
+    const o=game.fertilityOrder;
+    rows.push({
+      label:fertilityOrderLabel(o)+' · 进行中',
+      meta:'已付 ¥'+o.cost.toLocaleString()+' · 预计 '+getDateStr(o.dueWeek)+' 交货（'+FERTILITY_DELIVERY_MONTHS+'个月）',
+      btn:'进行中',fn:'',off:true
+    });
+    return rows;
+  }
+  if(fertilityNaturalProcreateEligible()){
+    rows.push({
+      label:'备孕 ¥'+PROC_CREATE_COST,
+      meta:(game.procreateIntentWeek===game.week?'备孕中 · ':'')+'在宅家备孕 · 下次做爱怀孕率提升',
+      btn:game.procreateIntentWeek===game.week?'备孕中':'备孕',
+      fn:'setProcreateIntent()',off:game.procreateIntentWeek===game.week
+    });
+  }
+  if(fertilitySurrogacyEligible()){
+    rows.push({
+      label:'代孕',
+      meta:'国内 ¥'+(SURROGACY_LOCAL/10000)+'万 · 国外 ¥'+(SURROGACY_FOREIGN/10000)+'万 · '+FERTILITY_DELIVERY_MONTHS+'个月交货',
+      btn:'申请',fn:'promptSurrogacyMenu()',off:false
+    });
+  }
+  if(fertilityIvfEligible()){
+    rows.push({
+      label:'试管',
+      meta:'试管费为代孕1/5（国内¥'+(IVF_LOCAL/10000)+'万/国外¥'+(IVF_FOREIGN/10000)+'万）· 借精普通¥'+(SPERM_NORMAL/10000)+'万/超级¥'+(SPERM_SUPER/10000)+'万',
+      btn:'申请',fn:'promptIvfMenu()',off:false
+    });
+  }
+  return rows;
+}
+function fertilityStatusCompanionRow(){
+  if(!game||!game.fertilityOrder)return '';
+  const o=game.fertilityOrder;
+  const left=Math.max(0,o.dueWeek-game.week);
+  const mo=Math.ceil(left/(typeof WEEKS_PER_MONTH!=='undefined'?WEEKS_PER_MONTH:4));
+  return '<div class="companion-row"><span>'+fertilityOrderLabel(o)+'</span><span style="color:var(--green)">进行中 · 约剩 '+mo+' 月 · '+getDateStr(o.dueWeek)+' 交货</span></div>';
+}
+function routeProcreateIntent(){
+  if(!game||game.gameOver)return;
+  if(game.fertilityOrder){addLog('已有生育订单进行中','warn');return;}
+  if(fertilitySurrogacyEligible()){promptSurrogacyMenu();return;}
+  if(fertilityIvfEligible()){promptIvfMenu();return;}
+  setProcreateIntentNatural();
+}
+function promptSurrogacyMenu(){
+  if(!fertilitySurrogacyEligible()){addLog('当前无法申请代孕','fail');return;}
+  showConsumeModal({
+    icon:'👶',title:'代孕',
+    html:'国内 ¥'+SURROGACY_LOCAL.toLocaleString()+' · 国外 ¥'+SURROGACY_FOREIGN.toLocaleString()+'<br>'+
+      '<span style="color:var(--muted)">'+FERTILITY_DELIVERY_MONTHS+' 个月后交货 · 付清全款启动</span>',
+    buttons:[
+      {text:'国内代孕',fn:'startSurrogacyOrder(false)'},
+      {text:'国外代孕',primary:true,fn:'startSurrogacyOrder(true)'}
+    ]
+  });
+}
+function promptIvfMenu(){
+  if(!fertilityIvfEligible()){addLog('当前无法申请试管','fail');return;}
+  showConsumeModal({
+    icon:'🧪',title:'试管 + 借精',
+    html:'试管费为代孕 1/5<br>国内试管 ¥'+IVF_LOCAL.toLocaleString()+' · 国外 ¥'+IVF_FOREIGN.toLocaleString()+'<br>'+
+      '借精：普通 ¥'+SPERM_NORMAL.toLocaleString()+' · 超级精子 ¥'+SPERM_SUPER.toLocaleString()+'<br>'+
+      '<span style="color:var(--muted)">'+FERTILITY_DELIVERY_MONTHS+' 个月后交货</span>',
+    buttons:[
+      {text:'国内·普通精',fn:'startIvfOrder(false,\'normal\')'},
+      {text:'国内·超级精',fn:'startIvfOrder(false,\'super\')'},
+      {text:'国外·普通精',primary:true,fn:'startIvfOrder(true,\'normal\')'},
+      {text:'国外·超级精',fn:'startIvfOrder(true,\'super\')'}
+    ]
+  });
+}
+function startSurrogacyOrder(foreign){
+  closeConsumeModal();
+  if(!fertilitySurrogacyEligible())return;
+  const cost=foreign?SURROGACY_FOREIGN:SURROGACY_LOCAL;
+  const tag=(foreign?'国外':'国内')+'代孕';
+  if(!spendCash(cost,tag))return;
+  game.fertilityOrder={
+    type:'surrogacy',foreign:!!foreign,spermTier:null,
+    startWeek:game.week,dueWeek:game.week+FERTILITY_DELIVERY_WEEKS,cost:cost
+  };
+  game.procreateIntentWeek=-1;
+  addStress(typeof STRESS_CHILD_BIRTH!=='undefined'?STRESS_CHILD_BIRTH:8,tag+' ');
+  addLog('👶 '+tag+' 已启动 · 预计 '+getDateStr(game.fertilityOrder.dueWeek)+' 交货（¥'+cost.toLocaleString()+'）','success');
+  renderSpendingPanel();updateUI();
+}
+function startIvfOrder(foreign,spermTier){
+  closeConsumeModal();
+  if(!fertilityIvfEligible())return;
+  const base=foreign?IVF_FOREIGN:IVF_LOCAL;
+  const sperm=spermTier==='super'?SPERM_SUPER:SPERM_NORMAL;
+  const cost=base+sperm;
+  const tag=(foreign?'国外':'国内')+'试管·'+(spermTier==='super'?'超级精子':'普通借精');
+  if(!spendCash(cost,tag))return;
+  game.fertilityOrder={
+    type:'ivf',foreign:!!foreign,spermTier:spermTier==='super'?'super':'normal',
+    startWeek:game.week,dueWeek:game.week+FERTILITY_DELIVERY_WEEKS,cost:cost
+  };
+  game.procreateIntentWeek=-1;
+  addStress(typeof STRESS_CHILD_BIRTH!=='undefined'?STRESS_CHILD_BIRTH:8,'试管 ');
+  addLog('🧪 '+tag+' 已启动 · 预计 '+getDateStr(game.fertilityOrder.dueWeek)+' 交货（¥'+cost.toLocaleString()+'）','success');
+  renderSpendingPanel();updateUI();
+}
+function tickFertilityOrders(){
+  if(!game||!game.fertilityOrder)return;
+  const o=game.fertilityOrder;
+  const remindWeek=o.dueWeek-(typeof WEEKS_PER_MONTH!=='undefined'?WEEKS_PER_MONTH:4);
+  if(!o.reminded&&game.week>=remindWeek&&game.week<o.dueWeek){
+    o.reminded=true;
+    addLog('📅 提醒：'+fertilityOrderLabel(o)+' 约 1 个月后交货（'+getDateStr(o.dueWeek)+'）','info');
+  }
+  if(game.week>=o.dueWeek)completeFertilityOrder();
+}
+function completeFertilityOrder(){
+  if(!game||!game.fertilityOrder)return;
+  const o=game.fertilityOrder;
+  game.fertilityOrder=null;
+  game.hasChildren=true;
+  game.childRaisingMonthsLeft=typeof CHILD_RAISING_MONTHS!=='undefined'?CHILD_RAISING_MONTHS:216;
+  addLog('👶 '+fertilityOrderLabel(o)+' 完成 · 孩子降生！月生活费升至 ¥'+(typeof CHILD_LIVING_COST!=='undefined'?CHILD_LIVING_COST:8000).toLocaleString()+'（持续18年）','success');
+  renderSpendingPanel();updateUI();
+}
+function setProcreateIntentNatural(){
+  if(!game||game.gameOver||!fertilityNaturalProcreateEligible()){addLog('无法备孕','fail');return;}
+  if(game.procreateIntentWeek===game.week){addLog('已在备孕中','warn');return;}
+  if(!spendCash(PROC_CREATE_COST,'备孕'))return;
+  game.procreateIntentWeek=game.week;
+  addLog('🍼 备孕中（花费 ¥'+PROC_CREATE_COST+'）· 下次做爱怀孕率提升','info');
+  showConsumeModal({
+    icon:'🍼',title:'备孕中',
+    html:'已花费 <b>¥'+PROC_CREATE_COST+'</b><br>本月下次做爱怀孕几率大幅提升',
+    buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]
+  });
+  updateUI();
 }
 
 /* 自动生活 — 由 build.js 注入 */

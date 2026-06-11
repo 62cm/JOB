@@ -13,8 +13,6 @@ const PHONE_SHOP={
   huawei:{name:'华为超D屏',price:18000,posBias:0.12,negBias:-0.05,paidUp:0.08,loseMult:1.4,photoDate:true},
   iphone:{name:'iPhone 20 Pro Max',price:10000,costMult:1.2,negBias:-0.12,loseMult:1.3,photoDate:true}
 };
-const SURROGACY_LOCAL=500000;
-const SURROGACY_FOREIGN=1000000;
 const STAT_MAX=120;
 const TEMP_STAT_RANGE=10;
 const STAT_LABEL={body:'肉体',mind:'心智',spirit:'精神'};
@@ -1266,7 +1264,8 @@ function renderDailyHomeMenu(phase){
   if(game.snackReboundPortions>0)h+='<p style="color:var(--orange);font-size:.72rem">⚠ 你昨日吃了 '+game.snackReboundPortions+' 份零食，今日进食反弹 +'+(game.snackReboundPortions*2)+' 压力</p>';
   if(game.partnerSnackReboundPortions>0)h+='<p style="color:var(--orange);font-size:.72rem">⚠ 伴侣昨日吃了 '+game.partnerSnackReboundPortions+' 份，今日反弹 +'+(game.partnerSnackReboundPortions*2)+'</p>';
   if((game.snackStock||0)>0)h+='<p class="fold-meta" style="font-size:.72rem">零食囤货 '+game.snackStock+' 份</p>';
-  if(game.procreateIntentWeek===game.week)h+='<p style="color:var(--green);font-size:.72rem">🍼 备孕中（下次做爱怀孕率提升）</p>';
+  if(game.fertilityOrder)h+='<p style="color:var(--green);font-size:.72rem">👶 '+(game.fertilityOrder.type==='surrogacy'?'代孕':'试管')+'进行中 · 预计 '+getDateStr(game.fertilityOrder.dueWeek)+' 交货</p>';
+  else if(game.procreateIntentWeek===game.week)h+='<p style="color:var(--green);font-size:.72rem">🍼 备孕中（下次做爱怀孕率提升）</p>';
   if(phase==='morning'){
     h+='<button class="btn" onclick="dailyPickHomeMorning(\'rest\')">🛋 休息1h（-1压力·临时精神+1）</button>';
     if(game.married&&!game.divorced){
@@ -1276,9 +1275,10 @@ function renderDailyHomeMenu(phase){
     }else if(game.divorced){
       h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeMorning(\'masturbate\')">🫥 自慰</button>';
     }
-    if(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren){
-      const procOn=game.procreateIntentWeek===game.week;
-      h+='<button class="btn" '+(procOn?'disabled':'')+' onclick="dailyPickHomeMorning(\'procreate\')">'+(procOn?'🍼 备孕中':'🍼 备孕¥'+(typeof PROC_CREATE_COST!=='undefined'?PROC_CREATE_COST:3000))+'</button>';
+    if(typeof showHomeFertilityBtn==='function'?showHomeFertilityBtn():(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren)){
+      const fertBusy=!!game.fertilityOrder||game.procreateIntentWeek===game.week;
+      const lbl=typeof homeFertilityBtnLabel==='function'?homeFertilityBtnLabel():'🍼 备孕';
+      h+='<button class="btn" '+(fertBusy?'disabled':'')+' onclick="dailyPickHomeMorning(\'procreate\')">'+lbl+'</button>';
     }
     h+=renderDailyHomeLeisureBtns('HomeMorning');
   }else if(phase==='allnight'){
@@ -1289,9 +1289,10 @@ function renderDailyHomeMenu(phase){
     }else if(game.divorced){
       h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeEvening(\'masturbate\')">🫥 自慰</button>';
     }
-    if(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren){
-      const procOn=game.procreateIntentWeek===game.week;
-      h+='<button class="btn" '+(procOn?'disabled':'')+' onclick="dailyPickHomeEvening(\'procreate\')">'+(procOn?'🍼 备孕中':'🍼 备孕¥'+(typeof PROC_CREATE_COST!=='undefined'?PROC_CREATE_COST:3000))+'</button>';
+    if(typeof showHomeFertilityBtn==='function'?showHomeFertilityBtn():(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren)){
+      const fertBusy=!!game.fertilityOrder||game.procreateIntentWeek===game.week;
+      const lbl=typeof homeFertilityBtnLabel==='function'?homeFertilityBtnLabel():'🍼 备孕';
+      h+='<button class="btn" '+(fertBusy?'disabled':'')+' onclick="dailyPickHomeEvening(\'procreate\')">'+lbl+'</button>';
     }
     h+=renderDailyHomeLeisureBtns('HomeEvening');
   }else{
@@ -1303,9 +1304,10 @@ function renderDailyHomeMenu(phase){
     }else if(game.divorced){
       h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeEvening(\'masturbate\')">🫥 自慰</button>';
     }
-    if(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren){
-      const procOn=game.procreateIntentWeek===game.week;
-      h+='<button class="btn" '+(procOn?'disabled':'')+' onclick="dailyPickHomeEvening(\'procreate\')">'+(procOn?'🍼 备孕中':'🍼 备孕¥'+(typeof PROC_CREATE_COST!=='undefined'?PROC_CREATE_COST:3000))+'</button>';
+    if(typeof showHomeFertilityBtn==='function'?showHomeFertilityBtn():(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren)){
+      const fertBusy=!!game.fertilityOrder||game.procreateIntentWeek===game.week;
+      const lbl=typeof homeFertilityBtnLabel==='function'?homeFertilityBtnLabel():'🍼 备孕';
+      h+='<button class="btn" '+(fertBusy?'disabled':'')+' onclick="dailyPickHomeEvening(\'procreate\')">'+lbl+'</button>';
     }
     h+=renderDailyHomeLeisureBtns('HomeEvening');
   }

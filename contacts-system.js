@@ -473,6 +473,7 @@ function tickContactLoans(){
   });
 }
 function callIntimateContact(c){
+  if(c&&c.unreachable){addLog(c.name+' 已与你断绝联系','fail');return}
   if(typeof rollPartnerCaughtAffair==='function'&&rollPartnerCaughtAffair('phone'))return;
   if(Math.random()<CONTACT_NO_ANSWER_CHANCE){
     markContactNoAnswer(c.id);

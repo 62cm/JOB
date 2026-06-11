@@ -9,8 +9,182 @@ const AFFAIR_MIN_WEEKS_FOR_PROPOSAL=26;
 const AFFAIR_WEDDING_DEADLINE_WEEKS=26;
 const IMPRISON_DAYS=15;
 const IMPRISON_WEEKS=2;
+const AFFAIR_OUTDOOR_PREGNANCY_CHANCE=0.01;
+const AFFAIR_PREGNANCY_PAYOFF=50000;
+const AFFAIR_PREGNANCY_MARRY_WEEKS=16;
+const ABORTION_COST=3000;
+const ABORTION_MAX_PREG_WEEKS=12;
+const AFFAIR_WEDDING_PREGNANCY_REVEAL=0.55;
 
 let pendingAffairContactId=null;
+
+function isOppositeSexContact(c){
+  if(!c||!game)return false;
+  const pg=game.playerGender==='female'?'female':'male';
+  const cg=c.gender==='female'?'female':'male';
+  return pg!==cg;
+}
+function oppositeAffairGender(){
+  return game&&game.playerGender==='female'?'male':'female';
+}
+function pregnancyWeeksElapsed(){
+  if(!game||!game.pregnant)return 0;
+  const total=typeof PREGNANCY_WEEKS!=='undefined'?PREGNANCY_WEEKS:40;
+  return total-(game.pregnancyWeeksLeft||0);
+}
+function canPlayerAbort(){
+  return !!(game&&game.pregnant&&game.pregnantSubject==='player'&&pregnancyWeeksElapsed()<=ABORTION_MAX_PREG_WEEKS);
+}
+function cutContactForever(c){
+  if(!c)return;
+  c.unreachable=true;
+  c.pendingPregnancyBlackmail=false;
+  c.pregnancyMarryAgreed=false;
+  if(c.affairStatus!=='married_affair')c.affairStatus='ended';
+  addLog('📵 '+c.name+' 已与你断绝联系，无法再联络','warn');
+}
+function applyPregnancyBlackmailRefuseFx(c,opts){
+  opts=opts||{};
+  if(typeof addStress==='function')addStress(20,'怀孕要挟 ');
+  if(game.married&&!game.divorced){
+    if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-12,'出轨曝光 ');
+    addLog('🚨 '+c.name+' 向你的伴侣告密出轨','fail');
+    if(Math.random()<0.55&&typeof partnerRequestsDivorce==='function'){
+      partnerRequestsDivorce('💔 '+c.name+' 告知伴侣你让她怀孕，提出离婚。',{playerPaysHalf:true});
+    }
+  }else if(opts.rape!==false){
+    imprisonActor(IMPRISON_WEEKS,'强奸指控');
+    if(typeof collectFromPlayer==='function')collectFromPlayer(10000,'强奸赔偿');
+    else if(game.cash>=10000){game.cash-=10000;addLog('赔偿 ¥1万','fail')}
+    addLog('⚖️ '+c.name+' 控告强奸 · 监禁'+IMPRISON_DAYS+'天','fail');
+  }
+}
+function triggerMaleImpregnateBlackmail(c){
+  if(!c)return;
+  c.pregnantByPlayer=true;
+  c.pendingPregnancyBlackmail=true;
+  const dl=game.week+AFFAIR_PREGNANCY_MARRY_WEEKS;
+  showConsumeModal({
+    icon:'🤰',title:c.name+' 怀孕了',
+    html:'户外亲热后她确认怀孕。<br>可选择：<b>限时结婚</b>（须在 '+getDateStr(dl)+' 前完婚）或 <b>支付 ¥'+AFFAIR_PREGNANCY_PAYOFF.toLocaleString()+'</b> 封口。<br>'+
+      '<span class="fold-meta">拒付封口费压力+20；无论是否付钱都将断绝联系。拒绝结婚压力+20'+(game.married&&!game.divorced?'，并告知伴侣':'，无伴侣则控告强奸')+'。</span>',
+    buttons:[
+      {text:'支付五万',fn:'pregBlackmailPay(\''+c.id+'\')'},
+      {text:'答应结婚',primary:true,fn:'pregBlackmailAgreeMarry(\''+c.id+'\')'},
+      {text:'拒绝',fn:'pregBlackmailRefuse(\''+c.id+'\')'}
+    ]
+  });
+}
+function pregBlackmailPay(contactId){
+  closeConsumeModal();
+  const c=findContact(contactId);
+  if(!c)return;
+  let paid=false;
+  if(typeof spendCash==='function')paid=spendCash(AFFAIR_PREGNANCY_PAYOFF,c.name+'怀孕封口费');
+  else if(game.cash>=AFFAIR_PREGNANCY_PAYOFF){
+    game.cash-=AFFAIR_PREGNANCY_PAYOFF;
+    if(typeof ledgerAddExpense==='function')ledgerAddExpense('affair','💸','怀孕封口费',AFFAIR_PREGNANCY_PAYOFF,false);
+    paid=true;
+  }
+  if(!paid&&typeof addStress==='function')addStress(20,'拒付封口费 ');
+  addLog(paid?'💸 已付 ¥'+AFFAIR_PREGNANCY_PAYOFF.toLocaleString()+' 封口费':'无力支付封口费 · 压力+20','fail');
+  cutContactForever(c);
+  if(typeof updateUI==='function')updateUI();
+}
+function pregBlackmailAgreeMarry(contactId){
+  closeConsumeModal();
+  const c=findContact(contactId);
+  if(!c)return;
+  c.pendingPregnancyBlackmail=false;
+  c.pregnancyMarryAgreed=true;
+  c.pregnantByPlayer=true;
+  c.affairStatus='proposal_pending';
+  c.marriageAgreedWeek=game.week;
+  c.pregnancyMarryDeadlineWeek=game.week+AFFAIR_PREGNANCY_MARRY_WEEKS;
+  addLog('💍 答应在 '+getDateStr(c.pregnancyMarryDeadlineWeek)+' 前与 '+c.name+' 结婚','info');
+  showConsumeModal({
+    icon:'💍',title:'限期结婚',
+    html:'请尽快办婚礼（¥'+(AFFAIR_WEDDING_COST/10000)+'万）。<br>婚后才知她是否真的怀孕。<br>'+
+      '<span style="color:var(--orange)">逾期视同拒绝结婚'+(game.married&&!game.divorced?'（不会被告强奸，但伴侣可能知情）':'（不会被告强奸）')+'</span>',
+    buttons:[
+      {text:'稍后',fn:'closeConsumeModal()'},
+      {text:'现在办婚礼',primary:true,fn:'promptAffairWedding(\''+c.id+'\')'}
+    ]
+  });
+}
+function pregBlackmailRefuse(contactId){
+  closeConsumeModal();
+  const c=findContact(contactId);
+  if(!c)return;
+  applyPregnancyBlackmailRefuseFx(c,{rape:true});
+  cutContactForever(c);
+  if(typeof updateUI==='function')updateUI();
+}
+function tryAffairEncounterPregnancy(c,loc){
+  if(!c||game.pregnant||game.hasChildren)return false;
+  if(loc==='outdoor'&&isOppositeSexContact(c)){
+    if(Math.random()>=AFFAIR_OUTDOOR_PREGNANCY_CHANCE)return false;
+    if(game.playerGender==='male'&&(c.gender==='female'||!c.gender)){
+      addLog('🤰 户外亲热后 '+c.name+' 怀孕了…','warn');
+      triggerMaleImpregnateBlackmail(c);
+      return true;
+    }
+    if(game.playerGender==='female'&&(c.gender==='male'||!c.gender)){
+      game.outdoorAffairPregnancy=true;
+      if(typeof startPregnancy==='function')startPregnancy(true);
+      addLog('🤰 户外亲热后你怀孕了（可消费页堕胎，12周内）','warn');
+      return true;
+    }
+    return false;
+  }
+  if(Math.random()<0.12&&typeof tryConceiveFromSex==='function')return tryConceiveFromSex(true,true);
+  return false;
+}
+function renderAbortionSpendingRow(){
+  if(!game||!game.pregnant||game.pregnantSubject!=='player')return null;
+  const wk=pregnancyWeeksElapsed();
+  const can=wk<=ABORTION_MAX_PREG_WEEKS;
+  return{
+    label:'堕胎 ¥'+ABORTION_COST,
+    meta:can?('孕期第 '+wk+' 周 · 12周内可堕胎'):'已超过12周 · 无法堕胎'+(game.married&&!game.divorced?' · 伴侣可能察觉':''),
+    btn:'堕胎',fn:'promptPlayerAbortion()',off:!can
+  };
+}
+function promptPlayerAbortion(){
+  if(!canPlayerAbort()){addLog('已超过12周或无法堕胎','fail');return}
+  if(!confirm('确定堕胎？费用 ¥'+ABORTION_COST+'（孕期第 '+pregnancyWeeksElapsed()+' 周）'))return;
+  if(typeof spendCash==='function'&&!spendCash(ABORTION_COST,'堕胎'))return;
+  game.pregnant=false;
+  game.pregnantSubject=null;
+  game.pregnancyWeeksLeft=0;
+  game.pregnancyIntimacyNet=0;
+  game.outdoorAffairPregnancy=false;
+  game.partnerKnowsPlayerPregnant=false;
+  addLog('🏥 堕胎完成 · 花费 ¥'+ABORTION_COST,'info');
+  if(typeof renderSpendingPanel==='function')renderSpendingPanel();
+  if(typeof updateUI==='function')updateUI();
+}
+function tickOutdoorPregnancyWeekly(){
+  if(!game||!game.pregnant||game.pregnantSubject!=='player')return;
+  if(pregnancyWeeksElapsed()>ABORTION_MAX_PREG_WEEKS&&!game.partnerKnowsPlayerPregnant&&game.married&&!game.divorced){
+    game.partnerKnowsPlayerPregnant=true;
+    if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-10,'隐瞒怀孕 ');
+    if(typeof addStress==='function')addStress(8,'怀孕曝光 ');
+    addLog('🚨 怀孕超过12周 · 伴侣发现你曾可堕胎却隐瞒','fail');
+  }
+}
+function tickAffairWifePregnancy(c){
+  if(!c||!c.wifePregnantConfirmed||!c.babyDueWeek)return;
+  if(game.week<c.babyDueWeek)return;
+  c.wifePregnantConfirmed=false;
+  c.babyDueWeek=0;
+  if(!game.hasChildren){
+    game.hasChildren=true;
+    game.childRaisingMonthsLeft=typeof CHILD_RAISING_MONTHS!=='undefined'?CHILD_RAISING_MONTHS:216;
+    addLog('👶 与 '+c.name+' 的孩子降生','success');
+    if(typeof addLog==='function')addLog('月生活费上升','info');
+  }
+}
 
 function imprisonActor(weeks,label){
   if(!game)return;
@@ -145,6 +319,7 @@ function ensureContactAffairFields(c){
   if(c.firstAffairWeek==null)c.firstAffairWeek=0;
   if(c.lastAffairWeek==null)c.lastAffairWeek=0;
   if(c.affairCount==null)c.affairCount=0;
+  if(c.unreachable==null)c.unreachable=false;
   return c;
 }
 function findContact(id){
@@ -163,7 +338,7 @@ function createAffairContact(where,existing){
   const id='ct_'+game.week+'_'+game.contacts.length+'_'+Math.floor(Math.random()*9999);
   const person={id,name:names[Math.floor(Math.random()*names.length)],jobTitle:job.title,category:job.category,
     company:co?co.name:'未知公司',income,metWeek:game.week,metWhere:where||'艳遇',
-    kind:'affair',gender:game.partnerGender||'female'};
+    kind:'affair',gender:oppositeAffairGender()};
   ensureContactAffairFields(person);
   if(typeof tagAffairContactGender==='function')tagAffairContactGender(person);
   game.contacts.push(person);
@@ -287,7 +462,7 @@ function resolveAffairLocation(c,loc){
   runSexSession(true);
   const c0=ensureConsumption();
   if(c0)c0.sexSessions=(c0.sexSessions||0)+1;
-  if(Math.random()<0.12&&!game.pregnant&&!game.hasChildren)tryConceiveFromSex(true,true);
+  tryAffairEncounterPregnancy(c,loc);
   addLog('💋 与 '+c.name+' 幽会（'+affairLocLabel(loc)+'）','info');
   if(game.daily){
     if(game.daily.phase==='allnight')renderDailyPanel();
@@ -302,6 +477,7 @@ function startContactAffair(contactId){
   if(!game||game.gameOver||isPlayerImprisoned()){addLog('当前无法偷情','fail');return}
   const c=findContact(contactId);
   if(!c){addLog('联系人不存在','fail');return}
+  if(c.unreachable){addLog(c.name+' 已与你断绝联系','fail');return}
   if((!game.married||game.divorced)&&c.affairStatus!=='fwb'&&!(c.affairCount>0)){
     addLog('需先发生艳遇或成为炮友后才能联系','fail');return;
   }
@@ -313,8 +489,16 @@ function startContactAffair(contactId){
 }
 function tickAffairRelationships(){
   if(!game||!game.contacts||!game.contacts.length)return;
+  if(typeof tickOutdoorPregnancyWeekly==='function')tickOutdoorPregnancyWeekly();
   game.contacts.forEach(c=>{
     ensureContactAffairFields(c);
+    tickAffairWifePregnancy(c);
+    if(c.pregnancyMarryAgreed&&c.pregnancyMarryDeadlineWeek&&game.week>=c.pregnancyMarryDeadlineWeek&&c.affairStatus!=='married_affair'){
+      addLog('💔 未在期限内与 '+c.name+' 结婚','fail');
+      applyPregnancyBlackmailRefuseFx(c,{rape:false});
+      cutContactForever(c);
+      return;
+    }
     if(c.affairStatus==='proposal_pending'&&c.marriageAgreedWeek){
       if(game.week%WEEKS_PER_MONTH===0){
         addLog('💍 '+c.name+' 催促你完婚（婚外情）','warn');
@@ -403,6 +587,19 @@ function completeAffairWedding(contactId){
   if(!spendCash(AFFAIR_WEDDING_COST,c.name+'婚礼'))return;
   c.affairStatus='married_affair';
   c.marriageAgreedWeek=0;
+  c.pregnancyMarryAgreed=false;
+  c.pendingPregnancyBlackmail=false;
+  if(c.pregnantByPlayer||c.pregnancyMarryAgreed){
+    if(Math.random()<AFFAIR_WEDDING_PREGNANCY_REVEAL){
+      c.wifePregnantConfirmed=true;
+      c.babyDueWeek=game.week+(typeof PREGNANCY_WEEKS!=='undefined'?PREGNANCY_WEEKS:40);
+      addLog('💒 婚后发现 '+c.name+' 已怀孕！','success');
+    }else{
+      addLog('💒 与 '+c.name+' 成婚，她并未怀孕','info');
+    }
+    c.pregnantByPlayer=false;
+    c.pregnancyMarryDeadlineWeek=0;
+  }
   game.affairActive=true;
   const theirStats=(c.body||0)+(c.mind||0)+(c.spirit||0);
   const myStats=effStat('body')+effStat('mind')+effStat('spirit');
@@ -421,6 +618,7 @@ function promptAffairWedding(contactId){
 }
 function renderContactAffairBtn(c){
   if(!game.married||game.divorced||isPlayerImprisoned())return '';
+  if(c.unreachable)return ' <span class="fold-meta" style="color:var(--muted)">已断绝</span>';
   if(c.affairStatus==='married_affair')return ' <span class="fold-meta">秘密成婚</span>';
   if(c.affairStatus==='proposal_pending')return ' <button class="btn" onclick="promptAffairWedding(\''+c.id+'\')">办婚礼</button>';
   if(c.affairStatus==='fwb')return ' <button class="btn" onclick="startContactAffair(\''+c.id+'\')">炮友</button>';
