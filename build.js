@@ -3,6 +3,7 @@ const path = require('path');
 const data = JSON.parse(fs.readFileSync('data.json', 'utf8'));
 const REAL_CO = require('./real-companies.js');
 const DAILY_ACTIVITY_SRC = fs.readFileSync(path.join(__dirname, 'daily-activity.js'), 'utf8');
+const JOB_HUNT_DAILY_SRC = fs.readFileSync(path.join(__dirname, 'job-hunt-daily.js'), 'utf8');
 const AUTO_LIFE_SRC = fs.readFileSync(path.join(__dirname, 'auto-life.js'), 'utf8');
 const AFFAIR_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'affair-system.js'), 'utf8');
 const CONTACTS_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'contacts-system.js'), 'utf8');
@@ -144,8 +145,10 @@ const html = `<!DOCTYPE html>
   .industry-hdr{font-weight:700;font-size:.82rem;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
   .industry-inner{display:flex;flex-wrap:wrap;gap:5px;align-content:flex-start;max-height:420px;overflow-y:auto}
   .actions-sticky{position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--border);padding:10px 0;margin-top:8px;z-index:5}
-  .job-tile{border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:6px;cursor:pointer;min-width:72px;min-height:52px;display:flex;flex-direction:column;justify-content:space-between;transition:border-color .15s}
-  .job-tile:hover{border-color:var(--blue)} .job-tile.selected{outline:2px solid var(--accent)} .job-tile.multi-selected{outline:2px solid var(--yellow)}
+  .job-tile{border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:6px;cursor:pointer;min-width:72px;min-height:52px;display:flex;flex-direction:column;justify-content:space-between;transition:border-color .15s,box-shadow .15s,filter .15s}
+  .job-tile:hover{border-color:var(--blue)} .job-tile.selected{outline:2px solid var(--accent)}
+  .job-tile.multi-selected{outline:3px solid var(--yellow);box-shadow:0 0 0 1px var(--yellow),inset 0 0 0 999px rgba(210,153,34,.42);filter:brightness(1.12) saturate(1.15);position:relative;z-index:1}
+  .daily-job-treemap .job-tile.multi-selected{outline:3px solid var(--accent);box-shadow:0 0 14px rgba(163,113,247,.65),inset 0 0 0 999px rgba(163,113,247,.38);filter:brightness(1.14) saturate(1.2)}
   .job-tile.current-job{box-shadow:0 0 0 1px var(--green)} .job-tile .jt-title{font-weight:600;font-size:.72rem;line-height:1.25}
   .job-tile .jt-meta{font-size:.65rem;color:var(--muted);margin-top:2px}
   .job-tile .jt-stats{font-size:.64rem;display:flex;gap:4px;flex-wrap:wrap;margin-top:3px}
@@ -273,6 +276,18 @@ const html = `<!DOCTYPE html>
   .inbox-item.ghost{border-color:var(--muted)}
   .inbox-item.invalid{border-color:var(--red);box-shadow:0 0 0 1px rgba(248,81,73,.35);opacity:.88}
   .inbox-item.invalid .invalid-tag{color:var(--red);font-size:.65rem;font-weight:600}
+  .mail-badge-wrap{position:relative;display:inline-block}
+  .mail-unread{position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border-radius:999px;font-size:.58rem;min-width:14px;line-height:14px;padding:0 4px;text-align:center;font-weight:700}
+  .btn.disabled-referral,.btn.disabled-referral:disabled{opacity:.42;cursor:not-allowed;filter:grayscale(.85)}
+  .daily-job-pick.active{border-color:var(--accent);color:var(--accent)}
+  .daily-applied{border-color:var(--green)!important}
+  .daily-job-channel-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;align-items:center}
+  .daily-job-treemap{max-height:min(42vh,360px);overflow-y:auto;margin:6px 0;padding:4px;border:1px solid var(--border);border-radius:8px}
+  .daily-listing-toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0 4px}
+  .daily-listing-toolbar .btn.active{border-color:var(--accent);color:var(--accent)}
+  .daily-app-listings .company-row{width:100%;box-sizing:border-box}
+  .daily-job-actions-bottom{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);width:100%}
+  .daily-job-actions-bottom .btn{margin:0}
   .inbox-cat-hdr.inbox-cat-expired .fold-meta{color:var(--red)}
   .company-row{display:flex;gap:8px;padding:6px;border-bottom:1px solid var(--border);font-size:.76rem;flex-wrap:wrap;align-items:flex-start}
   .company-row:hover{background:rgba(88,166,255,.05)}
@@ -679,7 +694,7 @@ const html = `<!DOCTYPE html>
         <div id="portfolioPanel" class="portfolio-panel">暂无持仓</div>
       </div>
     </div>
-    <input type="text" id="searchInput" placeholder="搜索职业..." oninput="renderJobs()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;margin-bottom:6px">
+    <input type="text" id="searchInput" placeholder="搜索职业..." oninput="onJobSearchInput()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;margin-bottom:6px">
     <div class="industry-filter" id="industryFilter">
       <button type="button" class="industry-filter-hdr" id="btnIndustryFilterFold" onclick="toggleIndustryFilter()" title="折叠/展开行业筛选">
         <span>筛选行业</span>
@@ -2034,12 +2049,32 @@ function toggleIndustryPicker(force){
   else industryPickerOpen=!industryPickerOpen;
   buildIndustryPicker();
 }
-function setCategory(c){currentCategory=c;buildCategories();renderJobs()}
+function setCategory(c){currentCategory=c;buildCategories();refreshJobTreemapViews()}
 function toggleApplyCategory(c){
   if(applyCategoryPicks.has(c))applyCategoryPicks.delete(c); else applyCategoryPicks.add(c);
-  buildCategories(); renderJobs(); updateButtons();
+  buildCategories(); refreshJobTreemapViews(); updateButtons();
 }
-function setSort(s){currentSort=s;document.querySelectorAll('#sortBtns .btn').forEach(b=>b.classList.toggle('active',b.dataset.sort===s));renderJobs()}
+function setSort(s){currentSort=s;document.querySelectorAll('#sortBtns .btn').forEach(b=>b.classList.toggle('active',b.dataset.sort===s));refreshJobTreemapViews()}
+function filterJobsForTreemap(extraFilter){
+  if(!game)return [];
+  const searchEl=document.getElementById('searchInput');
+  const search=searchEl?searchEl.value.trim():'';
+  return game.market.filter(j=>{
+    if(applyCategoryPicks.size&&!applyCategoryPicks.has(j.category))return false;
+    if(search&&!j.title.includes(search))return false;
+    if(game.onWelfare&&!canApplyJob(j))return false;
+    if(extraFilter&&!extraFilter(j))return false;
+    return true;
+  });
+}
+function refreshJobTreemapViews(){
+  renderJobs();
+  if(typeof renderDailyPanel==='function'&&game&&game.daily&&game.daily.subMenu==='job'){
+    const sm=game.daily.jobSubMenu;
+    if(sm==='app_jobs'||sm==='headhunter_jobs')renderDailyPanel();
+  }
+}
+function onJobSearchInput(){refreshJobTreemapViews()}
 function getDateStr(week){const d=new Date(START_DATE);d.setDate(d.getDate()+week*7);return d.toLocaleDateString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit'})}
 function getGameWeekDate(week){
   const d=new Date(START_DATE);d.setDate(d.getDate()+week*7);d.setHours(0,0,0,0);return d;
@@ -2790,8 +2825,8 @@ function updateAppSubscriptionLabels(){
     const app=el.dataset.app;
     if(!game){el.textContent='';return}
     const exp=game.appSubscriptions[app];
-    if(exp>game.week)el.innerHTML='<span style="color:var(--green)">已开通至 '+getDateStr(exp)+'</span>';
-    else el.innerHTML='<span style="color:var(--yellow)">未开通·¥'+APP_COST_EACH+'/月</span>';
+    if(exp>game.week)el.innerHTML='<span style="color:var(--green)">已开通至 '+getDateStr(exp)+' · 不自动续费</span>';
+    else el.innerHTML='<span style="color:var(--yellow)">未开通/已到期·¥'+APP_COST_EACH+'/月 · 需手动续费</span>';
   });
 }
 function hasSeniorWorkExperience(){
@@ -2907,6 +2942,12 @@ function confirmReferralApply(){
   updateLongDistanceStatus();
   game.referralOpportunity=null;
   closeReferralModal();
+  const inDailyJob=game.daily&&game.daily.subMenu==='job';
+  if(inDailyJob&&typeof dailySpendJobHours==='function'){
+    if(!dailySpendJobHours(typeof JOB_REFERRAL_H!=='undefined'?JOB_REFERRAL_H:4,'🤝 内推投递 -'+(typeof JOB_REFERRAL_H!=='undefined'?JOB_REFERRAL_H:4)+'h')){renderDailyPanel();updateUI();return}
+    renderInterviewCalendar();renderDailyPanel();updateUI();
+    return;
+  }
   actionDone=true;
   finishWeek();
   renderInterviewCalendar();
@@ -3294,8 +3335,9 @@ function drawRecruitmentRound(jobIdxs,resumeCost,opts){
   const method=opts.forceMethod||getApplyMethod();
   const isAllnight=opts.slot==='allnight';
   let drawSize=CHANNEL_DRAW_SIZE[method]||45;
+  if(opts.drawScale)drawSize=Math.max(1,Math.round(drawSize*opts.drawScale));
   if(opts.drawMult)drawSize=Math.max(1,Math.round(drawSize*opts.drawMult));
-  const apps=resumeCost.apps||getSelectedApps();
+  const apps=opts.apps||resumeCost.apps||getSelectedApps();
   const candidates=[];
   jobIdxs.forEach(ji=>{
     const job=game.market[ji];
@@ -3310,7 +3352,7 @@ function drawRecruitmentRound(jobIdxs,resumeCost,opts){
       candidates.push({ji,job,co,ci});
     });
   });
-  const rng=seededRand(game.week*317+jobIdxs.length);
+  const rng=seededRand(game.week*317+jobIdxs.length+(opts.seedExtra||0));
   const candScore=(c)=>{
     let s=scoreListingForApps(c.job,c.co,'low',apps);
     if(isAllnight)s+=(c.job.pay||0)/70000*ALLNIGHT_JOB_PAY_BIAS;
@@ -3344,6 +3386,11 @@ function drawRecruitmentRound(jobIdxs,resumeCost,opts){
       listings.push({uid:'L'+ji+'_'+co.id+'_'+oi,jobIdx:ji,jobTitle:job.title,category:job.category,offer});
     });
   });
+  if(opts.drawCount!=null&&listings.length>opts.drawCount){
+    const lr=seededRand(game.week*401+(opts.seedExtra||0));
+    shuffleArr(listings,lr);
+    listings.splice(opts.drawCount);
+  }
   return {listings,cats,drawSize:picked.length};
 }
 function formatOfferPay(offer){
@@ -3416,9 +3463,12 @@ function closeApplyModal(){
   document.getElementById('applyModal').classList.add('hidden');
   if(pendingBatch&&pendingBatch.paid&&!pendingBatch.submitted){
     addLog('放弃勾选投递，本期渠道费已消耗','warn');
-    if(pendingBatch.dailySlot&&typeof markDailyJobHunt==='function'){
-      markDailyJobHunt(pendingBatch.dailySlot);
+    if(pendingBatch.dailySlot){
       game.dailyApplyContext=null;
+      if(game.daily){
+        game.daily.jobSubMenu=null;
+        game.daily.dailyPickJobIdxs=[];
+      }
       renderDailyPanel();updateUI();
     }else{actionDone=true;finishWeek();}
   }
@@ -3681,8 +3731,13 @@ function confirmBatchApply(){
   document.getElementById('applyModal').classList.add('hidden');
   const dailySlot=pendingBatch.dailySlot;
   pendingBatch=null;
-  if(dailySlot&&typeof markDailyJobHunt==='function'){
-    markDailyJobHunt(dailySlot);
+  if(dailySlot){
+    if(game.daily){
+      game.daily.jobSubMenu=null;
+      game.daily.dailyPickApp=null;
+      game.daily.dailyPickJobIdxs=[];
+      game.daily.dailyAppListings=null;
+    }
     game.dailyApplyContext=null;
     renderInterviewCalendar();renderDailyPanel();updateUI();
     return;
@@ -7757,16 +7812,9 @@ function renderRefPanel(idx){
 }
 function renderJobs(){
   if(!game)return;
-  const searchEl=document.getElementById('searchInput');
-  const search=searchEl?searchEl.value:'';
   const treemapEl=document.getElementById('jobTreemap');
   if(!treemapEl)return;
-  let jobs=game.market.filter(j=>{
-    if(applyCategoryPicks.size&&!applyCategoryPicks.has(j.category))return false;
-    if(search&&!j.title.includes(search))return false;
-    if(game.onWelfare&&!canApplyJob(j))return false;
-    return true;
-  });
+  let jobs=filterJobsForTreemap();
   const byCat={};
   jobs.forEach(j=>{(byCat[j.category]=byCat[j.category]||[]).push(j)});
   const cats=Object.keys(byCat).sort((a,b)=>{
@@ -7988,6 +8036,7 @@ function updateUI(){
   updateOfferPreview();
 }
 ${DAILY_ACTIVITY_SRC}
+${JOB_HUNT_DAILY_SRC}
 ${AFFAIR_SYSTEM_SRC}
 ${CONTACTS_SYSTEM_SRC}
 ${SPOUSE_FINANCE_SRC}
