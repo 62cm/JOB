@@ -49,15 +49,50 @@ function dailySpendJobHours(h,logMsg){
   if(logMsg)addLog(logMsg,'info');
   return true;
 }
+function listingRoleExtraKey(offer){
+  const r=offer&&offer.roleExtra;
+  if(r==='intern')return 'intern';
+  if(r==='temp')return 'temp';
+  return 'regular';
+}
+function sameListingCompany(aCo,co){
+  if(!aCo||!co)return false;
+  return(aCo.id&&co.id&&aCo.id===co.id)||aCo.name===co.name;
+}
+/** 该投递对应岗位的预计入职周（无入职倒计时则视为投递当周） */
+function listingOnboardingWeek(app){
+  const o=app.offer;
+  if(!o)return app.applyWeek||0;
+  const d=o.startDelayWeeks;
+  if(d==null||d<=0)return app.applyWeek||0;
+  return(app.applyWeek||0)+d;
+}
+function listingCoreMatch(aOffer,itemOffer){
+  if(!aOffer||!itemOffer)return false;
+  return!!aOffer.planned===!!itemOffer.planned
+    &&listingRoleExtraKey(aOffer)===listingRoleExtraKey(itemOffer)
+    &&(aOffer.importance||'low')===(itemOffer.importance||'low');
+}
+/** null=可投；exact=完全相同；onboarding=仅薪资等不同且未到入职时间 */
+function listingApplyBlockReason(item){
+  if(!game||!game.applications||!item||!item.offer)return null;
+  const co=item.offer.company;
+  const pay=item.offer.annualPay;
+  let exact=false,waitOnboard=false;
+  for(let i=0;i<game.applications.length;i++){
+    const a=game.applications[i];
+    if(a.jobIdx!==item.jobIdx)continue;
+    if(!sameListingCompany(a.offer&&a.offer.company,co))continue;
+    if(!listingCoreMatch(a.offer,item.offer))continue;
+    if(a.offer.annualPay===pay){exact=true;break}
+    if(game.week<listingOnboardingWeek(a))waitOnboard=true;
+  }
+  if(exact)return 'exact';
+  if(waitOnboard)return 'onboarding';
+  return null;
+}
 function listingAlreadyApplied(item){
-  if(!game||!game.applications||!item)return false;
-  const co=item.offer&&item.offer.company;
-  return game.applications.some(a=>{
-    if(a.jobIdx!==item.jobIdx)return false;
-    const ac=a.offer&&a.offer.company;
-    if(!ac||!co)return false;
-    return(ac.id&&co.id&&ac.id===co.id)||ac.name===co.name;
-  });
+  return listingApplyBlockReason(item)!=null;
 }
 function dailyHeadhunterOk(){
   return typeof canUseHeadhunter==='function'&&canUseHeadhunter();
@@ -331,12 +366,13 @@ function renderDailyListingToolbar(sort,pickN){
 }
 function renderDailyListingRow(item,checked){
   const o=item.offer;
-  const applied=listingAlreadyApplied(item);
-  if(applied){
+  const block=typeof listingApplyBlockReason==='function'?listingApplyBlockReason(item):null;
+  if(block){
     const imp=o.roleExtra?IMP_LABEL[o.importance]+'·'+ROLE_EXTRA[o.roleExtra]:IMP_LABEL[o.importance];
     const pay=formatOfferPay(o);
     const start=o.planned?'<span style="color:var(--blue)">预定招聘</span> · 入职约'+o.startDelayWeeks+'周后':'上岗约'+o.startDelayWeeks+'周内';
-    return '<div class="company-row picked daily-applied"><span class="fold-meta" style="color:var(--green);flex-shrink:0">已投过</span>'+
+    const blockTag=block==='onboarding'?'入职前':'已投过';
+    return '<div class="company-row picked daily-applied"><span class="fold-meta" style="color:var(--green);flex-shrink:0">'+blockTag+'</span>'+
       '<div style="flex:1"><b>'+o.company.name+'</b> '+fmtCompanyBadge(o.company)+' · <b>'+imp+'</b>'+(o.planned?' <span style="color:var(--blue);font-size:.68rem">预定</span>':'')+'<br>'+
       '招：'+item.jobTitle+' · '+pay+' · '+start+' · '+formatListingInterviewHint(o)+
       (isRemoteCompany(o.company)?' · <span style="color:var(--orange)">'+getCompanyCity(o.company)+'</span>':'')+'<br>'+

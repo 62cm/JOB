@@ -77,6 +77,9 @@ function workplaceStoryChance(where) {
   if (w.includes('咖啡') || w === 'cafe') return WORKPLACE_STORY_CHANCE.cafe;
   if (w.includes('图书馆') || w === 'library') return WORKPLACE_STORY_CHANCE.library;
   if (w.includes('便利店') || w === 'store') return WORKPLACE_STORY_CHANCE.store;
+  if (w.includes('地铁')) return WORKPLACE_STORY_CHANCE.commute * 0.95;
+  if (w.includes('打车')) return WORKPLACE_STORY_CHANCE.commute * 1.08;
+  if (w.includes('驾车')) return WORKPLACE_STORY_CHANCE.commute * 0.85;
   if (w.includes('通勤') || w === 'commute') return WORKPLACE_STORY_CHANCE.commute;
   return WORKPLACE_STORY_CHANCE.default;
 }

@@ -228,11 +228,185 @@ function isCompanionWorkSlot(phase){
   if(weekend)return false;
   return phase==='morning';
 }
+function isWeekendDayIndex(dayIndex){return dayIndex>=5}
+function ensureLongDistancePartnerPresence(phase){
+  if(!game||!game.married||game.divorced||!game.longDistance)return;
+  const d=game.daily;if(!d)return;
+  const ph=phase||(d.phase)||'morning';
+  if(d.partnerPresenceRolled&&d._partnerPresencePhase===ph)return;
+  d._partnerPresencePhase=ph;
+  if(isCompanionWorkSlot(ph)){
+    d.partnerOutForFun=false;
+    d.partnerPresenceRolled=true;
+    return;
+  }
+  if(ph==='morning'&&d.partnerCatchUpSleep){
+    d.partnerOutForFun=false;
+    d.partnerPresenceRolled=true;
+    return;
+  }
+  let outProb=0;
+  if(ph==='evening'||ph==='allnight')outProb=0.34;
+  else if(ph==='morning'&&isWeekendDayIndex(d.dayIndex||0))outProb=0.38;
+  d.partnerOutForFun=outProb>0&&Math.random()<outProb;
+  d.partnerPresenceRolled=true;
+}
+function isPartnerAwakeForPhoneSex(phase){
+  if(!game||!game.married||game.divorced)return false;
+  const ph=phase||(game.daily&&game.daily.phase)||'morning';
+  if(typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return false;
+  if(isCompanionWorkSlot(ph))return false;
+  if(game.longDistance){
+    ensureLongDistancePartnerPresence(ph);
+    if(game.daily&&game.daily.partnerOutForFun)return false;
+    if(ph==='allnight'){
+      const d=game.daily;
+      if(!d)return false;
+      if(d.partnerAllnightStayedOut)return false;
+      if(d.partnerOutForFun)return false;
+      if(typeof isAllnightDevilHours==='function'&&isAllnightDevilHours())return true;
+      if(d.partnerAllnightActive)return true;
+      if(d.partnerForcedAsleep)return false;
+      return false;
+    }
+    return true;
+  }
+  if(typeof isPartnerAllnightSleeping==='function'&&isPartnerAllnightSleeping())return false;
+  if(typeof isSpouseAtHome==='function'&&!isSpouseAtHome(ph))return false;
+  return true;
+}
+function getPhoneSexBlockReason(skipIntimacy){
+  if(!game||game.gameOver)return '游戏已结束';
+  if(!game.married||game.divorced)return '仅已婚可电话性爱';
+  if(!game.longDistance)return '同城请面对面做爱';
+  if(isPlayerImprisoned())return '监禁中无法电话性爱';
+  const ph=game.daily&&game.daily.phase;
+  if(ph!=='morning'&&ph!=='evening'&&ph!=='rest'&&ph!=='allnight')return '当前时段不适合（请选宅家时段）';
+  if(typeof isPlayerAtHomeNow==='function'&&!isPlayerAtHomeNow(ph)){
+    if(game.daily&&game.daily.slotActivity==='out')return '你正在外出，无法电话性爱';
+    if(typeof isPlayerWorkingNow==='function'&&isPlayerWorkingNow())return '你正在上班或加班，无法电话性爱';
+    return '你不在家，无法电话性爱';
+  }
+  if(sexSessionsLeft()<=0)return '本周做爱次数已用完（'+SEX_WEEKLY_LIMIT+'次）';
+  if(!skipIntimacy&&(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0)return '亲密度过低（≤0），对方拒绝';
+  if(typeof getMenstrualMakeLoveBlock==='function'){
+    const menstrualBlock=getMenstrualMakeLoveBlock();
+    if(menstrualBlock)return menstrualBlock.replace(/做爱/g,'电话性爱');
+  }
+  if(typeof isPartnerAwakeForPhoneSex==='function'&&!isPartnerAwakeForPhoneSex(ph)){
+    if(isCompanionWorkSlot(ph))return '伴侣在上班，无法电话性爱';
+    if(typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return '伴侣在家补觉，无法电话性爱';
+    if(ph==='allnight')return '伴侣睡梦中，无法电话性爱';
+    if(game.daily&&game.daily.partnerOutForFun)return '伴侣在外面玩，无法电话性爱';
+    return '伴侣不方便接听，无法电话性爱';
+  }
+  return null;
+}
+function ensurePartnerPresence(phase){
+  if(!game||!game.married||game.divorced||game.longDistance)return;
+  const d=game.daily;if(!d)return;
+  const ph=phase||(d.phase)||'morning';
+  if(d.partnerPresenceRolled&&d._partnerPresencePhase===ph)return;
+  d._partnerPresencePhase=ph;
+  if(isCompanionWorkSlot(ph)){
+    d.partnerOutForFun=false;
+    d.partnerPresenceRolled=true;
+    return;
+  }
+  if(ph==='morning'&&d.partnerCatchUpSleep){
+    d.partnerOutForFun=false;
+    d.partnerPresenceRolled=true;
+    return;
+  }
+  let outProb=0;
+  if(ph==='evening'||ph==='allnight')outProb=0.34;
+  else if(ph==='morning'&&isWeekendDayIndex(d.dayIndex||0))outProb=0.38;
+  d.partnerOutForFun=outProb>0&&Math.random()<outProb;
+  if(ph==='allnight'&&d.partnerOutForFun&&typeof markPartnerAllnightActive==='function')markPartnerAllnightActive();
+  d.partnerPresenceRolled=true;
+}
+function markPartnerAllnightActive(){
+  const d=game&&game.daily;
+  if(d&&d.phase==='allnight'){
+    d.partnerAllnightActive=true;
+    d.partnerForcedAsleep=false;
+  }
+}
+function setPartnerAllnightAsleep(){
+  const d=game&&game.daily;
+  if(!d||d.phase!=='allnight')return;
+  d.partnerForcedAsleep=true;
+  d.partnerAllnightActive=false;
+  d.partnerAllnightStayedOut=false;
+}
+function markPartnerAllnightStayedOut(){
+  const d=game&&game.daily;
+  if(!d||d.phase!=='allnight')return;
+  d.partnerAllnightStayedOut=true;
+  d.partnerForcedAsleep=false;
+  d.partnerAllnightActive=true;
+}
+function reducePartnerNeglect(amount){
+  if(!game||!game.married||game.divorced||game.partnerAffairActive)return;
+  const before=game.partnerNeglectPoints||0;
+  game.partnerNeglectPoints=Math.max(0,before-(amount||0.18));
+}
+function isPartnerAllnightSleeping(){
+  if(!game||!game.married||game.divorced||game.longDistance)return false;
+  const d=game.daily;
+  if(!d||d.phase!=='allnight')return false;
+  if(d.partnerAllnightStayedOut)return false;
+  if(d.partnerAllnightActive)return false;
+  if(typeof isPartnerOutForFun==='function'&&isPartnerOutForFun('allnight'))return false;
+  if(typeof isSpouseAtHome==='function'&&isSpouseAtHome('allnight'))return true;
+  return !!(d.partnerForcedAsleep);
+}
+function isPartnerCatchUpSleeping(phase){
+  if(!game||!game.married||game.divorced||game.longDistance)return false;
+  const ph=phase||(game.daily&&game.daily.phase)||'morning';
+  if(ph!=='morning')return false;
+  return !!(game.daily&&game.daily.partnerCatchUpSleep);
+}
+function isPartnerOutForFun(phase){
+  if(!game||!game.married||game.divorced||game.longDistance)return false;
+  const ph=phase||(game.daily&&game.daily.phase)||'morning';
+  if(ph==='rest')return false;
+  if(isCompanionWorkSlot(ph))return false;
+  ensurePartnerPresence(ph);
+  return !!(game.daily&&game.daily.partnerOutForFun);
+}
+function addCompanionStress(delta){
+  if(!game||!game.companion||!delta)return;
+  const c=game.companion;
+  c.familyStress=Math.max(0,Math.min(200,(c.familyStress||0)+delta));
+}
+function bumpPartnerAffairRisk(amount){
+  if(!game||!game.married||game.divorced||game.partnerAffairActive)return;
+  game.partnerNeglectPoints=(game.partnerNeglectPoints||0)+(amount||0.12);
+  if(game.partnerNeglectPoints>=0.55&&Math.random()<game.partnerNeglectPoints){
+    game.partnerAffairActive=true;
+    game.partnerNeglectPoints=0;
+    addLog('💋 伴侣因被冷落而出轨','stress');
+  }
+}
 function isSpouseAtHome(phase){
   if(!game||!game.married||game.divorced||game.longDistance)return false;
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
-  if(ph==='rest'||ph==='allnight')return true;
-  return !isCompanionWorkSlot(ph);
+  if(ph==='rest')return true;
+  if(isCompanionWorkSlot(ph))return false;
+  if(ph==='evening'||ph==='allnight'||(ph==='morning'&&isWeekendDayIndex((game.daily&&game.daily.dayIndex)||0))){
+    ensurePartnerPresence(ph);
+    return !game.daily.partnerOutForFun;
+  }
+  return true;
+}
+function canEatCoupleSnack(phase){
+  if(!game||!game.married||game.divorced)return {ok:false,reason:'仅已婚可点双人餐'};
+  const ph=phase||(game.daily&&game.daily.phase)||'morning';
+  if(typeof isSpouseAtHome==='function'&&!isSpouseAtHome(ph))return {ok:false,reason:'伴侣不在家，无法双人餐'};
+  if(ph==='allnight'&&isPartnerAllnightSleeping())return {ok:false,reason:'伴侣睡梦中，无法双人餐'};
+  if(isPartnerCatchUpSleeping(ph))return {ok:false,reason:'伴侣在家补觉，无法双人餐'};
+  return {ok:true,reason:''};
 }
 function getSpouseLocationLabel(phase){
   if(!game||!game.married||game.divorced)return '';
@@ -242,9 +416,57 @@ function getSpouseLocationLabel(phase){
     const c=game.companion,co=c&&c.employment&&c.employment.company;
     return '上班'+(co&&co.name?'·'+co.name:'');
   }
-  if(ph==='rest'||ph==='allnight')return '在家';
-  if(typeof isPartnerOutAndAbout==='function'&&isPartnerOutAndAbout(ph))return '外出';
+  if(isPartnerOutForFun(ph)){
+    if(ph==='morning')return '在外面玩';
+    if(ph==='allnight')return '外面玩·通宵';
+    return '在外面玩';
+  }
+  if(ph==='morning'&&typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return '在家补觉';
+  if(ph==='allnight'){
+    const ad=game.daily;
+    if(ad&&ad.partnerAllnightStayedOut)return '外面玩·通宵';
+    if(typeof isPartnerAllnightSleeping==='function'&&isPartnerAllnightSleeping())return '睡梦中';
+    if(ad&&ad.partnerAllnightActive)return '在家·醒着';
+    if(isSpouseAtHome(ph))return '睡梦中';
+    return '在外面玩';
+  }
+  if(ph==='rest')return '在家';
   return '在家';
+}
+function playerAbsentSexReason(ph){
+  if(typeof isPlayerAwayFromPartner==='function'&&isPlayerAwayFromPartner()){
+    if(game.employed&&game.playerCity&&typeof PLAYER_HOME_CITY!=='undefined'&&game.playerCity!==PLAYER_HOME_CITY)
+      return '你在外地工作，无法同房';
+    return '异地分居，无法同房';
+  }
+  if(typeof isPlayerAtHomeNow==='function'&&!isPlayerAtHomeNow(ph)){
+    const d=game.daily;
+    if(d&&d.slotActivity==='out')return '你正在外出，无法同房';
+    if(typeof isPlayerWorkingNow==='function'&&isPlayerWorkingNow())return '你正在上班或加班，无法同房';
+    return '你不在家，无法同房';
+  }
+  return null;
+}
+function partnerAbsentSexReason(ph){
+  if(typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))
+    return '伴侣在家补觉，无法同房';
+  if(ph==='allnight'&&typeof isPartnerAllnightSleeping==='function'&&isPartnerAllnightSleeping())
+    return '伴侣睡梦中，无法同房';
+  if(!isSpouseAtHome(ph)){
+    if(isCompanionWorkSlot(ph)){
+      if(ph==='morning')return '白天伴侣不在家（上班中）';
+      if(ph==='evening')return '晚上伴侣在上班';
+      return '伴侣在上班，无法同房';
+    }
+    if(typeof isPartnerOutForFun==='function'&&isPartnerOutForFun(ph)){
+      if(ph==='morning')return '白天伴侣在外面玩';
+      if(ph==='evening')return '晚上伴侣在外面玩';
+      return '伴侣在外面玩，无法同房';
+    }
+    if(ph==='evening')return '晚上伴侣尚未回家';
+    return '伴侣不在家，无法同房';
+  }
+  return null;
 }
 function getMakeLoveBlockReason(skipIntimacy){
   if(!game||game.gameOver)return '游戏已结束';
@@ -252,9 +474,11 @@ function getMakeLoveBlockReason(skipIntimacy){
   if(game.longDistance)return '异地分居，无法同房';
   if(isPlayerImprisoned())return '监禁中无法同房';
   const ph=game.daily&&game.daily.phase;
-  if(ph==='morning'&&!isSpouseAtHome('morning'))return '白天伴侣不在家（上班中）';
-  if(ph==='evening'&&!isSpouseAtHome('evening'))return '晚上伴侣尚未回家';
   if(ph!=='morning'&&ph!=='evening'&&ph!=='rest'&&ph!=='allnight')return '当前时段不适合（请选宅家时段）';
+  const playerBlock=playerAbsentSexReason(ph);
+  if(playerBlock)return playerBlock;
+  const partnerBlock=partnerAbsentSexReason(ph);
+  if(partnerBlock)return partnerBlock;
   if(sexSessionsLeft()<=0)return '本周做爱次数已用完（'+SEX_WEEKLY_LIMIT+'次）';
   if(!skipIntimacy&&(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0)return '亲密度过低（≤0），对方拒绝';
   if(typeof getMenstrualMakeLoveBlock==='function'){
@@ -412,6 +636,11 @@ function cancelAffairEncounter(){
   pendingAffairContactId=null;
   closeConsumeModal();
   addLog('你放弃了这次艳遇','info');
+  if(game&&game._overtimeSocialEndAction){
+    const act=game._overtimeSocialEndAction;
+    game._overtimeSocialEndAction=null;
+    if(typeof applyOvertimeSocialEnd==='function')applyOvertimeSocialEnd(act);
+  }
 }
 function pickAffairLocation(contactId,loc){
   const c=findContact(contactId);
@@ -486,9 +715,17 @@ function resolveAffairLocation(c,loc){
   if(typeof tryContractStdFromStranger==='function')tryContractStdFromStranger(c.name);
   const prof=typeof contactProfileLabel==='function'?contactProfileLabel(c):c.jobTitle;
   addLog('💋 与 '+c.name+'（'+prof+'）幽会（'+affairLocLabel(loc)+'）','info');
-  if(game.daily){
+  if(game._overtimeSocialEndAction){
+    const act=game._overtimeSocialEndAction;
+    game._overtimeSocialEndAction=null;
+    if(typeof applyOvertimeSocialEnd==='function')applyOvertimeSocialEnd(act);
+  }else if(game.daily){
     if(game.daily.phase==='allnight')renderDailyPanel();
-    else if(game.daily.phase==='morning'||game.daily.phase==='evening')advanceDailyPhase('rest');
+    else if(game.daily.phase==='morning')dailyAdvanceAfterSlotAction();
+    else if(game.daily.phase==='evening'){
+      game.daily.slotHoursUsed=typeof SLOT_HOURS_TOTAL!=='undefined'?SLOT_HOURS_TOTAL:8;
+      setTimeout(function(){if(typeof showEveningEndChoiceModal==='function')showEveningEndChoiceModal()},60);
+    }
   }
   renderSpendingPanel();renderDailyPanel();updateUI();
 }

@@ -112,6 +112,7 @@ function isPlayerAwayFromPartner(){
   return false;
 }
 function isPartnerOutAndAbout(phase){
+  if(typeof isPartnerOutForFun==='function')return isPartnerOutForFun(phase);
   if(!game||!game.married||game.divorced)return false;
   if(game.longDistance)return false;
   if(isSpouseAtHome(phase))return false;
@@ -233,6 +234,10 @@ function canCallSpouse(){
   if(!game||game.divorced||!game.married)return {ok:false,reason:'无伴侣'};
   if(typeof isPlayerWorkingNow==='function'&&isPlayerWorkingNow())return {ok:false,reason:'上班中无法给伴侣打电话'};
   const ph=game.daily&&game.daily.phase||'morning';
+  if(typeof isPartnerOutForFun==='function'&&isPartnerOutForFun(ph)){
+    if(game.daily&&game.daily.playerCalledPartnerHome)return {ok:false,reason:'本时段已叫过伴侣回家'};
+    return {ok:true};
+  }
   if(typeof isPartnerOutAndAbout==='function'&&isPartnerOutAndAbout(ph))return {ok:true};
   if(typeof isSpouseAtHome==='function'&&isSpouseAtHome(ph)&&typeof isPlayerAtHomeNow==='function'&&isPlayerAtHomeNow(ph))
     return {ok:false,reason:'都在家，打电话没效果'};
@@ -298,8 +303,51 @@ function callParents(c){
   }
   showConsumeModal({icon:'👨‍👩‍👦',title:'联系爸妈',html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
 }
+function exChildSupportScenario(){
+  if(!game||!game.divorced)return null;
+  const cr=typeof ensureChildRecord==='function'?ensureChildRecord():null;
+  if(cr&&cr.monthsLeft>0&&cr.custody==='partner'&&cr.bioFather!=='other'){
+    if(cr.paternityTested&&!cr.paternityIsPlayer)return null;
+    return {kind:'child_support',cr};
+  }
+  if(!game.hasChildren&&!game.pregnant&&!game.exOtherPregnancyAnnounced&&!game.exPregnancyDisputed){
+    return {kind:'ex_pregnancy_claim'};
+  }
+  return null;
+}
+function showExChildSupportModal(c,scenario){
+  const role=contactKindLabel(c);
+  const cr=scenario.cr;
+  let html='',buttons=[];
+  if(scenario.kind==='child_support'){
+    if(!cr.paternityTested){
+      html='<b>'+c.name+'</b> 带孩子，要求你每月支付抚养费 <b>¥'+(typeof CHILD_LIVING_COST!=='undefined'?CHILD_LIVING_COST:20000).toLocaleString()+'</b>。<br><br>你可以先做亲子鉴定（¥'+(typeof PATERNITY_TEST_COST!=='undefined'?PATERNITY_TEST_COST:5000).toLocaleString()+'）确认是否亲生。';
+      buttons=[
+        {text:'亲子鉴定 ¥'+(typeof PATERNITY_TEST_COST!=='undefined'?PATERNITY_TEST_COST:5000).toLocaleString(),primary:true,fn:'closeConsumeModal();runPaternityTest(false)'},
+        {text:'先挂断',fn:'closeConsumeModal()'}
+      ];
+    }else if(cr.paternityIsPlayer){
+      html='亲子鉴定已确认是你的孩子，需按月支付抚养费 <b>¥'+(typeof CHILD_LIVING_COST!=='undefined'?CHILD_LIVING_COST:20000).toLocaleString()+'</b>。';
+      buttons=[{text:'知道了',primary:true,fn:'closeConsumeModal()'}];
+    }
+  }else{
+    game.exOtherPregnancyAnnounced=true;
+    html='<b>'+c.name+'</b> 打来电话：「我怀孕了。」对方暗示可能是你的，要求你负责。<br><br>离婚后怀的别人的孩子不应由你承担——建议先做亲子鉴定。';
+    buttons=[
+      {text:'亲子鉴定 ¥'+(typeof PATERNITY_TEST_COST!=='undefined'?PATERNITY_TEST_COST:5000).toLocaleString(),primary:true,fn:'closeConsumeModal();runPaternityTest(true)'},
+      {text:'拒绝，挂断',fn:'closeConsumeModal();addLog("💔 拒绝不合理抚养要求","info");game.exPregnancyDisputed=true;updateUI()'}
+    ];
+  }
+  addLog('📞 联系'+role+' · 抚养/生育纠纷','warn');
+  showConsumeModal({icon:'🧬',title:'联系'+role,html,buttons});
+}
 function callExSpouse(c){
   const role=contactKindLabel(c);
+  const childCase=exChildSupportScenario();
+  if(childCase&&(childCase.kind==='child_support'||Math.random()<0.4)){
+    showExChildSupportModal(c,childCase);
+    return;
+  }
   const roll=Math.random();
   let html='';
   if(roll<0.35){
@@ -318,6 +366,94 @@ function callExSpouse(c){
   addLog('📞 联系'+role+' '+c.name,'info');
   showConsumeModal({icon:'💔',title:'联系'+role,html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
 }
+function rollPartnerComesHomeDecision(){
+  const intim=game.spouseIntimacy!=null?game.spouseIntimacy:80;
+  const ps=game.companion?game.companion.familyStress||0:0;
+  let r=Math.random();
+  if(intim>=75)r+=0.18;
+  else if(intim<40)r-=0.22;
+  if(ps>45)r-=0.12;
+  if(r<0.28)return 'refuse';
+  if(r<0.62)return 'reluctant';
+  return 'willing';
+}
+function callSpouseAskPartnerHome(c){
+  if(!game||!game.married||game.divorced)return;
+  const d=game.daily;
+  const ph=d&&d.phase||'morning';
+  if(typeof isPartnerOutForFun==='function'&&!isPartnerOutForFun(ph)){
+    callSpouse(c,false);return;
+  }
+  if(d&&d.playerCalledPartnerHome){addLog('本时段已叫过伴侣回家','fail');return}
+  d.playerCalledPartnerHome=true;
+  const pn=c.name||game.partnerDisplayName||'伴侣';
+  const decision=rollPartnerComesHomeDecision();
+  const allnight=ph==='allnight';
+  const devil=allnight&&typeof isAllnightDevilHours==='function'&&isAllnightDevilHours();
+  let html='',intimDelta=0,partnerStress=0;
+  if(decision==='willing'){
+    d.partnerOutForFun=false;
+    intimDelta=2;partnerStress=-2;
+    if(allnight){
+      if(devil){
+        if(typeof markPartnerAllnightActive==='function')markPartnerAllnightActive();
+        html='<b>'+pn+'</b> 赶回来陪你：「行，今晚不睡了！」<br>亲密度 +2 · 可双人餐/做爱 · 通宵末需选作息';
+        addLog('📞 通宵后段叫回家 · '+pn+' 醒着回来','success');
+      }else{
+        if(typeof markPartnerAllnightActive==='function')markPartnerAllnightActive();
+        html='<b>'+pn+'</b> 回来了：「今晚陪你！」<br>亲密度 +2 · 伴侣压力 -2 · 可双人餐/做爱';
+        addLog('📞 通宵金色时段叫回家 · '+pn+' 醒着回来','success');
+      }
+      if(typeof reducePartnerNeglect==='function')reducePartnerNeglect(0.22);
+    }else{
+      html='<b>'+pn+'</b> 痛快答应：「好呀，我这就回来！」<br>亲密度 +2 · 伴侣压力 -2';
+      addLog('📞 叫伴侣回家 · 对方欣然答应','success');
+    }
+  }else if(decision==='reluctant'){
+    d.partnerOutForFun=false;
+    intimDelta=0;partnerStress=2;
+    if(allnight){
+      if(devil){
+        if(typeof markPartnerAllnightActive==='function')markPartnerAllnightActive();
+        html='<b>'+pn+'</b> 嘟囔着回来：「好吧…陪你。」<br>亲密度不变 · 伴侣压力 +2 · 可双人餐/做爱';
+        addLog('📞 通宵后段叫回家 · '+pn+' 不情愿地回来','info');
+      }else{
+        if(typeof markPartnerAllnightActive==='function')markPartnerAllnightActive();
+        html='<b>'+pn+'</b> 嘟囔着回来：「好吧…陪你。」<br>亲密度不变 · 伴侣压力 +2 · 可双人餐/做爱';
+        addLog('📞 通宵金色时段叫回家 · '+pn+' 醒着回来','info');
+      }
+      if(typeof reducePartnerNeglect==='function')reducePartnerNeglect(0.18);
+    }else{
+      html='<b>'+pn+'</b> 嘟囔着回来了：「好吧…下次早点说。」<br>亲密度不变 · 伴侣压力 +2';
+      addLog('📞 叫伴侣回家 · 对方不情愿地回来','info');
+    }
+  }else{
+    intimDelta=-2;partnerStress=-1;
+    if(allnight){
+      if(typeof markPartnerAllnightStayedOut==='function')markPartnerAllnightStayedOut();
+      html='<b>'+pn+'</b> 没接电话，继续在外面玩通宵。<br>亲密度 -2 · 伴侣压力 -1 · <span class="fold-meta">通宵结束须各自选作息</span>';
+      addLog('📞 通宵叫回家 · '+pn+' 拒接，外面过夜','warn');
+      if(typeof bumpPartnerAffairRisk==='function')bumpPartnerAffairRisk(0.12);
+    }else{
+      html='<b>'+pn+'</b> 拒绝：「再玩一会嘛！」没有回来。<br>亲密度 -2 · 伴侣压力 -1';
+      addLog('📞 叫伴侣回家 · 对方拒绝','warn');
+      if(typeof bumpPartnerAffairRisk==='function')bumpPartnerAffairRisk(0.1);
+    }
+  }
+  if(intimDelta&&typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(intimDelta);
+  if(partnerStress&&typeof addCompanionStress==='function')addCompanionStress(partnerStress);
+  showConsumeModal({icon:'📞',title:'叫伴侣回家',html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal();renderDailyPanel();updateUI()'}]});
+}
+function callSpouseAskPartnerHomeFromDaily(){
+  if(typeof hasUsablePhone==='function'&&!hasUsablePhone()){addLog('暂无可用手机','fail');return}
+  const sid=typeof CORE_CONTACT_IDS!=='undefined'?CORE_CONTACT_IDS.spouse:'core_spouse';
+  const c=game.contacts&&game.contacts.find(x=>x.id===sid||x.kind==='spouse');
+  if(!c){addLog('找不到伴侣联系人','fail');return}
+  const chk=canCallSpouse();
+  if(!chk.ok){addLog(chk.reason,'fail');return}
+  if(typeof markContactCalled==='function')markContactCalled(c.id);
+  callSpouseAskPartnerHome(c);
+}
 function callSpouse(c,fromOvertime){
   if(game.divorced||!game.married){addLog('已离异','fail');return}
   if(!fromOvertime){
@@ -325,8 +461,30 @@ function callSpouse(c,fromOvertime){
     if(!chk.ok){addLog(chk.reason,'fail');return}
   }
   const ph=game.daily&&game.daily.phase||'morning';
+  if(!fromOvertime&&typeof isPartnerOutForFun==='function'&&isPartnerOutForFun(ph)){
+    callSpouseAskPartnerHome(c);
+    return;
+  }
   let delta=0,note='';
-  if(isPartnerOutAndAbout(ph)){
+  if(fromOvertime){
+    if(typeof isPartnerOutForFun==='function'&&isPartnerOutForFun(ph)){
+      delta=Math.random()<0.55?1:-1;
+      note=delta>0?'你在公司加班，对方在外面玩，电话里笑得很开心':'对方在外面，匆匆应付了几句就挂了';
+    }else if(typeof isPartnerAllnightSleeping==='function'&&isPartnerAllnightSleeping(ph)){
+      delta=0;note='对方已经睡了，没接电话';
+    }else if(isSpouseAtHome(ph)){
+      if(Math.random()<0.55){delta=2;note='加班到很晚，伴侣在家等你，电话里很暖心'}
+      else{delta=1;note='伴侣在家守着，语气略带埋怨：「又这么晚？」'}
+    }else if(typeof isCompanionWorkSlot==='function'&&isCompanionWorkSlot(ph)){
+      delta=-1;note='伴侣也在忙，只回了条微信说晚点再说';
+    }else if(typeof isPartnerOutAndAbout==='function'&&isPartnerOutAndAbout(ph)){
+      delta=Math.random()<0.45?1:-1;
+      note=delta>0?'对方在外面，听说你还在加班，语气软了下来':'对方在外面，背景很吵，没聊几句';
+    }else{
+      delta=Math.random()<0.4?1:0;
+      note=delta?'通了电话，互报平安':'电话那头吵吵嚷嚷，没聊出什么';
+    }
+  }else if(isPartnerOutAndAbout(ph)){
     delta=Math.random()<0.5?1:-1;
     note=delta>0?'伴侣在外面，聊得开心':'伴侣在外面，语气敷衍';
   }else if(isPlayerAwayFromPartner()&&isSpouseAtHome(ph)){
@@ -373,7 +531,25 @@ function confirmBffOuting(contactId,placeKey){
 function callBff(c){
   showBffOutingPicker(c.id);
 }
+function isNewAcquaintance(c){
+  if(!c||c.kind!=='acquaintance')return false;
+  const talks=c.talkCount||0;
+  const met=(c.metWeek||0)>=game.week-1;
+  return met&&talks<2;
+}
 function callAcquaintance(c){
+  c.talkCount=(c.talkCount||0)+1;
+  if(isNewAcquaintance(c)){
+    const prof=typeof contactProfileLabel==='function'?contactProfileLabel(c):(c.jobTitle||'');
+    addLog('📞 和 '+c.name+' 初次深聊 · 交换联系方式','info');
+    showConsumeModal({
+      icon:'👋',title:'认识一下',
+      html:'和 <b>'+c.name+'</b> 简单聊了几句，互相加了微信。<br>'+(prof?'<span class="fold-meta">'+prof+'</span><br>':'')+
+        '<span class="fold-meta">刚认识，还不会约你出去玩或谈钱 · 多联系几次才会熟</span>',
+      buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]
+    });
+    return;
+  }
   if(Math.random()<0.28){
     submitContactReferral(c);
     return;
@@ -486,7 +662,7 @@ function callIntimateContact(c){
   else addLog('📞 '+c.name+' 同意见面','info');
 }
 function slotOrdinal(week,day,phase){
-  const phOrder={morning:0,evening:1,rest:2,allnight:3};
+  const phOrder={morning:0,evening:1,allnight:2,rest:1};
   return week*28+day*4+(phOrder[phase]!=null?phOrder[phase]:0);
 }
 function checkBffOutingMiss(){
@@ -515,6 +691,7 @@ function tryCompleteBffOuting(placeKey){
 function tagMeetContact(person){
   if(!person)return person;
   person.kind='acquaintance';
+  if(person.talkCount==null)person.talkCount=0;
   if(person.gender==null)person.gender=Math.random()<0.5?'male':'female';
   return person;
 }
@@ -530,7 +707,7 @@ function renderContactsBlock(){
   if(!n)return '';
   const noPhone=typeof hasUsablePhone==='function'&&!hasUsablePhone();
   return '<div class="daily-contacts"><b>通讯录</b>（'+n+'人） '+
-    '<button class="btn" style="font-size:.7rem;padding:2px 8px" '+(noPhone?'disabled':'')+' onclick="openContactsModal()">打开</button>'+
+    '<button class="btn btn-allnight-plain" style="font-size:.7rem;padding:2px 8px" '+(noPhone?'disabled':'')+' onclick="openContactsModal()">打开</button>'+
     (noPhone?'<span class="fold-meta" style="color:var(--red)"> · 无可用手机</span>':'')+'</div>';
 }
 function migrateContactsSystem(){
@@ -548,6 +725,7 @@ function migrateContactsSystem(){
     if(c.id===CORE_CONTACT_IDS.bff||c.kind==='bff')return;
     if((c.affairCount||0)>0||c.affairStatus==='affair'||c.affairStatus==='fwb')tagAffairContactGender(c);
     else if(!c.kind)tagMeetContact(c);
+    if(c.talkCount==null)c.talkCount=0;
   });
   initCoreContacts();
   if(typeof syncParentsContact==='function')syncParentsContact();
