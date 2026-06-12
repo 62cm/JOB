@@ -350,12 +350,14 @@ function createAffairContact(where,existing){
   const job=jobs[Math.floor(Math.random()*jobs.length)];
   const co=pickCompany(job.idx,job.heatPct>=108?'high':job.heatPct>=102?'mid':'low');
   const income=Math.round(job.pay*(0.7+Math.random()*0.6));
-  const names=['小陈','阿杰','Linda','老王','小周','阿明','菲菲','大刘','小雨','阿豪'];
   if(!game.contacts)game.contacts=[];
   const id='ct_'+game.week+'_'+game.contacts.length+'_'+Math.floor(Math.random()*9999);
-  const person={id,name:names[Math.floor(Math.random()*names.length)],jobTitle:job.title,category:job.category,
-    company:co?co.name:'未知公司',income,metWeek:game.week,metWhere:where||'艳遇',
-    kind:'affair',gender:oppositeAffairGender(),age:22+Math.floor(Math.random()*18)};
+  const gender=oppositeAffairGender();
+  const displayName=typeof pickStrangerDisplayName==='function'?pickStrangerDisplayName(gender):'路人';
+  const person={id,name:displayName,jobTitle:job.title,jobSlug:job.slug,category:job.category,
+    company:co?co.name:'未知公司',companyTier:co?co.tier:'mid',companyScale:co?co.scale:'medium',
+    income,metWeek:game.week,metWhere:where||'艳遇',
+    kind:'affair',gender,age:22+Math.floor(Math.random()*18)};
   ensureContactAffairFields(person);
   if(typeof tagAffairContactGender==='function')tagAffairContactGender(person);
   game.contacts.push(person);

@@ -1,16 +1,27 @@
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
+try {
+  execSync('node gen-workplace-stories.js', { cwd: __dirname, stdio: 'inherit' });
+} catch (e) {
+  console.error('gen-workplace-stories failed:', e.message);
+  process.exit(1);
+}
 const data = JSON.parse(fs.readFileSync('data.json', 'utf8'));
 const REAL_CO = require('./real-companies.js');
 const DAILY_ACTIVITY_SRC = fs.readFileSync(path.join(__dirname, 'daily-activity.js'), 'utf8');
 const JOB_HUNT_DAILY_SRC = fs.readFileSync(path.join(__dirname, 'job-hunt-daily.js'), 'utf8');
 const AUTO_LIFE_SRC = fs.readFileSync(path.join(__dirname, 'auto-life.js'), 'utf8');
 const AFFAIR_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'affair-system.js'), 'utf8');
+const NAMES_SRC = fs.readFileSync(path.join(__dirname, 'names.js'), 'utf8');
+const WORKPLACE_STORIES_DATA_SRC = fs.readFileSync(path.join(__dirname, 'workplace-stories-data.js'), 'utf8');
+const WORKPLACE_STORIES_POOLS_SRC = fs.readFileSync(path.join(__dirname, 'workplace-stories-pools-inline.js'), 'utf8');
+const WORKPLACE_STORIES_SRC = fs.readFileSync(path.join(__dirname, 'workplace-stories.js'), 'utf8');
 const CONTACTS_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'contacts-system.js'), 'utf8');
 const SPOUSE_FINANCE_SRC = fs.readFileSync(path.join(__dirname, 'spouse-finance.js'), 'utf8');
 const FERTILITY_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'fertility-system.js'), 'utf8');
 const MENSTRUAL_CYCLE_SRC = fs.readFileSync(path.join(__dirname, 'menstrual-cycle.js'), 'utf8');
-const GAME_BUILD_ID = '2026.06.09-stress-snack-fix';
+const GAME_BUILD_ID = '2026.06.09-meet-story-modal';
 
 const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -226,6 +237,7 @@ const html = `<!DOCTYPE html>
   .fin-cats{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;margin-top:6px}
   .fin-col-hdr{font-size:.6rem;color:var(--muted);margin-bottom:2px}
   .fin-cat{display:flex;align-items:center;gap:3px;font-size:.64rem;color:var(--muted)}
+  .fin-cat-mand{color:var(--text)}
   .fin-cat b{color:var(--text);font-weight:500;margin-left:auto}
   .fin-net{font-size:.7rem;font-weight:600;margin-top:5px;padding-top:4px;border-top:1px dashed var(--border)}
   .fin-net.pos{color:var(--green)}
@@ -593,12 +605,12 @@ const html = `<!DOCTYPE html>
   <div class="modal" id="endModal"><h2 id="endTitle">人生终局</h2><p id="endSummary"></p><div class="final-stats" id="finalStats"></div>
   <button class="btn btn-primary" onclick="replayGame()">再来一局</button></div>
 </div>
-<div id="statusChangeOverlay" class="overlay hidden">
+<div id="statusChangeOverlay" class="overlay hidden" onclick="if(event.target===this)closeStatusModal()">
   <div class="modal status-modal">
     <div class="status-icon" id="statusChangeIcon">📌</div>
     <h2 id="statusChangeTitle">人生状态变化</h2>
     <p id="statusChangeMsg"></p>
-    <button class="btn btn-primary" onclick="closeStatusModal()" style="margin-top:18px;min-width:140px">继续生活</button>
+    <button type="button" class="btn btn-primary" id="statusChangeBtn" onclick="closeStatusModal()" style="margin-top:18px;min-width:140px">继续生活</button>
   </div>
 </div>
 <div id="autoLifeOverlay" class="overlay hidden">
@@ -1296,6 +1308,7 @@ const CASINO_SETTLE_AUTO_MS = 3000;
 let marketTimerId = null;
 let statusModalQueue = [];
 let statusModalOpen = false;
+let statusModalCurrentOnClose = null;
 const DICE_SUM_WAYS = {3:1,4:3,5:6,6:10,7:15,8:21,9:25,10:27,11:27,12:25,13:21,14:15,15:10,16:6,17:3,18:1};
 
 let game=null,selectedIdx=-1,selectedJobIdxs=new Set(),applyCategoryPicks=new Set(),currentSort='heat',currentCategory='全部',actionDone=false,currentTab='daily',applyModalStep=0,pendingBatch=null,applyListingSort='default';
@@ -2740,6 +2753,7 @@ function settleParentsInheritance(silent){
     addLog('📜 啃老十年结束：父母留下债务 ¥'+Math.abs(amount).toLocaleString()+'（已从账户扣除）','fail');
     markLifeStressEvent('inheritanceDebt','父母债务 ');
   }else addLog('📜 啃老十年结束：父母未留下财产','info');
+  if(typeof syncParentsContact==='function')syncParentsContact();
 }
 function tickWeeklyConsumption(){
   const c=ensureConsumption();
@@ -5089,28 +5103,36 @@ function initShownLifeFlagsFromState(){
   LIFE_STATUS_MODALS.forEach(f=>{if(f.test(game))game.shownLifeFlags[f.key]=true});
   game.spongeModalActive=!!game.showSpongeInsight;
 }
-function queueStatusModal(title,msg,icon){
-  statusModalQueue.push({title,msg,icon:icon||'📌'});
+function queueStatusModal(title,msg,icon,opts){
+  if(typeof icon==='object'&&icon&&!opts){opts=icon;icon=undefined}
+  opts=opts||{};
+  statusModalQueue.push({title,msg,icon:icon||opts.icon||'📌',btn:opts.btn||'继续生活',onClose:opts.onClose});
   showNextStatusModal();
 }
 function showNextStatusModal(){
   const el=document.getElementById('statusChangeOverlay');
   if(!el||statusModalOpen)return;
-  if(!statusModalQueue.length){el.classList.add('hidden');return}
+  if(!statusModalQueue.length){el.classList.add('hidden');statusModalCurrentOnClose=null;return}
   const m=statusModalQueue.shift();
   const ic=document.getElementById('statusChangeIcon');
   const ti=document.getElementById('statusChangeTitle');
   const ms=document.getElementById('statusChangeMsg');
+  const btn=document.getElementById('statusChangeBtn');
   if(ic)ic.textContent=m.icon;
   if(ti)ti.textContent=m.title;
   if(ms)ms.textContent=m.msg;
+  if(btn)btn.textContent=m.btn||'继续生活';
+  statusModalCurrentOnClose=m.onClose||null;
   el.classList.remove('hidden');
   statusModalOpen=true;
 }
 function closeStatusModal(){
   const el=document.getElementById('statusChangeOverlay');
+  const cb=statusModalCurrentOnClose;
+  statusModalCurrentOnClose=null;
   if(el)el.classList.add('hidden');
   statusModalOpen=false;
+  if(typeof cb==='function'){try{cb()}catch(e){console.error('statusModal onClose',e)}}
   if(statusModalQueue.length)setTimeout(showNextStatusModal,80);
 }
 function checkLifeStatusModals(){
@@ -5271,13 +5293,19 @@ function ledgerAdd(type,cat,icon,label,amount,mandatory){
 }
 function ledgerAddIncome(cat,icon,label,amt){ledgerAdd('income',cat,icon,label,amt,false)}
 function ledgerAddExpense(cat,icon,label,amt,mandatory){ledgerAdd('expense',cat,icon,label,amt,mandatory)}
+function ledgerHousingLabel(exp){
+  if(!exp)return '住房';
+  if(exp.isRent)return '房租';
+  if((exp.mortgage||0)>0||((exp.housing||0)>0&&!exp.mortgagePaidOff))return '房贷';
+  return '住房';
+}
 function ledgerRecordMandatoryExpense(exp,amount){
   if(!amount||amount<=0)return;
   const need=exp.total||amount;
-  const mort=need>0?Math.round((exp.mortgage||0)*amount/need):0;
-  const live=amount-mort;
-  if(mort>0)ledgerAddExpense('housing','🏠','房贷',mort,true);
-  if(live>0)ledgerAddExpense('living','🍜',(exp.label||'生活费').replace(/ ·.*/,''),live,true);
+  const housingPart=need>0?Math.round((exp.housing||0)*amount/need):0;
+  const live=amount-housingPart;
+  if(housingPart>0)ledgerAddExpense('housing','🏠',ledgerHousingLabel(exp),housingPart,true);
+  if(live>0)ledgerAddExpense('living','🍜','生活开销',live,true);
 }
 function ledgerRecordJobHunt(amt,label){
   if(amt>0)ledgerAddExpense('jobhunt','📋',label||'求职支出',amt,false);
@@ -5346,6 +5374,26 @@ function renderFinanceLedgerCats(bucket,type){
   if(!items.length)return'<div style="font-size:.62rem;color:var(--muted)">无</div>';
   return items.map(x=>'<div class="fin-cat"><span>'+x.icon+'</span><span>'+x.label+'</span><b>'+fmtLedgerAmt(x.amount)+'</b></div>').join('');
 }
+function renderFinanceLedgerExpenseCols(expense){
+  const exp=expense||{};
+  const housing=exp.housing,living=exp.living;
+  const mand=[];
+  if(housing&&housing.amount>0)mand.push(housing);
+  if(living&&living.amount>0)mand.push(living);
+  const other=Object.entries(exp).filter(([k,x])=>k!=='housing'&&k!=='living'&&x&&x.amount>0)
+    .map(([,x])=>x).sort((a,b)=>b.amount-a.amount);
+  let html='';
+  if(mand.length){
+    html+='<div><div class="fin-col-hdr">固定月支出</div>'+
+      mand.map(x=>'<div class="fin-cat fin-cat-mand"><span>'+x.icon+'</span><span>'+x.label+'</span><b>'+fmtLedgerAmt(x.amount)+'</b></div>').join('')+
+      '</div>';
+  }
+  html+='<div><div class="fin-col-hdr">其他支出</div>'+
+    (other.length?other.map(x=>'<div class="fin-cat"><span>'+x.icon+'</span><span>'+x.label+'</span><b>'+fmtLedgerAmt(x.amount)+'</b></div>').join(''):
+      '<div style="font-size:.62rem;color:var(--muted)">无</div>')+
+    '</div>';
+  return html;
+}
 function renderFinanceLedger(){
   const el=document.getElementById('financeLedgerPanel');
   if(!el||!game)return;
@@ -5363,14 +5411,14 @@ function renderFinanceLedger(){
       body+='<div class="fin-stmt"><div class="fin-stmt-hdr"><span>'+ledgerPeriodLabel(game.week)+'</span><span class="fold-meta">进行中</span></div>'+
         renderFinanceLedgerBars(curInc,curExp)+
         '<div class="fin-cats"><div><div class="fin-col-hdr">收入来源</div>'+renderFinanceLedgerCats(cur.income,'income')+'</div>'+
-        '<div><div class="fin-col-hdr">支出</div>'+renderFinanceLedgerCats(cur.expense,'expense')+'</div></div>'+
+        '<div>'+renderFinanceLedgerExpenseCols(cur.expense)+'</div></div>'+
         '<div class="fin-net '+(curInc-curExp>=0?'pos':'neg')+'">暂计结余 '+(curInc-curExp>=0?'+':'')+fmtLedgerAmt(Math.abs(curInc-curExp))+'</div></div>';
     }
     hist.forEach(stmt=>{
       body+='<div class="fin-stmt"><div class="fin-stmt-hdr"><span>'+stmt.period+'</span><span class="fold-meta">第'+stmt.weekRange[0]+'–'+stmt.weekRange[1]+'周</span></div>'+
         renderFinanceLedgerBars(stmt.incomeTotal,stmt.expenseTotal)+
         '<div class="fin-cats"><div><div class="fin-col-hdr">收入来源</div>'+renderFinanceLedgerCats(stmt.income,'income')+'</div>'+
-        '<div><div class="fin-col-hdr">支出</div>'+renderFinanceLedgerCats(stmt.expense,'expense')+'</div></div>'+
+        '<div>'+renderFinanceLedgerExpenseCols(stmt.expense)+'</div></div>'+
         '<div class="fin-net '+(stmt.net>=0?'pos':'neg')+'">结余 '+(stmt.net>=0?'+':'')+fmtLedgerAmt(Math.abs(stmt.net))+'</div></div>';
     });
     if(!body)body='<div style="padding:8px;font-size:.68rem;color:var(--muted)">每月结算后自动生成工资单</div>';
@@ -8256,9 +8304,13 @@ function updateUI(){
     }catch(e2){console.error('updateUI fallback',e2)}
   }
 }
+${WORKPLACE_STORIES_DATA_SRC}
+${WORKPLACE_STORIES_POOLS_SRC}
+${WORKPLACE_STORIES_SRC}
 ${DAILY_ACTIVITY_SRC}
 ${JOB_HUNT_DAILY_SRC}
 ${AFFAIR_SYSTEM_SRC}
+${NAMES_SRC}
 ${CONTACTS_SYSTEM_SRC}
 ${SPOUSE_FINANCE_SRC}
 ${FERTILITY_SYSTEM_SRC}

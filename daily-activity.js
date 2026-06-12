@@ -918,18 +918,24 @@ function meetRandomPerson(where,baseChance){
   const job=jobs[Math.floor(Math.random()*jobs.length)];
   const co=pickCompany(job.idx,job.heatPct>=108?'high':job.heatPct>=102?'mid':'low');
   const income=Math.round(job.pay*(0.7+Math.random()*0.6));
-  const names=['小陈','阿杰','Linda','老王','小周','阿明','菲菲','大刘'];
   const id='ct_'+game.week+'_'+game.contacts.length;
   const gender=Math.random()<0.5?'male':'female';
   const age=22+Math.floor(Math.random()*18);
-  const person={id,name:names[Math.floor(Math.random()*names.length)],jobTitle:job.title,category:job.category,
-    company:co.name,income,metWeek:game.week,metWhere:where,gender,age};
+  const displayName=typeof pickStrangerDisplayName==='function'?pickStrangerDisplayName(gender):'路人';
+  const person={id,name:displayName,jobTitle:job.title,jobSlug:job.slug,category:job.category,
+    company:co.name,companyTier:co.tier,companyScale:co.scale,income,metWeek:game.week,metWhere:where,gender,age};
   if(game.contacts.some(c=>c.jobTitle===person.jobTitle&&c.company===person.company))return;
   if(typeof ensureContactAffairFields==='function')ensureContactAffairFields(person);
   if(typeof tagMeetContact==='function')tagMeetContact(person);
   game.contacts.push(person);
   const prof=typeof contactProfileLabel==='function'?contactProfileLabel(person):(person.jobTitle+' @'+person.company);
-  addLog('👋 在'+where+'结识 '+person.name+'（'+prof+' · 年收入约¥'+income.toLocaleString()+'）','info');
+  const meetMsg='在「'+where+'」遇见了 '+person.name+'。\n\n'+prof+'\n年收入约 ¥'+income.toLocaleString();
+  if(typeof queueStatusModal==='function'){
+    queueStatusModal('结识新朋友',meetMsg,'👋',{btn:'关闭',onClose:function(){
+      if(typeof maybeTellWorkplaceStory==='function')maybeTellWorkplaceStory(person,where);
+    }});
+  }else if(typeof maybeTellWorkplaceStory==='function')maybeTellWorkplaceStory(person,where);
+  addLog('👋 结识 '+person.name+'（'+where+'）','info');
 }
 function addContactFromMeet(person){game.contacts.push(person)}
 function advanceDailyPhase(nextPhase){

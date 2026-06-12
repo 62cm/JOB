@@ -1,7 +1,5 @@
 /* 通讯录 — 由 build.js 注入 */
 const CORE_CONTACT_IDS={parents:'core_parents',bff:'core_bff',spouse:'core_spouse',exSpouse:'core_ex_spouse'};
-const PARTNER_NAMES={male:['浩然','俊杰','子轩','宇轩','博文'],female:['雨萱','诗涵','静怡','小艾','思琪']};
-const BFF_NAMES={male:['大壮','阿伟','老铁','浩子'],female:['小雅','莉莉','猪猪','阿花']};
 const BFF_OUT_PLACES={
   park:{key:'park',label:'公园'},
   cafe:{key:'cafe',label:'咖啡店'},
@@ -12,15 +10,6 @@ const BFF_OUT_PLACES={
 };
 const CONTACT_NO_ANSWER_CHANCE=0.22;
 
-function pickPartnerDisplayName(gender){
-  const pool=PARTNER_NAMES[gender]||PARTNER_NAMES.female;
-  return pool[Math.floor(Math.random()*pool.length)];
-}
-function pickBffName(playerGender){
-  const g=playerGender==='female'?'female':'male';
-  const pool=BFF_NAMES[g];
-  return pool[Math.floor(Math.random()*pool.length)];
-}
 function contactSlotKey(){
   const d=game&&game.daily;
   return d?((d.dayIndex||0)+'_'+(d.phase||'morning')):'';
@@ -94,13 +83,22 @@ function syncExSpouseContact(){
   });
   game.exPartnerName=name;
 }
+function syncParentsContact(){
+  if(!game)return;
+  if(!game.contacts)game.contacts=[];
+  if(game.parentsInheritanceSettled){
+    game.contacts=game.contacts.filter(c=>c.id!==CORE_CONTACT_IDS.parents&&c.kind!=='parents');
+    return;
+  }
+  ensureCoreContact(CORE_CONTACT_IDS.parents,{kind:'parents',name:'爸妈',gender:'',role:'父母',company:'',jobTitle:'',income:0});
+}
 function initCoreContacts(){
   if(!game)return;
   if(!game.contacts)game.contacts=[];
   if(!game.partnerDisplayName)game.partnerDisplayName=pickPartnerDisplayName(game.partnerGender||'female');
   if(!game.bffName)game.bffName=pickBffName(game.playerGender||'male');
   const pg=game.playerGender||'male';
-  ensureCoreContact(CORE_CONTACT_IDS.parents,{kind:'parents',name:'爸妈',gender:'',role:'父母',company:'',jobTitle:'',income:0});
+  syncParentsContact();
   ensureCoreContact(CORE_CONTACT_IDS.bff,{
     kind:'bff',name:game.bffName,gender:pg==='female'?'female':'male',
     role:pg==='female'?'闺蜜':'基友',company:'',jobTitle:'',income:0,metWhere:'发小'
@@ -245,7 +243,10 @@ function canCallContact(c){
   if(wasContactCalled(c.id))return {ok:false,reason:'本时段已联系过'};
   if(wasContactNoAnswer(c.id))return {ok:false,reason:'对方未接，本时段不能再拨'};
   const ph=game.daily&&game.daily.phase;
-  if(c.kind==='parents'&&ph!=='morning'&&ph!=='evening')return {ok:false,reason:'爸妈仅白天/晚上可联系'};
+  if(c.kind==='parents'){
+    if(game.parentsInheritanceSettled)return {ok:false,reason:'父母已离世，无法联系'};
+    if(ph!=='morning'&&ph!=='evening')return {ok:false,reason:'爸妈仅白天/晚上可联系'};
+  }
   if(c.kind==='spouse'||c.id===CORE_CONTACT_IDS.spouse){
     const chk=canCallSpouse();
     if(!chk.ok)return chk;
@@ -549,5 +550,6 @@ function migrateContactsSystem(){
     else if(!c.kind)tagMeetContact(c);
   });
   initCoreContacts();
+  if(typeof syncParentsContact==='function')syncParentsContact();
   if(game.divorced)syncExSpouseContact();
 }

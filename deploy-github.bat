@@ -42,8 +42,8 @@ if errorlevel 1 (
 
 echo.
 echo [2/4] git add
-git add build.js index.html career-stock-game.html data.json real-companies.js
-git add affair-system.js auto-life.js contacts-system.js daily-activity.js job-hunt-daily.js fertility-system.js menstrual-cycle.js spouse-finance.js
+git add build.js index.html career-stock-game.html data.json
+git add *.js
 if exist README.md git add README.md
 if exist .gitignore git add .gitignore
 if exist build.bat git add build.bat
