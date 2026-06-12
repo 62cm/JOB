@@ -7,13 +7,30 @@ const AUTO_LIFE_PERIODS={
 };
 let autoLifeRunning=false;
 let _autoLifeJob=null;
-const AUTO_LIFE_CHUNK_WEEKS=1;
-const AUTO_LIFE_CHUNK_DELAY_MS=20;
+let _autoLifeGen=0;
+let _autoLifeTimer=null;
+const AUTO_LIFE_CHUNK_WEEKS=8;
+const AUTO_LIFE_CHUNK_DELAY_MS=16;
 
+function resetAutoLifeState(){
+  if(_autoLifeTimer!=null){
+    clearTimeout(_autoLifeTimer);
+    _autoLifeTimer=null;
+  }
+  autoLifeRunning=false;
+  _autoLifeJob=null;
+}
 function canStartAutoLife(){
-  if(!game||game.gameOver||autoLifeRunning)return false;
+  if(!game||game.gameOver||autoLifeRunning||_autoLifeJob)return false;
   if(game.casinoActive||game.marketActive||pendingBatch||consumeModalOpen)return false;
   return true;
+}
+function scheduleAutoLifeChunk(gen){
+  if(_autoLifeTimer!=null)clearTimeout(_autoLifeTimer);
+  _autoLifeTimer=setTimeout(function(){
+    _autoLifeTimer=null;
+    runAutoLifeChunk(gen);
+  },AUTO_LIFE_CHUNK_DELAY_MS);
 }
 function showAutoLifeBusy(label){
   const el=document.getElementById('autoLifeOverlay');
@@ -50,6 +67,9 @@ function showAutoLifeReport(report){
   html+='<div class="auto-life-events"><b>主要事件</b>'+
     (ev.length?'<ul>'+ev.map(e=>'<li>'+e+'</li>').join('')+'</ul>':'<p style="color:var(--muted);font-size:.78rem">本期较平稳，无重大波动</p>')+
     '</div>';
+  if(!report.weeksAdvanced)html+='<p style="color:var(--orange);font-size:.78rem;margin-top:8px">未推进任何周数（可能已到人生终点或周数推进被中断）</p>';
+  else if(!cashC&&!report.incomeChange&&!stressC&&!(report.workWeeks||report.applications))
+    html+='<p style="color:var(--muted);font-size:.78rem;margin-top:8px">本期现金/收入/压力净变化为 0，但时间已推进（常见原因：月支出与资助相抵、压力已极高仍在累积事件）</p>';
   if(game.gameOver)html+='<p style="color:var(--red);font-weight:600;margin-top:10px">人生已落幕</p>';
   if(body)body.innerHTML=html;
   if(acts)acts.innerHTML='<button class="btn btn-primary" type="button" onclick="closeAutoLifeReport()">关闭汇报</button>';
@@ -58,6 +78,7 @@ function showAutoLifeReport(report){
 function closeAutoLifeReport(){
   const el=document.getElementById('autoLifeOverlay');
   if(el)el.classList.add('hidden');
+  resetAutoLifeState();
   if(game&&game._pendingEndGame&&typeof showEndGameModal==='function'){
     const pe=game._pendingEndGame;
     delete game._pendingEndGame;
@@ -79,12 +100,20 @@ function isAutoLifeSimulating(){
   return !!(autoLifeRunning&&_autoLifeJob);
 }
 function autoLifeSubmitApplication(report){
-  if(game.employed||game.homeless||game.cash<80)return;
+  if(game.employed||game.homeless)return;
   const eligible=game.market.map((j,i)=>i).filter(i=>{
     const j=game.market[i];
     return canApplyJob(j)&&!isOverAgeLimit(j);
   });
-  if(!eligible.length)return;
+  if(!eligible.length){
+    if(typeof isStressMindBlocked==='function'&&isStressMindBlocked())
+      autoLifePushEvent(report,'⚠ 压力过高，仅能应聘体力劳动岗位');
+    return;
+  }
+  if(game.cash<10){
+    autoLifePushEvent(report,'⚠ 现金不足（<'+10+'），无法支付应聘费');
+    return;
+  }
   const ji=eligible[Math.floor(Math.random()*eligible.length)];
   const job=game.market[ji];
   const tier=job.heatPct>=108?'high':job.heatPct>=102?'mid':'low';
@@ -146,7 +175,14 @@ function simulateAutoLifeWeek(report){
   const emp0=game.employed;
   autoLifeSocialWeek(report);
   if(game.employed){
-    if(Math.random()<0.08){
+    const canWork=typeof canPlayerWorkWeek==='function'?canPlayerWorkWeek():true;
+    const job=game.employment?game.market[game.employment.jobIdx]:null;
+    const mindOk=!job||typeof isManualJob!=='function'||isManualJob(job)||!(typeof isStressMindBlocked==='function'&&isStressMindBlocked());
+    if(!canWork){
+      autoLifePushEvent(report,'🌀 精神崩溃，本周无法上班');
+    }else if(!mindOk){
+      autoLifePushEvent(report,'🧠 压力过大，脑力岗位本周未出勤');
+    }else if(Math.random()<0.08){
       autoLifePushEvent(report,'🛋 本周选休未全勤');
       if(game.daily)game.daily.workSkipDays=(game.daily.workSkipDays||0)+1;
     }else{
@@ -154,7 +190,7 @@ function simulateAutoLifeWeek(report){
       report.workWeeks=(report.workWeeks||0)+1;
     }
   }else{
-    if(Math.random()<0.6)autoLifeSubmitApplication(report);
+    if(Math.random()<0.75)autoLifeSubmitApplication(report);
   }
   autoLifeTryAcceptOffer(report);
   report.cashChange=(report.cashChange||0)+(game.cash-cash0);
@@ -182,20 +218,46 @@ function updateAutoLifeProgress(){
   if(tip&&game)tip.innerHTML='<strong style="color:var(--yellow)">自动生活中…</strong> · '+getDateStr(game.week)+' · '+done+'/'+total+' 周';
 }
 function autoLifeSimulateOneWeek(report){
-  simulateAutoLifeWeek(report);
+  const weekBefore=Number(game.week)||0;
+  try{
+    simulateAutoLifeWeek(report);
+  }catch(e){
+    console.error('auto-life simulate',e);
+    autoLifePushEvent(report,'⚠ 本周模拟异常：'+(e.message||e));
+    return false;
+  }
   if(typeof tickStocksForWorkweek==='function')tickStocksForWorkweek(5);
-  if(!advanceOneWeek())return false;
-  report.weeksAdvanced++;
+  let advanced=false;
+  try{
+    advanced=!!advanceOneWeek();
+  }catch(e){
+    console.error('auto-life advanceOneWeek',e);
+    autoLifePushEvent(report,'⚠ 推进周数异常：'+(e.message||e));
+    advanced=false;
+  }
+  if(!advanced){
+    if(game.gameOver)autoLifePushEvent(report,'🏁 人生已落幕');
+    else autoLifePushEvent(report,'⚠ 第 '+(weekBefore+1)+' 周无法推进');
+    return false;
+  }
+  if(typeof tickCompanionWeek==='function')tickCompanionWeek();
+  report.weeksAdvanced=(report.weeksAdvanced||0)+1;
+  autoLifePushEvent(report,'⏭ 自动推进至 '+getDateStr(game.week));
   if(typeof resetWeeklyDaily==='function')resetWeeklyDaily();
   else if(game.daily)game.daily=defaultDailyState();
-  rollReferralChance();
+  if(typeof rollReferralChance==='function')rollReferralChance();
+  if(typeof autoSaveSlot==='function')autoSaveSlot();
   return true;
 }
-function finishAutoLifeJob(err){
-  const st=_autoLifeJob;
-  _autoLifeJob=null;
-  actionDone=false;
+function finishAutoLifeJob(err,job){
+  if(_autoLifeTimer!=null){
+    clearTimeout(_autoLifeTimer);
+    _autoLifeTimer=null;
+  }
+  const st=job||_autoLifeJob;
+  if(_autoLifeJob===st)_autoLifeJob=null;
   autoLifeRunning=false;
+  actionDone=false;
   if(err){
     const ov=document.getElementById('autoLifeOverlay');
     if(ov)ov.classList.add('hidden');
@@ -204,8 +266,6 @@ function finishAutoLifeJob(err){
     return;
   }
   if(!st||!st.report){
-    const ov=document.getElementById('autoLifeOverlay');
-    if(ov)ov.classList.add('hidden');
     updateUI();
     return;
   }
@@ -218,73 +278,87 @@ function finishAutoLifeJob(err){
   if(typeof requestAnimationFrame==='function')requestAnimationFrame(function(){updateUI()});
   else updateUI();
 }
-function runAutoLifeChunk(){
+function runAutoLifeChunk(gen){
   const st=_autoLifeJob;
-  if(!st||!game){finishAutoLifeJob();return}
+  if(!st||!game){
+    return;
+  }
+  if(st.gen!==gen||st.gen!==_autoLifeGen){
+    return;
+  }
   try{
     let batch=0,stalled=false;
     while(batch<AUTO_LIFE_CHUNK_WEEKS&&st.remaining>0&&!game.gameOver){
+      if(st.gen!==_autoLifeGen||_autoLifeJob!==st)return;
       if(!autoLifeSimulateOneWeek(st.report)){stalled=true;break}
       st.remaining--;
       batch++;
     }
+    if(st.gen!==_autoLifeGen||_autoLifeJob!==st)return;
     updateAutoLifeProgress();
     if(stalled&&!game.gameOver){
-      finishAutoLifeJob();
+      finishAutoLifeJob(null,st);
       return;
     }
     if(st.remaining>0&&!game.gameOver){
-      setTimeout(runAutoLifeChunk,AUTO_LIFE_CHUNK_DELAY_MS);
+      scheduleAutoLifeChunk(gen);
       return;
     }
-    finishAutoLifeJob();
+    finishAutoLifeJob(null,st);
   }catch(e){
     console.error('auto-life',e);
-    finishAutoLifeJob(e);
+    finishAutoLifeJob(e,st);
   }
 }
 function runAutoLifeCore(periodKey){
   const cfg=AUTO_LIFE_PERIODS[periodKey];
-  if(!cfg||!game)return;
-  autoLifeRunning=true;
-  const report={
-    periodLabel:cfg.label,startWeek:game.week,weeksAdvanced:0,
-    cashChange:0,incomeChange:0,stressChange:0,events:[],workWeeks:0,applications:0,dates:0,layoffs:0,hires:0
-  };
-  const targetWeeks=Math.min(cfg.weeks,TOTAL_WEEKS-game.week);
-  if(targetWeeks<=0){
-    autoLifeRunning=false;
+  if(!cfg||!game){
+    resetAutoLifeState();
+    return;
+  }
+  const weekNow=Number(game.week);
+  if(!Number.isFinite(weekNow)||weekNow<0)game.week=0;
+  const targetWeeks=Math.max(0,Math.min(cfg.weeks,TOTAL_WEEKS-(Number(game.week)||0)));
+  if(!Number.isFinite(targetWeeks)||targetWeeks<=0){
+    resetAutoLifeState();
     const ov=document.getElementById('autoLifeOverlay');
     if(ov)ov.classList.add('hidden');
     addLog('已至人生终点，无法继续自动生活','fail');
     updateUI();
     return;
   }
+  autoLifeRunning=true;
   actionDone=true;
-  _autoLifeJob={periodKey,cfg,report,targetWeeks,remaining:targetWeeks};
+  const gen=++_autoLifeGen;
+  const report={
+    periodLabel:cfg.label,startWeek:Number(game.week)||0,weeksAdvanced:0,
+    cashChange:0,incomeChange:0,stressChange:0,events:[],workWeeks:0,applications:0,dates:0,layoffs:0,hires:0
+  };
+  _autoLifeJob={periodKey,cfg,report,targetWeeks,remaining:targetWeeks,gen};
   updateAutoLifeProgress();
-  setTimeout(runAutoLifeChunk,0);
+  scheduleAutoLifeChunk(gen);
 }
 function startAutoLife(periodKey){
   if(!canStartAutoLife()){
-    addLog('当前无法自动生活（赌桌/人才市场/弹窗进行中）','fail');
+    addLog('当前无法自动生活（进行中/赌桌/人才市场/弹窗）','fail');
     return;
   }
   const cfg=AUTO_LIFE_PERIODS[periodKey];
   if(!cfg)return;
   if(!confirm('进入「'+cfg.label+'」自动生活？\n\n时间将快速跳过且不可打断，结束后汇报结果。'))return;
   closeConsumeModal();
-  document.getElementById('applyModal')&&document.getElementById('applyModal').classList.add('hidden');
+  const applyModal=document.getElementById('applyModal');
+  if(applyModal)applyModal.classList.add('hidden');
   pendingBatch=null;
-  autoLifeRunning=true;
-  updateUI();
+  resetAutoLifeState();
   showAutoLifeBusy(cfg.label);
-  setTimeout(function(){runAutoLifeCore(periodKey)},60);
+  updateUI();
+  setTimeout(function(){runAutoLifeCore(periodKey)},30);
 }
 function renderAutoLifePanel(){
   const el=document.getElementById('autoLifePanel');
   if(!el||!game)return;
-  const dis=autoLifeRunning||game.gameOver||game.casinoActive||game.marketActive;
+  const dis=!canStartAutoLife()||game.gameOver||game.casinoActive||game.marketActive;
   el.innerHTML='<div class="daily-shop"><b>自动生活</b> <span class="fold-meta">AI 代操作 · 不可打断 · 结束汇报</span><br>'+
     Object.keys(AUTO_LIFE_PERIODS).map(k=>{
       const p=AUTO_LIFE_PERIODS[k];

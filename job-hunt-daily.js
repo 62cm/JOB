@@ -49,19 +49,6 @@ function dailySpendJobHours(h,logMsg){
   if(logMsg)addLog(logMsg,'info');
   return true;
 }
-function countJobInboxUnread(){
-  if(!game||!game.inbox||typeof classifyInboxItem!=='function')return 0;
-  let n=0;
-  game.inbox.forEach(it=>{
-    if(it.type==='ghost'||it.type==='reject'){n++;return}
-    if(it.type!=='interview')return;
-    const app=game.applications.find(a=>a.id===it.id);
-    if(!app)return;
-    const cat=classifyInboxItem(it,app);
-    if(cat==='active')n++;
-  });
-  return n;
-}
 function listingAlreadyApplied(item){
   if(!game||!game.applications||!item)return false;
   const co=item.offer&&item.offer.company;
@@ -175,6 +162,7 @@ function dailyOpenJobInbox(){
   if(d.jobSubMenu!=='inbox')d.jobInboxReturnTo=d.jobSubMenu;
   d.jobSubMenu='inbox';
   if(typeof syncInviteExpiryState==='function')syncInviteExpiryState();
+  if(typeof markVisibleInboxRead==='function')markVisibleInboxRead();
   renderDailyPanel();
 }
 function dailyCloseJobInbox(){
@@ -377,32 +365,18 @@ function renderDailyMailBtn(unread){
 }
 function renderDailyJobInboxPanel(){
   if(typeof syncInviteExpiryState==='function')syncInviteExpiryState();
-  const raw=(game.inbox||[]).filter(x=>{
-    if(x.type==='ghost'||x.type==='reject')return true;
-    if(x.type!=='interview')return false;
-    const app=game.applications.find(a=>a.id===x.id);
-    if(app&&['interview_scheduled','offered','silent'].includes(app.status))return false;
-    return true;
-  });
-  let h='<p class="fold-meta">招聘回复 · 与求职页收件箱相同</p>';
+  const raw=typeof getVisibleInboxRaw==='function'?getVisibleInboxRaw():[];
+  let h='<div class="daily-inbox-panel">';
+  h+='<p class="fold-meta">招聘回复 · 红点=未读待确认/新通知 · 打开后标记已读</p>';
   if(!raw.length)h+='<p style="color:var(--muted)">暂无回复</p>';
   else{
-    const buckets={active:[],expired:[],ghost:[],rejected:[]};
-    raw.forEach(it=>{
-      const app=game.applications.find(a=>a.id===it.id||(it.type==='reject'&&it.id===a.id+'_rej'));
-      const cat=typeof classifyInboxItem==='function'?classifyInboxItem(it,app):'expired';
-      if(buckets[cat])buckets[cat].push(it);else buckets.expired.push(it);
-    });
-    if(typeof sortInterviewInboxItems==='function'){
-      Object.keys(buckets).forEach(k=>{buckets[k]=sortInterviewInboxItems(buckets[k])});
-    }
-    if(typeof renderInboxCategory==='function'){
-      h+=renderInboxCategory('待处理 · 面试邀请','active',buckets.active,false);
-      h+=renderInboxCategory('已失效','expired',buckets.expired,true);
-      h+=renderInboxCategory('未通过筛选','ghost',buckets.ghost,true);
-      h+=renderInboxCategory('面试未通过','rejected',buckets.rejected,true);
+    const modes=[{id:'time',label:'按时间'},{id:'pay',label:'按薪资'},{id:'company',label:'按企业'},{id:'imp',label:'按岗位等级'}];
+    h+='<div class="inbox-sort">'+modes.map(m=>'<button type="button" class="btn'+((typeof interviewSortMode!=='undefined'?interviewSortMode:'time')===m.id?' active':'')+'" onclick="setInterviewSort(\''+m.id+'\')">'+m.label+'</button>').join('')+'</div>';
+    if(typeof renderInboxBucketsHtml==='function'&&typeof bucketInboxItems==='function'){
+      h+=renderInboxBucketsHtml(bucketInboxItems(raw));
     }
   }
+  h+='</div>';
   h+=renderDailyJobBottomBtns('<button class="btn" onclick="dailyCloseJobInbox()">← 返回</button> <button class="btn" onclick="dailyJobExitToMain()">退出</button>');
   return h;
 }

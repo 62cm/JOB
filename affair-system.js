@@ -257,6 +257,10 @@ function getMakeLoveBlockReason(skipIntimacy){
   if(ph!=='morning'&&ph!=='evening'&&ph!=='rest'&&ph!=='allnight')return '当前时段不适合（请选宅家时段）';
   if(sexSessionsLeft()<=0)return '本周做爱次数已用完（'+SEX_WEEKLY_LIMIT+'次）';
   if(!skipIntimacy&&(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0)return '亲密度过低（≤0），对方拒绝';
+  if(typeof getMenstrualMakeLoveBlock==='function'){
+    const menstrualBlock=getMenstrualMakeLoveBlock();
+    if(menstrualBlock)return menstrualBlock;
+  }
   return null;
 }
 const NOKIA_PHONE_CHECK_CASH=10000;
@@ -309,8 +313,21 @@ function rollPartnerCaughtAffair(context){
   }
   return true;
 }
+function contactGenderLabel(g){
+  return g==='male'?'男':'女';
+}
+function contactProfileLabel(c){
+  if(!c)return '';
+  const g=c.gender?contactGenderLabel(c.gender):'';
+  const age=c.age!=null?c.age+'岁':'';
+  const job=c.jobTitle||'未知职业';
+  const bits=[g,age,job].filter(Boolean);
+  return bits.join('·');
+}
 function ensureContactAffairFields(c){
   if(!c)return null;
+  if(!c.gender)c.gender=Math.random()<0.5?'male':'female';
+  if(c.age==null)c.age=22+Math.floor(Math.random()*18);
   if(c.body==null)c.body=42+Math.floor(Math.random()*38);
   if(c.mind==null)c.mind=40+Math.floor(Math.random()*40);
   if(c.spirit==null)c.spirit=40+Math.floor(Math.random()*40);
@@ -338,7 +355,7 @@ function createAffairContact(where,existing){
   const id='ct_'+game.week+'_'+game.contacts.length+'_'+Math.floor(Math.random()*9999);
   const person={id,name:names[Math.floor(Math.random()*names.length)],jobTitle:job.title,category:job.category,
     company:co?co.name:'未知公司',income,metWeek:game.week,metWhere:where||'艳遇',
-    kind:'affair',gender:oppositeAffairGender()};
+    kind:'affair',gender:oppositeAffairGender(),age:22+Math.floor(Math.random()*18)};
   ensureContactAffairFields(person);
   if(typeof tagAffairContactGender==='function')tagAffairContactGender(person);
   game.contacts.push(person);
@@ -370,7 +387,8 @@ function showAffairLocationModal(contactId,source){
   const ph=game.daily&&game.daily.phase||'evening';
   const spouseHome=isSpouseAtHome(ph);
   const hasCar=!!game.ownedCar;
-  let html='<p>与 <b>'+c.name+'</b>（'+c.jobTitle+'）· '+source+'</p>'+
+  const prof=typeof contactProfileLabel==='function'?contactProfileLabel(c):c.jobTitle;
+  let html='<p>与 <b>'+c.name+'</b>（'+prof+'）· '+source+'</p>'+
     '<p class="fold-meta">选择幽会地点（不同地点有不同风险与花费）</p><div class="affair-loc-grid">';
   const locs=[
     {k:'hotel',label:'普通酒店',meta:'¥'+AFFAIR_HOTEL_COST},
@@ -464,7 +482,8 @@ function resolveAffairLocation(c,loc){
   if(c0)c0.sexSessions=(c0.sexSessions||0)+1;
   tryAffairEncounterPregnancy(c,loc);
   if(typeof tryContractStdFromStranger==='function')tryContractStdFromStranger(c.name);
-  addLog('💋 与 '+c.name+' 幽会（'+affairLocLabel(loc)+'）','info');
+  const prof=typeof contactProfileLabel==='function'?contactProfileLabel(c):c.jobTitle;
+  addLog('💋 与 '+c.name+'（'+prof+'）幽会（'+affairLocLabel(loc)+'）','info');
   if(game.daily){
     if(game.daily.phase==='allnight')renderDailyPanel();
     else if(game.daily.phase==='morning'||game.daily.phase==='evening')advanceDailyPhase('rest');

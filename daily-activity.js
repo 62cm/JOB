@@ -39,7 +39,8 @@ function rollAllnightSuddenDeath(streak){
 function defaultDailyState(){
   return{dayIndex:0,phase:'morning',allnightStreak:0,workSkipDays:0,workedDays:0,weekWorkWarned:false,workedToday:false,jobHuntedToday:false,jobHuntCount:0,jobHuntBySlot:{},jobSubMenu:null,jobInboxReturnTo:null,dailyPickApp:null,dailyPickJobIdxs:[],subMenu:null,
     slotHoursUsed:0,slotSexUsed:false,slotMasturbateUsed:false,slotSnackUsed:false,snackPortionsToday:0,partnerSnackPortionsToday:0,
-    slotContactsUsed:{},slotNoAnswerContacts:{},slotActivity:null,inOvertime:false,overtimeSlack:0,phoneSwitchedThisSlot:false};
+    slotContactsUsed:{},slotNoAnswerContacts:{},slotActivity:null,inOvertime:false,overtimeSlack:0,phoneSwitchedThisSlot:false,
+    allnightDay:false,noHomeReturnDay:false};
 }
 function dailySlotHoursLeft(){
   const d=game&&game.daily;return SLOT_HOURS_TOTAL-((d&&d.slotHoursUsed)||0);
@@ -147,8 +148,17 @@ function confirmPartnerRecall(goHome){
   }
   adjustSpouseIntimacy(-1);
   addStress(-1,'拒回家 ');
+  if(game.daily)game.daily.noHomeReturnDay=true;
   addLog('📞 没理会'+pn+' · 亲密度-1 · 压力-1','warn');
   if(menu)continueDailyOpenCategory(menu);
+}
+function tickAllnightNoReturnIntimacy(){
+  if(!game||!game.married||game.divorced||game.longDistance)return;
+  const d=game.daily;
+  if(!d||!d.allnightDay||!d.noHomeReturnDay)return;
+  if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-1,'通宵未归 ');
+  addLog('💔 通宵一天未回家 · 亲密度-1','warn');
+  d.noHomeReturnDay=false;
 }
 function getEmploymentOtProfile(){
   if(!game||!game.employed||!game.employment)return null;
@@ -278,7 +288,7 @@ function snackEatModalHtml(title,playerR,partnerR){
     if(partnerR.rebound)html+=' · 反弹 +'+partnerR.rebound;
     html+=' · 减压 -'+partnerR.relief+'<br>亲密度 +1';
   }
-  html+='<br><span class="fold-meta">占用 1h · 每10压力多吃1份</span>';
+  html+='<br><span class="fold-meta">占用 1h · 每10压力+1份（最多6份）· 进食至少净减1压力</span>';
   return html;
 }
 function dailySnackBlocked(){
@@ -648,7 +658,9 @@ function ensurePartnerStats(){
 function partnerEffStat(k){
   const ps=ensurePartnerStats();
   if(!ps)return 0;
-  return Math.min(STAT_MAX,Math.max(0,ps[k]||0));
+  const pt=(game.partnerTempStats&&game.partnerTempStats[k])||0;
+  const cm=typeof getPartnerCycleStatMod==='function'?getPartnerCycleStatMod():0;
+  return Math.min(STAT_MAX,Math.max(0,(ps[k]||0)+pt+cm));
 }
 function statTotal(s){
   if(!s)return 0;
@@ -668,7 +680,8 @@ function ensureDailyState(){
 }
 function effStat(k){
   if(!game||!game.stats)return 0;
-  return Math.min(STAT_MAX,Math.max(0,(game.stats[k]||0)+(game.tempStats[k]||0)));
+  const cm=typeof getPlayerCycleStatMod==='function'?getPlayerCycleStatMod():0;
+  return Math.min(STAT_MAX,Math.max(0,(game.stats[k]||0)+(game.tempStats[k]||0)+cm));
 }
 function addTempStat(k,delta,logMsg){
   if(!game)return 0;
@@ -748,6 +761,7 @@ function resetWeeklyDaily(){
   if(!game)return;
   game.daily=defaultDailyState();
   game.tempStats=defaultTempStats();
+  game.partnerTempStats=defaultTempStats();
   if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning){
     applyWeeklyStatGrowthSilent();
     applyPartnerWeeklyStatGrowth();
@@ -906,13 +920,16 @@ function meetRandomPerson(where,baseChance){
   const income=Math.round(job.pay*(0.7+Math.random()*0.6));
   const names=['小陈','阿杰','Linda','老王','小周','阿明','菲菲','大刘'];
   const id='ct_'+game.week+'_'+game.contacts.length;
+  const gender=Math.random()<0.5?'male':'female';
+  const age=22+Math.floor(Math.random()*18);
   const person={id,name:names[Math.floor(Math.random()*names.length)],jobTitle:job.title,category:job.category,
-    company:co.name,income,metWeek:game.week,metWhere:where};
+    company:co.name,income,metWeek:game.week,metWhere:where,gender,age};
   if(game.contacts.some(c=>c.jobTitle===person.jobTitle&&c.company===person.company))return;
   if(typeof ensureContactAffairFields==='function')ensureContactAffairFields(person);
   if(typeof tagMeetContact==='function')tagMeetContact(person);
   game.contacts.push(person);
-  addLog('👋 在'+where+'结识 '+person.name+'（'+person.jobTitle+' @'+person.company+' · 年收入约¥'+income.toLocaleString()+'）','info');
+  const prof=typeof contactProfileLabel==='function'?contactProfileLabel(person):(person.jobTitle+' @'+person.company);
+  addLog('👋 在'+where+'结识 '+person.name+'（'+prof+' · 年收入约¥'+income.toLocaleString()+'）','info');
 }
 function addContactFromMeet(person){game.contacts.push(person)}
 function advanceDailyPhase(nextPhase){
@@ -932,6 +949,7 @@ function finishDay(restType){
   if(restType==='allnight'){
     addStress(10,'通宵 ');
     d.phase='allnight';
+    d.allnightDay=true;
     addLog('🌙 进入通宵时段（奖励×2 · APP岗位×2）','warn');
     renderDailyPanel();updateUI();
     return;
@@ -942,7 +960,10 @@ function finishDay(restType){
 }
 function bumpDayAfterAllnight(){
   const d=ensureDailyState();
+  tickAllnightNoReturnIntimacy();
+  if(typeof tickMenstrualDays==='function')tickMenstrualDays(1);
   d.dayIndex++;
+  d.allnightDay=false;
   d.jobHuntedToday=false;
   d.jobHuntCount=0;
   d.jobHuntBySlot={};
@@ -990,6 +1011,9 @@ function finishAllnightSleepThrough(){
 }
 function advanceToNextDay(){
   const d=ensureDailyState();
+  tickAllnightNoReturnIntimacy();
+  if(typeof tickMenstrualDays==='function')tickMenstrualDays(1);
+  d.allnightDay=false;
   if(typeof tickSnackDayRebound==='function')tickSnackDayRebound(d);
   if(typeof checkBffOutingMiss==='function')checkBffOutingMiss();
   if(typeof resetContactSlotFlags==='function')resetContactSlotFlags();
@@ -1030,6 +1054,11 @@ function finishWeeklyDaily(){
 }
 function dailyMorningWork(){
   if(!game.employed){addLog('当前无业','fail');return}
+  if(typeof canPlayerWorkWeek==='function'&&!canPlayerWorkWeek()){addLog('压力≥'+(typeof STRESS_MAD!=='undefined'?STRESS_MAD:1000)+'，精神崩溃，无法上班（仍可求职）','fail');return}
+  if(typeof isStressMindBlocked==='function'&&isStressMindBlocked()&&game.employment){
+    const j=game.market[game.employment.jobIdx];
+    if(j&&typeof isManualJob==='function'&&!isManualJob(j)){addLog('压力≥'+(typeof STRESS_MIND_BLOCK!=='undefined'?STRESS_MIND_BLOCK:666)+'，无法胜任脑力劳动','fail');return}
+  }
   if(!dailyUseMainActivity())return;
   commuteMorning();
   maybeMeetOnCommute();
@@ -1051,6 +1080,7 @@ function dailyMorningWork(){
 function dailyGoOut(place){
   if(!dailyUseMainActivity())return;
   game.daily.slotActivity='out';
+  if(game.daily.phase==='evening'||game.daily.phase==='allnight')game.daily.noHomeReturnDay=true;
   const mult=dailyRewardMult();
   const map={park:{stat:'body',n:1,label:'公园'},cafe:{stat:'spirit',n:1,label:'咖啡店'},library:{stat:'mind',n:1,label:'图书馆'}};
   const p=map[place];if(!p)return;
@@ -1071,6 +1101,7 @@ function dailyEveningOut(kind){
   const mult=dailyRewardMult();
   const phase=game.daily.phase;
   if(!dailyUseMainActivity())return;
+  if(phase==='evening'||phase==='allnight')game.daily.noHomeReturnDay=true;
   if(kind==='club'){
     if(typeof tryCompleteBffOuting==='function')tryCompleteBffOuting('club');
     if(!spendWithPhoneMult(500,'夜店')){dailyReleaseMainActivity();return}
@@ -1229,7 +1260,13 @@ function renderDailyHomeLeisureBtns(prefix){
 function renderDailyHomeMenu(phase){
   const d=game.daily||{};
   let h='<p class="fold-meta">'+dailySlotHoursLabel()+' · 做爱2h · 自慰不占时（各1次）</p>';
-  if(game.snackReboundPortions>0)h+='<p style="color:var(--orange);font-size:.72rem">⚠ 你昨日吃了 '+game.snackReboundPortions+' 份零食，今日进食反弹 +'+(game.snackReboundPortions*2)+' 压力</p>';
+  if(game.snackReboundPortions>0){
+    const need=typeof snackPortionsForStress==='function'?snackPortionsForStress(game.familyStress):1;
+    const relief=need*(typeof SNACK_RELIEF_PER_PORTION!=='undefined'?SNACK_RELIEF_PER_PORTION:1);
+    const raw=game.snackReboundPortions*2;
+    const capped=typeof snackReboundPreview==='function'?snackReboundPreview(game.snackReboundPortions,relief):raw;
+    h+='<p style="color:var(--orange);font-size:.72rem">⚠ 昨日零食 '+game.snackReboundPortions+' 份 · 今日反弹约 +'+capped+'（进食仍至少净减1压力）</p>';
+  }
   if(game.partnerSnackReboundPortions>0)h+='<p style="color:var(--orange);font-size:.72rem">⚠ 伴侣昨日吃了 '+game.partnerSnackReboundPortions+' 份，今日反弹 +'+(game.partnerSnackReboundPortions*2)+'</p>';
   if((game.snackStock||0)>0)h+='<p class="fold-meta" style="font-size:.72rem">零食囤货 '+game.snackStock+' 份</p>';
   if(game.fertilityOrder)h+='<p style="color:var(--green);font-size:.72rem">👶 '+(game.fertilityOrder.type==='surrogacy'?'代孕':'试管')+'进行中 · 预计 '+getDateStr(game.fertilityOrder.dueWeek)+' 交货</p>';
@@ -1471,6 +1508,8 @@ function migrateDailyState(){
     if(d.slotSnackUsed==null)d.slotSnackUsed=false;
     if(d.snackPortionsToday==null)d.snackPortionsToday=d.hadSnackToday?1:0;
     if(d.partnerSnackPortionsToday==null)d.partnerSnackPortionsToday=0;
+    if(d.allnightDay==null)d.allnightDay=false;
+    if(d.noHomeReturnDay==null)d.noHomeReturnDay=false;
   }
   if(game.companion){
     if(!game.companion.stats||game.companion.stats===game.stats||isLegacyFlatStats(game.companion.stats))

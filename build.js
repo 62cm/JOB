@@ -9,7 +9,8 @@ const AFFAIR_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'affair-system.js
 const CONTACTS_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'contacts-system.js'), 'utf8');
 const SPOUSE_FINANCE_SRC = fs.readFileSync(path.join(__dirname, 'spouse-finance.js'), 'utf8');
 const FERTILITY_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'fertility-system.js'), 'utf8');
-const GAME_BUILD_ID = '2026.06.09-std-stranger';
+const MENSTRUAL_CYCLE_SRC = fs.readFileSync(path.join(__dirname, 'menstrual-cycle.js'), 'utf8');
+const GAME_BUILD_ID = '2026.06.09-stress-snack-fix';
 
 const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -190,7 +191,7 @@ const html = `<!DOCTYPE html>
   .cal-ev.cal-confirmed{background:rgba(63,185,80,.12);color:var(--green);border-left:2px solid var(--green)}
   .cal-ev.cal-planned{background:rgba(88,166,255,.12);color:var(--blue);border-left:2px solid var(--blue)}
   .cal-planned-list{margin-bottom:8px;padding:6px 7px;border:1px dashed var(--border);border-radius:6px;background:rgba(88,166,255,.04)}
-  .cal-planned-hdr{font-size:.65rem;color:var(--blue);font-weight:600;margin-bottom:4px}
+  .cal-planned-hdr{font-size:.74rem;color:var(--blue);font-weight:600;margin:0 0 4px;border-style:dashed}
   .cal-planned-row{font-size:.68rem;padding:2px 0;color:var(--muted);line-height:1.35}
   .cal-planned-row b{color:var(--text);font-weight:500}
   .cal-empty{color:var(--muted);opacity:.45;font-size:.65rem}
@@ -202,6 +203,10 @@ const html = `<!DOCTYPE html>
   .inbox-fold-hdr:hover{border-color:var(--accent)}
   .inbox-fold-hdr .fold-meta{color:var(--muted);font-size:.64rem}
   .inbox-fold-body{padding:0 2px 4px}
+  .inbox-cat-block{width:100%;flex:1 1 100%;display:block;margin-bottom:6px}
+  .daily-inbox-panel{width:100%;flex:1 1 100%;display:block}
+  .daily-inbox-panel .inbox-sort{margin:4px 0 8px}
+  .inbox-offer-detail{font-size:.68rem;color:var(--muted);margin-top:5px;padding-top:4px;border-top:1px dashed var(--border)}
   .fin-panel{margin-bottom:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--bg)}
   .fin-fold-hdr{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:7px 9px;cursor:pointer;font-size:.74rem;background:var(--panel)}
   .fin-fold-hdr:hover{border-color:var(--accent)}
@@ -1015,6 +1020,8 @@ const STRESS_DIVORCE = 25;
 const STRESS_PARENTS_MONTHLY = 6;
 const STRESS_LIFE_TIER_DROP = 20;
 const STRESS_LONG_DISTANCE_WEEKLY = 1;
+const STRESS_MIND_BLOCK = 666;
+const STRESS_MAD = 1000;
 const PLAYER_HOME_CITY = '杭州';
 const CITIES = ['北京','上海','深圳','广州','杭州','成都','武汉','南京','苏州','西安','重庆','天津','青岛','大连','厦门','宁波','无锡','佛山','东莞','合肥','长沙','郑州','济南','福州','昆明','贵阳','南宁'];
 const NEAR_CITIES = ['上海','南京','苏州','宁波','无锡','合肥'];
@@ -1027,6 +1034,8 @@ const SNACK_MEAL_SINGLE_COST = 50;
 const SNACK_MEAL_COUPLE_COST = 100;
 const SNACK_REBOUND_PER_PORTION = 2;
 const SNACK_RELIEF_PER_PORTION = 1;
+const SNACK_PORTIONS_CAP = 6;
+const SNACK_MIN_NET_RELIEF = 1;
 const SCROLL_WEEKLY_LIMIT = 60;
 const SV_VIEWS_PER_CLICK = 10;
 const SV_TRASH_STRESS = 20;
@@ -1295,8 +1304,9 @@ let refPanelCollapsed=false;
 let industryFilterCollapsed=false,industryPickerOpen=false;
 let portfolioFoldCollapsed=false;
 let interviewSortMode='time';
-let inboxFoldOpen={expired:false,ghost:false,rejected:false};
+let inboxFoldOpen={pending:true,replied:true,confirmed:true,attended:true,missed:true,expired:false,ghost:false,rejected:false};
 let financeFoldOpen=false;
+let plannedFoldOpen=false;
 let plannedExpandedCompanies=new Set();
 let currentSlotIndex=-1,selectedSlotIndex=0,pendingNewSlot=-1;
 
@@ -1588,7 +1598,7 @@ function serializeGameState(){
 function serializeUiState(){
   return{actionDone,selectedIdx,selectedJobIdxs:[...selectedJobIdxs],applyCategoryPicks:[...applyCategoryPicks],
     currentSort,currentCategory,currentTab,calendarView,calendarYear,calendarMonth,refPanelCollapsed,industryFilterCollapsed,portfolioFoldCollapsed,interviewSortMode,
-    inboxFold:{...inboxFoldOpen},financeFoldOpen,phonePanelOpen:!!(game&&game.phonePanelOpen),plannedExpanded:[...plannedExpandedCompanies]};
+    inboxFold:{...inboxFoldOpen},financeFoldOpen,phonePanelOpen:!!(game&&game.phonePanelOpen),plannedFoldOpen,plannedExpanded:[...plannedExpandedCompanies]};
 }
 function buildSlotMeta(){
   const job=game.employed&&game.employment?game.market[game.employment.jobIdx]:null;
@@ -1629,6 +1639,7 @@ function autoSaveSlot(){
 }
 function restoreGameState(g,corp){
   game=g;
+  if(typeof normalizePlayerStress==='function')normalizePlayerStress();
   game.companyAll=corp.all;game.companyById=corp.byId;game.jobCompanies=corp.jobCompanies;game.companyStats=corp.stats;
   if(game.employment&&game.employment.companyId){
     game.employment.company=corp.byId[game.employment.companyId];
@@ -1642,8 +1653,11 @@ function restoreGameState(g,corp){
     game.referralOpportunity.positions=game.referralOpportunity.positions.map(p=>({...p,offer:relinkOffer(p.offer,corp.byId)}));
   }
   delete game._severanceCtx;
+  if(!game.inboxReadIds)game.inboxReadIds=[];
   if(game.monthLedger)delete game.monthLedger._closing;
   casinoRolling=false;pendingBatch=null;consumeModalOpen=false;
+  if(typeof resetAutoLifeState==='function')resetAutoLifeState();
+  else if(typeof autoLifeRunning!=='undefined')autoLifeRunning=false;
   stopMarketTimer();
   if(game.marketActive){game.marketActive=false;game.marketBooths=[]}
   const mo=document.getElementById('marketOverlay');if(mo)mo.classList.add('hidden');
@@ -1669,10 +1683,11 @@ function restoreUiState(ui){
   portfolioFoldCollapsed=!!(ui&&ui.portfolioFoldCollapsed);
   industryPickerOpen=false;
   interviewSortMode=(ui&&ui.interviewSortMode)||'time';
-  if(ui&&ui.inboxFold)inboxFoldOpen={expired:false,ghost:false,rejected:false,...ui.inboxFold};
-  else inboxFoldOpen={expired:false,ghost:false,rejected:false};
+  if(ui&&ui.inboxFold)inboxFoldOpen={pending:true,replied:true,confirmed:true,attended:true,missed:true,expired:false,ghost:false,rejected:false,...ui.inboxFold};
+  else inboxFoldOpen={pending:true,replied:true,confirmed:true,attended:true,missed:true,expired:false,ghost:false,rejected:false};
   financeFoldOpen=!!(ui&&ui.financeFoldOpen);
   if(ui&&ui.phonePanelOpen!=null&&game)game.phonePanelOpen=!!ui.phonePanelOpen;
+  plannedFoldOpen=!!(ui&&ui.plannedFoldOpen);
   plannedExpandedCompanies=new Set((ui&&ui.plannedExpanded)||[]);
   applyRefPanelCollapse();
   applyPortfolioFoldCollapse();
@@ -1784,6 +1799,9 @@ function cancelCharCreate(){
 function continueSlot(slot){
   if(!loadSlotIntoGame(slot)){alert('读档失败，存档可能已损坏');return}
   hideStartOverlay();
+  consumeModalOpen=false;
+  if(typeof resetAutoLifeState==='function')resetAutoLifeState();
+  else if(typeof autoLifeRunning!=='undefined')autoLifeRunning=false;
   addLog('📂 读取档位 '+(slot+1)+' 存档（第'+game.week+'周）','info');
 }
 function deleteSlotConfirm(slot){
@@ -1889,7 +1907,7 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
     marketActive:false,marketTimeLeft:0,marketApplyCount:0,marketBooths:[],
     chipHand:emptyChipMap(),selectedChipDenom:null,tableBets:emptyTableBets(),
     rouletteBets:emptyRouletteBets(),casinoGame:'dice',rouletteWheelRot:0,
-    applications:[],inbox:[],offers:[],appliedCategories:{},resumeFailCount:0,showProbabilities:false,
+    applications:[],inbox:[],inboxReadIds:[],offers:[],appliedCategories:{},resumeFailCount:0,showProbabilities:false,
     wolfAchievement:false,expiredOfferCount:0,stressHighStreak:0,showSpongeInsight:false,
     shownLifeFlags:{},spongeModalActive:false,
     referralOpportunity:null,appSubscriptions:{},usedHeadhunterBatch:false,
@@ -1925,7 +1943,11 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
     game.companion.partnerGender=game.partnerGender;
   }
   if(typeof initCoreContacts==='function')initCoreContacts();
+  if(typeof initMenstrualCycleState==='function')initMenstrualCycleState();
   selectedJobIdxs=new Set();applyCategoryPicks=new Set();actionDone=false;pendingBatch=null;
+  if(typeof resetAutoLifeState==='function')resetAutoLifeState();
+  else if(typeof autoLifeRunning!=='undefined')autoLifeRunning=false;
+  consumeModalOpen=false;
   calendarView='month';syncCalendarMonthToGame();
   game.phonePanelOpen=false;
   try{
@@ -2121,7 +2143,7 @@ const ACTOR_FIELDS=[
   'onWelfare','disabled','welfareMonths','welfareUnderpaidMonths',
   'homeless','homelessMonths','gameWon','endingType','gameOver',
   'portfolio','stockSpent','gambleSpent','gambleCount',
-  'applications','inbox','offers','appliedCategories','resumeFailCount',
+  'applications','inbox','inboxReadIds','offers','appliedCategories','resumeFailCount',
   'wolfAchievement','expiredOfferCount','stressHighStreak','showProbabilities','showSpongeInsight',
   'referralOpportunity','appSubscriptions','usedHeadhunterBatch',
   'playerCity','longDistance',
@@ -2150,7 +2172,7 @@ function createCompanionState(edu,school){
     onWelfare:false,disabled:false,welfareMonths:0,welfareUnderpaidMonths:0,
     homeless:false,homelessMonths:0,gameWon:false,endingType:null,gameOver:false,
     portfolio:{},stockSpent:0,gambleSpent:0,gambleCount:0,
-    applications:[],inbox:[],offers:[],appliedCategories:{},resumeFailCount:0,
+    applications:[],inbox:[],inboxReadIds:[],offers:[],appliedCategories:{},resumeFailCount:0,
     wolfAchievement:false,expiredOfferCount:0,stressHighStreak:0,showProbabilities:false,showSpongeInsight:false,
     referralOpportunity:null,appSubscriptions:{},usedHeadhunterBatch:false,
     playerCity:PLAYER_HOME_CITY,longDistance:false,casinoCoupons:0,lifestyleSpent:0,
@@ -2448,6 +2470,8 @@ function renderCompanionPanel(){
     (game.partnerAffairActive?'<div class="companion-row"><span style="color:var(--red)">伴侣婚外情</span><span>进行中'+(game.partnerStdActive?' · 已感染性病':'')+'</span></div>':'')+
     (game.affairActive?'<div class="companion-row"><span style="color:var(--red)">你的婚外情</span><span>进行中</span></div>':'')+
     (game.stdActive?'<div class="companion-row"><span style="color:var(--orange)">你的性病</span><span>'+stdTreatmentStatusText()+'</span></div>':'')+
+    (typeof cycleStatusCompanionRow==='function'?cycleStatusCompanionRow():'')+
+    (typeof cycleStatusPlayerRow==='function'?cycleStatusPlayerRow():'')+
     '<div style="margin-top:8px"><button class="btn" onclick="confirmPlayerDivorce()">主动离婚</button>'+
     '<span style="font-size:.65rem;color:var(--muted);margin-left:6px">保留房产·房贷¥'+DIVORCE_MORTGAGE_PAYMENT+'/月</span></div></div>';
   }else if(game.divorced){
@@ -2565,6 +2589,7 @@ function migrateLoadedGameState(){
   if(!game.contactLoans)game.contactLoans=[];
   if(typeof migrateSpouseFinance==='function')migrateSpouseFinance();
   if(typeof migrateFertility==='function')migrateFertility();
+  if(typeof migrateMenstrualCycle==='function')migrateMenstrualCycle();
   if(!game.partnerDisplayName&&game.married&&!game.divorced)game.partnerDisplayName=pickPartnerDisplayName(game.partnerGender||'female');
   game.lastDateWeek=game.lastDateWeek||0;
   game.livingOffSpouse=!!game.livingOffSpouse;
@@ -2996,7 +3021,26 @@ function getAppChannelMult(job,tier,apps,importance){
 }
 
 function isManualJob(job){return MANUAL_CATS.includes(job.category)&&job.exposure<=3}
-function canApplyJob(job){if(game.onWelfare&&!game.disabled)return isManualJob(job);return true}
+function playerStress(){
+  const v=Number(game?.familyStress);
+  return Number.isFinite(v)?Math.max(0,v):0;
+}
+function normalizePlayerStress(){
+  if(!game)return;
+  game.familyStress=playerStress();
+}
+function isStressMindBlocked(){return playerStress()>=STRESS_MIND_BLOCK}
+function isStressMad(){return playerStress()>=STRESS_MAD}
+function canPlayerWorkWeek(){return !isStressMad()}
+function canApplyJobByStress(job){
+  if(!job)return false;
+  if(isStressMindBlocked()&&!isManualJob(job))return false;
+  return true;
+}
+function canApplyJob(job){
+  if(game.onWelfare&&!game.disabled)return isManualJob(job)&&canApplyJobByStress(job);
+  return canApplyJobByStress(job);
+}
 
 function pickCompany(jobIdx,tier){
   const pool=(game.jobCompanies&&game.jobCompanies[jobIdx])||[];
@@ -3210,7 +3254,12 @@ function markStealthJobSearch(){
 }
 function toggleInboxFold(cat){
   inboxFoldOpen[cat]=!inboxFoldOpen[cat];
+  refreshInboxViews();
+}
+function refreshInboxViews(){
+  if(typeof syncInviteExpiryState==='function')syncInviteExpiryState();
   renderInbox();
+  if(typeof renderDailyPanel==='function'&&game&&game.daily&&game.daily.subMenu==='job')renderDailyPanel();
 }
 function markInboxInvalid(item,reason){
   if(!item)return;
@@ -3263,27 +3312,107 @@ function isInviteActionable(app,it){
 function classifyInboxItem(it,app){
   if(it.type==='ghost')return 'ghost';
   if(it.type==='reject')return 'rejected';
-  if(it.invalid)return 'expired';
+  if(it.type==='interview_done'||it.type==='interview_reply')return it.type==='interview_done'?'attended':'replied';
+  if(it.type==='interview_missed')return 'missed';
+  if(it.invalid&&!app)return 'expired';
   if(app){
-    if(['invite_expired','conflict_expired','missed','declined'].includes(app.status))return 'expired';
+    if(app.status==='missed')return 'missed';
+    if(app.status==='interview_scheduled')return 'attended';
+    if(['invite_expired','conflict_expired','declined'].includes(app.status))return 'expired';
     if(app.status==='rejected')return 'rejected';
-    if(app.status==='interview_invite')return isInviteActionable(app,it)?'active':'expired';
+    if(app.status==='interview_invite')return isInviteActionable(app,it)?'pending':'expired';
     if(app.status==='interview_confirmed'){
-      if(app.interviewHeld||app.interviewWeek<game.week)return 'expired';
-      return 'active';
+      if(app.interviewHeld)return 'attended';
+      if(app.interviewWeek!=null&&app.interviewWeek>game.week)return 'replied';
+      if(app.interviewWeek===game.week)return 'confirmed';
+      return 'expired';
     }
   }
-  if(it.type==='interview'&&(it.attended||it.invalid))return 'expired';
-  return 'active';
+  if(it.invalid)return 'expired';
+  if(it.type==='interview'&&it.attended)return 'attended';
+  if(it.type==='interview'&&it.replied)return 'replied';
+  if(it.type==='interview')return 'pending';
+  return 'expired';
+}
+function findInboxApp(it){
+  if(!game||!it)return null;
+  if(it.type==='reject')return game.applications.find(a=>it.id===a.id+'_rej');
+  const baseId=it.appId||it.id.replace(/_attend_confirm$/,'').replace(/_missed_mail$/,'').replace(/_reply_confirm$/,'');
+  return game.applications.find(a=>a.id===baseId);
+}
+function inboxItemKey(it){return it.id+'_'+it.type}
+function ensureInboxReadIds(){if(!game.inboxReadIds)game.inboxReadIds=[]}
+function isInboxItemUnread(it,app){
+  ensureInboxReadIds();
+  const cat=classifyInboxItem(it,app);
+  if(cat==='pending'||cat==='ghost'||cat==='rejected')return !game.inboxReadIds.includes(inboxItemKey(it));
+  return false;
+}
+function markInboxItemsRead(items){
+  if(!items||!items.length)return;
+  ensureInboxReadIds();
+  const set=new Set(game.inboxReadIds);
+  items.forEach(it=>set.add(inboxItemKey(it)));
+  game.inboxReadIds=[...set];
+}
+function getVisibleInboxRaw(){
+  if(!game||!game.inbox)return [];
+  return game.inbox.filter(x=>{
+    if(x.type==='ghost'||x.type==='reject'||x.type==='interview_done'||x.type==='interview_missed'||x.type==='interview_reply')return true;
+    if(x.type!=='interview')return false;
+    const app=findInboxApp(x);
+    if(app&&['offered','silent'].includes(app.status))return false;
+    return true;
+  });
+}
+function markVisibleInboxRead(){markInboxItemsRead(getVisibleInboxRaw())}
+function countJobInboxUnread(){
+  if(!game||!game.inbox)return 0;
+  let n=0;
+  getVisibleInboxRaw().forEach(it=>{
+    const app=findInboxApp(it);
+    if(isInboxItemUnread(it,app))n++;
+  });
+  return n;
+}
+function bucketInboxItems(raw){
+  const buckets={pending:[],replied:[],confirmed:[],attended:[],missed:[],expired:[],ghost:[],rejected:[]};
+  raw.forEach(it=>{
+    const app=findInboxApp(it);
+    const cat=classifyInboxItem(it,app);
+    if(buckets[cat])buckets[cat].push(it);
+    else buckets.expired.push(it);
+  });
+  Object.keys(buckets).forEach(k=>{buckets[k]=sortInterviewInboxItems(buckets[k])});
+  return buckets;
+}
+function renderInboxBucketsHtml(buckets){
+  let html='';
+  html+=renderInboxCategory('待确认 · 面试邀请','pending',buckets.pending,true);
+  html+=renderInboxCategory('已回复 · 确认参加面试','replied',buckets.replied,true);
+  html+=renderInboxCategory('已确认 · 待面试','confirmed',buckets.confirmed,true);
+  html+=renderInboxCategory('已参加 · 出席确认','attended',buckets.attended,true);
+  html+=renderInboxCategory('未参加 · 缺席通知','missed',buckets.missed,true);
+  html+=renderInboxCategory('已失效 · 未确认/冲突','expired',buckets.expired,true);
+  html+=renderInboxCategory('未通过筛选 · 无面试机会','ghost',buckets.ghost,true);
+  html+=renderInboxCategory('面试未通过','rejected',buckets.rejected,true);
+  return html;
 }
 function inboxExpiredLabel(app,it){
   if(it&&it.invalidReason)return it.invalidReason;
   if(!app)return '已失效';
   if(app.status==='conflict_expired')return '与已确认面试冲突，已失效';
   if(app.status==='invite_expired')return '未确认，已失效';
-  if(app.status==='missed')return '已错过';
   if(app.status==='declined')return '已放弃';
   return '已失效';
+}
+function pushInboxMail(item){
+  if(!game||!item)return;
+  if(!game.inbox.some(x=>x.id===item.id))game.inbox.push(item);
+}
+function togglePlannedFold(){
+  plannedFoldOpen=!plannedFoldOpen;
+  renderInterviewCalendar();
 }
 function togglePlannedCompany(co){
   if(plannedExpandedCompanies.has(co))plannedExpandedCompanies.delete(co);
@@ -3323,7 +3452,7 @@ function getResumeProbability(job,offer,apps){
 }
 function getInterviewProbability(job,offer,hasReferral){
   let base=getResumeProbability(job,offer,offer.apps)*.85+.18;
-  base*=1-game.familyStress*game.stressMultiplier*.003;
+  base*=1-Math.min(.85,playerStress()*game.stressMultiplier*.001);
   if(game.onWelfare)base*=.75;
   if(hasReferral)base=Math.min(.88,base*1.35+.12);
   return Math.min(.88,Math.max(0.03,base));
@@ -3808,7 +3937,11 @@ function processApplicationPipeline(){
       app.status='missed';app.interviewHeld=true;
       const missedInbox=game.inbox.find(x=>x.id===app.id&&x.type==='interview');
       markInboxInvalid(missedInbox,'未到场，已错过');
-      addLog('⏰ 错过 '+app.offer.company.name+' '+interviewSlotLabel(app.interviewSlot)+' 面试（未按时段到场）','warn');
+      const slotTxt=interviewSlotLabel(app.interviewSlot);
+      pushInboxMail({id:app.id+'_missed_mail',appId:app.id,type:'interview_missed',week:w,jobIdx:app.jobIdx,
+        company:app.offer.company.name,interviewWeek:app.interviewWeek,interviewSlot:app.interviewSlot,offer:app.offer,
+        msg:app.offer.company.name+' 面试缺席通知：您未按约参加 '+getDateStr(app.interviewWeek)+' '+slotTxt+' 的面试。'});
+      addLog('⏰ 错过 '+app.offer.company.name+' '+slotTxt+' 面试（未按时段到场）','warn');
     }
     if(app.status==='interview_scheduled'&&app.resultWeek&&w>=app.resultWeek){
       const job=game.market[app.jobIdx], offer=app.offer;
@@ -3870,11 +4003,17 @@ function confirmInterview(inboxId){
   }
   app.status='interview_confirmed';
   item.confirmed=true;
+  item.replied=true;
+  const slotTxt=interviewSlotLabel(app.interviewSlot);
+  pushInboxMail({id:app.id+'_reply_confirm',appId:app.id,type:'interview_reply',week:game.week,jobIdx:app.jobIdx,
+    company:item.company,interviewWeek:app.interviewWeek,interviewSlot:app.interviewSlot,offer:app.offer,
+    msg:'已回复 '+item.company+'：确认参加 '+getDateStr(app.interviewWeek)+' '+slotTxt+' 的面试。'});
+  markInboxItemsRead([item]);
   expireConflictingInvites(app);
   const costNote=formatInterviewCostDesc(app);
   addLog('📅 已确认 '+item.company+' 面试（'+getDateStr(app.interviewWeek)+' '+interviewSlotLabel(app.interviewSlot)+' · '+costNote+'）','info');
   updateLongDistanceStatus();
-  renderInbox();renderInterviewCalendar();updateUI();
+  refreshInboxViews();renderInterviewCalendar();updateUI();
 }
 function attendInterviewSlot(inboxId){
   const app=game.applications.find(a=>a.id===inboxId);
@@ -3892,8 +4031,11 @@ function attendInterviewSlot(inboxId){
   const item=game.inbox.find(x=>x.id===inboxId&&x.type==='interview');
   if(item)item.attended=true;
   const modeTxt=isInterviewOnline(app)?'在线面试':interviewModeLabel(app);
+  pushInboxMail({id:app.id+'_attend_confirm',appId:app.id,type:'interview_done',week:game.week,jobIdx:app.jobIdx,
+    company:offer.company.name,interviewWeek:app.interviewWeek,interviewSlot:app.interviewSlot,offer,
+    msg:offer.company.name+' 面试出席确认：您已按约参加 '+getDateStr(app.interviewWeek)+' '+interviewSlotLabel(app.interviewSlot)+' 的'+modeTxt+'。'});
   addLog('🎤 '+interviewSlotLabel(app.interviewSlot)+' '+modeTxt+'：'+offer.company.name+'（'+IMP_LABEL[offer.importance]+(fee?' ¥'+fee:'')+'）','info');
-  renderInbox();renderInterviewCalendar();updateUI();
+  refreshInboxViews();renderInterviewCalendar();updateUI();
 }
 function skipInterviewAttend(inboxId){
   const app=game.applications.find(a=>a.id===inboxId);
@@ -3901,8 +4043,12 @@ function skipInterviewAttend(inboxId){
   app.status='missed';app.interviewHeld=true;
   const item=game.inbox.find(x=>x.id===inboxId&&x.type==='interview');
   markInboxInvalid(item,'已放弃到场');
+  const slotTxt=interviewSlotLabel(app.interviewSlot);
+  pushInboxMail({id:app.id+'_missed_mail',appId:app.id,type:'interview_missed',week:game.week,jobIdx:app.jobIdx,
+    company:app.offer.company.name,interviewWeek:app.interviewWeek,interviewSlot:app.interviewSlot,offer:app.offer,
+    msg:app.offer.company.name+' 面试缺席通知：您已放弃 '+getDateStr(app.interviewWeek)+' '+slotTxt+' 的面试。'});
   addLog('未前往 '+app.offer.company.name+' 面试','warn');
-  renderInbox();renderInterviewCalendar();updateUI();
+  refreshInboxViews();renderInterviewCalendar();updateUI();
 }
 function attendInterview(inboxId){
   const app=game.applications.find(a=>a.id===inboxId);
@@ -3915,10 +4061,12 @@ function declineInterview(inboxId){
   const app=game.applications.find(a=>a.id===inboxId);
   if(app)app.status='declined';
   markInboxInvalid(item,'已放弃');
+  markInboxItemsRead([item]);
   addLog('已放弃 '+item.company+' 面试','info');
-  renderInbox();
+  refreshInboxViews();
   renderInterviewCalendar();
   updateLongDistanceStatus();
+  if(typeof updateUI==='function')updateUI();
 }
 function buyDateNight(){
   if(!game||game.gameOver)return;
@@ -4311,7 +4459,7 @@ function renderSpendingPanel(){
     {label:game.ownsComputer?'电脑（已购）':'电脑 ¥'+COMPUTER_COST,meta:game.ownsComputer?'在宅家时段使用 · 本周'+(c.computerUsed?'已用':'可用'):'一次性购买',btn:game.ownsComputer?'已购':'买',fn:'buyComputer()',off:!!game.ownsComputer}
   ]);
   let html='<div class="spend-row"><div><div>🍿 零食囤货 · 库存 <b>'+stock+'</b> 份</div>'+
-    '<div class="spend-meta">单价 ¥'+SNACK_UNIT_COST+'/份 · 宅家进食消耗 · 每10压力多吃1份 · 隔天反弹（份数×2压力）</div></div>'+
+    '<div class="spend-meta">单价 ¥'+SNACK_UNIT_COST+'/份 · 宅家进食 · 每10压力+1份（最多'+SNACK_PORTIONS_CAP+'份）· 隔天反弹（至少净减'+SNACK_MIN_NET_RELIEF+'压力）</div></div>'+
     '<div class="spend-btns">'+
     '<button class="btn" onclick="buySnackBulk(1)">买1</button> '+
     '<button class="btn" onclick="buySnackBulk(10)">买10·'+snackBulkDiscountLabel(10)+'</button> '+
@@ -4399,22 +4547,30 @@ function renderCalPlannedList(plannedPending){
     if(!byCo[co])byCo[co]=[];
     byCo[co].push(a);
   });
-  let html='<div class="cal-planned-list cal-planned-fold" onclick="event.stopPropagation()"><div class="cal-planned-hdr">预定招聘 · 等待筛选（'+plannedPending.length+'）</div>';
-  Object.keys(byCo).sort((a,b)=>a.localeCompare(b,'zh-CN')).forEach(co=>{
-    const rows=byCo[co];
-    const open=plannedExpandedCompanies.has(co);
-    html+='<div class="inbox-fold-hdr" onclick="togglePlannedCompany(\\''+co.replace(/'/g,"\\'")+'\\')">'+
-      '<span><b>'+co+'</b> <span class="fold-meta">'+rows.length+' 条</span></span><span>'+(open?'▼':'▶')+'</span></div>';
-    if(open){
-      html+='<div class="inbox-fold-body">';
-      rows.forEach(a=>{
-        const title=calAppTitle(a);
-        const startNote=a.offer&&a.offer.startDelayWeeks?' · 入职约'+getDateStr(a.applyWeek+a.offer.startDelayWeeks):'';
-        html+='<div class="cal-planned-row">'+getDateStr(a.replyWeek)+' · '+title+startNote+'</div>';
-      });
-      html+='</div>';
-    }
-  });
+  const sectionOpen=!!plannedFoldOpen;
+  let html='<div class="cal-planned-list cal-planned-fold" onclick="event.stopPropagation()">';
+  html+='<div class="cal-planned-hdr inbox-fold-hdr" onclick="togglePlannedFold()">'+
+    '<span><b style="color:var(--blue)">预定招聘</b> <span class="fold-meta">等待筛选 · '+plannedPending.length+' 条</span></span>'+
+    '<span>'+(sectionOpen?'▼':'▶')+'</span></div>';
+  if(sectionOpen){
+    html+='<div class="inbox-fold-body">';
+    Object.keys(byCo).sort((a,b)=>a.localeCompare(b,'zh-CN')).forEach(co=>{
+      const rows=byCo[co];
+      const open=plannedExpandedCompanies.has(co);
+      html+='<div class="inbox-fold-hdr" onclick="togglePlannedCompany(\\''+co.replace(/'/g,"\\'")+'\\')">'+
+        '<span><b>'+co+'</b> <span class="fold-meta">'+rows.length+' 条</span></span><span>'+(open?'▼':'▶')+'</span></div>';
+      if(open){
+        html+='<div class="inbox-fold-body">';
+        rows.forEach(a=>{
+          const title=calAppTitle(a);
+          const startNote=a.offer&&a.offer.startDelayWeeks?' · 入职约'+getDateStr(a.applyWeek+a.offer.startDelayWeeks):'';
+          html+='<div class="cal-planned-row">'+getDateStr(a.replyWeek)+' · '+title+startNote+'</div>';
+        });
+        html+='</div>';
+      }
+    });
+    html+='</div>';
+  }
   return html+'</div>';
 }
 function renderCalDayMiniEvents(plItems,ivItems,max,spouseItems){
@@ -4522,7 +4678,7 @@ function renderInterviewCalendar(){
 }
 function setInterviewSort(mode){
   interviewSortMode=mode;
-  renderInbox();
+  refreshInboxViews();
 }
 function sortInterviewInboxItems(items){
   const getOffer=it=>{
@@ -4560,8 +4716,20 @@ function sortInterviewInboxItems(items){
   });
   return sorted;
 }
+function formatInboxOfferDetail(it,app){
+  const offer=(app&&app.offer)||it.offer;
+  if(!offer||!offer.company)return '';
+  const ji=it.jobIdx!=null?it.jobIdx:(app&&app.jobIdx);
+  const job=ji!=null&&game.market?game.market[ji]:null;
+  const jobTitle=job?job.title:'—';
+  const imp=offer.roleExtra?IMP_LABEL[offer.importance]+'·'+ROLE_EXTRA[offer.roleExtra]:IMP_LABEL[offer.importance];
+  const pay=formatOfferPay(offer);
+  return '<div class="inbox-offer-detail">'+
+    '岗位：<b>'+jobTitle+'</b> · '+fmtCompanyBadge(offer.company)+' · <b>'+imp+'</b> · '+pay+
+    (offer.welfare?'<br>'+offer.welfare:'')+'</div>';
+}
 function renderInboxRow(it){
-  const app=game.applications.find(a=>a.id===it.id||(it.type==='reject'&&it.id===a.id+'_rej'));
+  const app=findInboxApp(it);
   const cat=classifyInboxItem(it,app);
   const ivWeek=app&&app.interviewWeek!=null?app.interviewWeek:it.interviewWeek;
   const slot=app&&app.interviewSlot?app.interviewSlot:it.interviewSlot;
@@ -4569,10 +4737,18 @@ function renderInboxRow(it){
   let cls='inbox-item';
   if(cat==='expired'||it.invalid)cls+=' invalid';
   else if(it.type==='ghost')cls+=' ghost';
+  else if(cat==='attended')cls+=' has-reply';
+  else if(cat==='missed')cls+=' invalid';
+  else if(cat==='replied')cls+=' has-reply';
   else if(it.type==='interview')cls+=' has-reply';
   else if(it.type==='reject')cls+=' invalid';
   let acts='',invalidTag='';
-  if(cat==='expired'){
+  if(it.type==='interview_reply'||it.type==='interview_done'||it.type==='interview_missed'){
+    acts='<div style="color:var(--'+(it.type==='interview_missed'?'red':'green')+');font-size:.7rem;margin-top:4px">'+
+      (it.type==='interview_reply'?'✓ 已回复确认':it.type==='interview_done'?'✓ 已参加确认':'✗ 缺席记录')+'</div>';
+  }else if(cat==='missed'){
+    invalidTag='<div class="invalid-tag">未参加</div>';
+  }else if(cat==='expired'){
     invalidTag='<div class="invalid-tag">'+inboxExpiredLabel(app,it)+'</div>';
   }else if(it.type==='interview'&&app){
     const costDesc=formatInterviewCostDesc(app);
@@ -4601,55 +4777,39 @@ function renderInboxRow(it){
         '<div style="color:var(--muted);font-size:.65rem;margin-top:3px">'+modeNote+' · '+costDesc+'</div>';
     }
   }
+  const offerLine=(it.type==='interview'||it.type==='reject'||it.type==='ghost')?formatInboxOfferDetail(it,app):'';
   const dateLine='通知 '+getDateStr(it.week)+(ivWeek?' · 面试 <b>'+getDateStr(ivWeek)+(slotTxt?' '+slotTxt:'')+'</b>':'');
-  return '<div class="'+cls+'"><div>'+it.msg+'</div><div style="color:var(--muted);font-size:.7rem">'+dateLine+'</div>'+invalidTag+acts+'</div>';
+  return '<div class="'+cls+'"><div>'+it.msg+'</div>'+offerLine+'<div style="color:var(--muted);font-size:.7rem">'+dateLine+'</div>'+invalidTag+acts+'</div>';
 }
 function renderInboxCategory(title,catKey,items,foldable){
   if(!items.length)return '';
-  let html='';
+  const open=!foldable||!!inboxFoldOpen[catKey];
+  let html='<div class="inbox-cat-block">';
   if(foldable){
-    const open=inboxFoldOpen[catKey];
     html+='<div class="inbox-fold-hdr inbox-cat-hdr inbox-cat-'+catKey+'" onclick="toggleInboxFold(\\''+catKey+'\\')">'+
       '<span><b>'+title+'</b> <span class="fold-meta">'+items.length+' 条</span></span><span>'+(open?'▼':'▶')+'</span></div>';
-    if(!open)return html;
-    html+='<div class="inbox-fold-body">';
   }else{
-    html+='<div class="inbox-fold-hdr inbox-cat-hdr" style="cursor:default;border-style:solid"><span><b>'+title+'</b> <span class="fold-meta">'+items.length+' 条</span></span></div><div class="inbox-fold-body">';
+    html+='<div class="inbox-fold-hdr inbox-cat-hdr" style="cursor:default;border-style:solid"><span><b>'+title+'</b> <span class="fold-meta">'+items.length+' 条</span></span></div>';
   }
-  items.forEach(it=>{html+=renderInboxRow(it)});
+  if(open){
+    html+='<div class="inbox-fold-body">';
+    items.forEach(it=>{html+=renderInboxRow(it)});
+    html+='</div>';
+  }
   return html+'</div>';
 }
 function renderInbox(){
   syncInviteExpiryState();
   const panel=document.getElementById('inboxPanel'), list=document.getElementById('inboxList');
-  const raw=game.inbox.filter(x=>{
-    if(x.type==='ghost'||x.type==='reject')return true;
-    if(x.type!=='interview')return false;
-    const app=game.applications.find(a=>a.id===x.id);
-    if(app&&['interview_scheduled','offered','silent'].includes(app.status))return false;
-    return true;
-  });
-  if(!raw.length){panel.style.display='none';return}
-  panel.style.display='block';
+  const raw=getVisibleInboxRaw();
+  if(!raw.length){if(panel)panel.style.display='none';return}
+  if(panel)panel.style.display='block';
   const sortBtns=document.getElementById('inboxSortBtns');
   if(sortBtns){
     const modes=[{id:'time',label:'按时间'},{id:'pay',label:'按薪资'},{id:'company',label:'按企业'},{id:'imp',label:'按岗位等级'}];
     sortBtns.innerHTML=modes.map(m=>'<button type="button" class="btn'+(interviewSortMode===m.id?' active':'')+'" onclick="setInterviewSort(\\''+m.id+'\\')">'+m.label+'</button>').join('');
   }
-  const buckets={active:[],expired:[],ghost:[],rejected:[]};
-  raw.forEach(it=>{
-    const app=game.applications.find(a=>a.id===it.id||(it.type==='reject'&&it.id===a.id+'_rej'));
-    const cat=classifyInboxItem(it,app);
-    if(buckets[cat])buckets[cat].push(it);
-    else buckets.expired.push(it);
-  });
-  Object.keys(buckets).forEach(k=>{buckets[k]=sortInterviewInboxItems(buckets[k])});
-  let html='';
-  html+=renderInboxCategory('待处理 · 面试邀请','active',buckets.active,false);
-  html+=renderInboxCategory('已失效 · 未确认/冲突/错过','expired',buckets.expired,true);
-  html+=renderInboxCategory('未通过筛选 · 无面试机会','ghost',buckets.ghost,true);
-  html+=renderInboxCategory('面试未通过','rejected',buckets.rejected,true);
-  list.innerHTML=html;
+  if(list)list.innerHTML=renderInboxBucketsHtml(bucketInboxItems(raw));
 }
 function renderOffers(){
   const panel=document.getElementById('offersPanel'), list=document.getElementById('offersList');
@@ -4909,7 +5069,7 @@ function weeklySalary(job,emp){
   if(emp.roleExtra==='intern')base=Math.round(base*0.55);
   let vol=1;
   if(emp.roleExtra==='temp')vol=0.88+((game.week+job.idx*3)%12)/80;
-  return Math.round((base/52)*heat*vol*(1-game.familyStress*game.stressMultiplier*.0006));
+  return Math.max(0,Math.round((base/52)*heat*vol*(1-Math.min(.9,playerStress()*game.stressMultiplier*.0006))));
 }
 
 const LIFE_STATUS_MODALS=[
@@ -4973,20 +5133,43 @@ function checkLifeStatusModals(){
   }
 }
 function addStress(delta,reason){
-  if(!game||!delta)return;
-  const before=game.familyStress;
-  game.familyStress=Math.max(0,Math.min(100,game.familyStress+delta));
-  if(reason&&game.familyStress!==before)addLog(reason+(delta>0?'+':'')+delta+' 压力（'+before+'→'+game.familyStress+'）','stress');
+  if(!game||delta==null||delta===0)return;
+  delta=Number(delta);
+  if(!Number.isFinite(delta)||delta===0)return;
+  normalizePlayerStress();
+  const before=playerStress();
+  const next=Math.max(0,before+delta);
+  game.familyStress=next;
+  if(reason&&next!==before)addLog(reason+(delta>0?'+':'')+delta+' 压力（'+before+'→'+next+'）','stress');
 }
 function addPartnerStress(delta,reason){
-  if(!game||!game.companion||!delta)return;
+  if(!game||!game.companion||delta==null||delta===0)return;
+  delta=Number(delta);
+  if(!Number.isFinite(delta)||delta===0)return;
   const c=game.companion;
-  const before=c.familyStress||0;
-  c.familyStress=Math.max(0,Math.min(100,before+delta));
-  if(reason&&c.familyStress!==before)addLog(reason+'伴侣压力 '+(delta>0?'+':'')+delta+'（'+before+'→'+c.familyStress+'）','stress');
+  const before=Math.max(0,Number(c.familyStress)||0);
+  const next=Math.max(0,before+delta);
+  c.familyStress=next;
+  if(reason&&next!==before)addLog(reason+'伴侣压力 '+(delta>0?'+':'')+delta+'（'+before+'→'+next+'）','stress');
 }
 function snackPortionsForStress(stress){
-  return 1+Math.floor(Math.max(0,stress||0)/10);
+  const s=Math.max(0,Number(stress)||0);
+  return Math.min(SNACK_PORTIONS_CAP,1+Math.floor(s/10));
+}
+function snackReboundPreview(reboundPortions,relief){
+  let rebound=(reboundPortions||0)*SNACK_REBOUND_PER_PORTION;
+  const minNet=Math.max(1,SNACK_MIN_NET_RELIEF);
+  return Math.min(rebound,Math.max(0,relief-minNet));
+}
+function snackReboundStress(relief){
+  const portions=game.snackReboundPortions||0;
+  game.snackReboundPortions=0;
+  return snackReboundPreview(portions,relief);
+}
+function partnerSnackReboundStress(relief){
+  const portions=game.partnerSnackReboundPortions||0;
+  game.partnerSnackReboundPortions=0;
+  return snackReboundPreview(portions,relief);
 }
 function snackBulkDiscount(qty){
   if(qty>=1000)return 0.5;
@@ -5021,12 +5204,9 @@ function tickSnackDayRebound(d){
 }
 function applySnackPortionsToPlayer(portions){
   portions=Math.max(1,Math.floor(portions)||1);
-  let rebound=0;
-  if(game.snackReboundPortions>0){
-    rebound=game.snackReboundPortions*SNACK_REBOUND_PER_PORTION;
-    addStress(rebound,'零食隔天反弹 ');
-  }
   const relief=portions*SNACK_RELIEF_PER_PORTION;
+  const rebound=snackReboundStress(relief);
+  if(rebound)addStress(rebound,'零食隔天反弹 ');
   addStress(-relief,'零食 ');
   const d=ensureDailyState();
   if(d)d.snackPortionsToday=(d.snackPortionsToday||0)+portions;
@@ -5034,12 +5214,9 @@ function applySnackPortionsToPlayer(portions){
 }
 function applySnackPortionsToPartner(portions){
   portions=Math.max(1,Math.floor(portions)||1);
-  let rebound=0;
-  if(game.partnerSnackReboundPortions>0){
-    rebound=game.partnerSnackReboundPortions*SNACK_REBOUND_PER_PORTION;
-    addPartnerStress(rebound,'零食隔天反弹 ');
-  }
   const relief=portions*SNACK_RELIEF_PER_PORTION;
+  const rebound=partnerSnackReboundStress(relief);
+  if(rebound)addPartnerStress(rebound,'零食隔天反弹 ');
   addPartnerStress(-relief,'零食 ');
   const d=ensureDailyState();
   if(d)d.partnerSnackPortionsToday=(d.partnerSnackPortionsToday||0)+portions;
@@ -5348,7 +5525,7 @@ function finalizeDivorce(opts){
     game.ownsHome=false;game.mortgageMonthlyOverride=0;
   }
   if(!o.skipStress){
-    game.familyStress=Math.min(100,game.familyStress+(o.stressDelta||STRESS_DIVORCE));
+    addStress(o.stressDelta||STRESS_DIVORCE,'离婚 ');
     if(!o.playerInitiated)game.stressMultiplier=Math.max(game.stressMultiplier,2);
   }
   markLifeStressEvent('divorced','离婚 ');
@@ -5596,7 +5773,8 @@ function tryConceiveFromSex(noCondom,fromAffair){
   if(!fromAffair&&isSameSexCouple())return false;
   if(!fromAffair&&(!game.married||game.divorced))return false;
   let p=noCondom?PREGNANCY_CHANCE_RAW:PREGNANCY_CHANCE_SAFE;
-  if(game.procreateIntentWeek===game.week&&noCondom)p=Math.max(p,PREGNANCY_CHANCE_PROC_CREATE);
+  if(typeof menstrualConceptionChance==='function')p=menstrualConceptionChance(!!noCondom);
+  else if(game.procreateIntentWeek===game.week&&noCondom)p=Math.max(p,PREGNANCY_CHANCE_PROC_CREATE);
   if(fromAffair)p=Math.max(p,AFFAIR_PREGNANCY_CHANCE||0.15);
   if(Math.random()>=p)return false;
   if(game.playerGender==='female')return startPregnancy(fromAffair,'player');
@@ -5682,6 +5860,7 @@ function promptMakeLove(batch){
     });
     return;
   }
+  if(typeof interceptMakeLoveForCycle==='function'&&interceptMakeLoveForCycle(batch))return;
   if(sexSessionsLeft()<batch){
     if(game._dailySexPendingHours)clearDailySexReserve();
     addLog('本周剩余 '+sexSessionsLeft()+' 次','fail');return;
@@ -5705,6 +5884,8 @@ function promptMakeLove(batch){
     html+='<br><span style="color:var(--green)">🍼 本月备孕中</span>';
     html+='<br><span style="color:var(--orange)">备孕期若戴套：亲密度-20，伴侣怀疑出轨（聊骚/出轨史提高被抓概率）</span>';
   }
+  if(typeof makeLoveConceptionHintHtml==='function')html+=makeLoveConceptionHintHtml();
+  if(typeof makeLovePregnancyWarningHtml==='function')html+=makeLovePregnancyWarningHtml();
   showConsumeModal({
     icon:'💕',title:'夫妻生活 ×'+batch,
     html:html,
@@ -5726,8 +5907,13 @@ function makeLoveBatch(batch,noCondom){
     return;
   }
   const procBetrayal=game.procreateIntentWeek===game.week&&!noCondom;
-  let conceived=false,harmony=true;
+  let conceived=false,harmony=true,miscarried=false;
   for(let i=0;i<batch;i++){
+    if(!miscarried&&typeof rollFirstTrimesterMiscarriage==='function'&&rollFirstTrimesterMiscarriage()){
+      miscarried=true;
+      harmony=false;
+      break;
+    }
     const r=runSexSession(!!noCondom);
     if(r&&!r.harmony)harmony=false;
     c.sexSessions=(c.sexSessions||0)+1;
@@ -5746,6 +5932,7 @@ function makeLoveBatch(batch,noCondom){
     html+='<br><br>'+betray.html;
   }
   if(conceived)html+='<br><b style="color:var(--green)">怀孕！</b>';
+  if(miscarried)html+='<br><b style="color:var(--red)">孕早期同房导致流产 · 亲密度 -10</b>';
   if(pendingH)html+='<br><span class="fold-meta">占用 '+pendingH+'h</span>';
   const optTag=noCondom?('（'+sexRiskOptionLabel(true)+'）'):('（'+sexSafeOptionLabel()+'）');
   addLog('💕 做爱 ×'+batch+optTag+(conceived?' · 怀孕！':''),'info');
@@ -5947,7 +6134,7 @@ function processMonthlyBills(){
   if(game.homeless){
     if(paid>0)ledgerRecordMandatoryExpense(exp,paid);
     game.homelessMonths++;
-    game.familyStress=Math.min(100,game.familyStress+8);
+    addStress(8,'流浪 ');
     addLog('🌧 流浪中无力维持生活（缺 ¥'+shortfall+'），在桥洞又熬过一個月','warn');
     if(game.homelessMonths>=24&&getYear(game.week)>=2050){endGame('bridge');return}
     return;
@@ -5965,7 +6152,7 @@ function processMonthlyBills(){
       ledgerRecordMandatoryExpense(exp,need);
       if(fromSpouse>0)ledgerAddIncome('spouse','💑','配偶资助',shortfall);
       addLog('💑 吃软饭：伴侣代付 ¥'+shortfall.toLocaleString()+'（每周亲密度-5）','stress');
-      game.familyStress=Math.min(100,game.familyStress+1*game.stressMultiplier);
+      addStress(1*game.stressMultiplier,'吃软饭 ');
       game.monthsUnderpaid=0;
       return;
     }
@@ -5979,14 +6166,14 @@ function processMonthlyBills(){
     ledgerAddIncome('parents','🏠','父母资助',shortfall);
     markLifeStressEvent('parents','开始啃老 ');
     addLog('🏠 收入不足，啃老 ¥'+shortfall.toLocaleString()+'（剩余'+game.parentsSupportMonthsLeft+'月）','stress');
-    game.familyStress=Math.min(100,game.familyStress+STRESS_PARENTS_MONTHLY*game.stressMultiplier);
+    addStress(STRESS_PARENTS_MONTHLY*game.stressMultiplier,'啃老 ');
     game.monthsUnderpaid=0;
     if(game.parentsSupportMonthsLeft<=0)settleParentsInheritance();
     return;
   }
   if(paid>0)ledgerRecordMandatoryExpense(exp,paid);
   game.monthsUnderpaid++;
-  game.familyStress=Math.min(100,game.familyStress+10*game.stressMultiplier);
+  addStress(10*game.stressMultiplier,'欠账 ');
   addLog('⚠ 第'+game.monthsUnderpaid+'月无力交满（缺 ¥'+shortfall.toLocaleString()+'）','warn');
   if(!game.divorced&&game.monthsUnderpaid>=6){
     game.monthsUnderpaid=0;
@@ -6024,8 +6211,8 @@ function checkManualInjury(){
 
 function applyFamilyPressure(cat){
   if(!isCategorySalaryDeclining(cat))return;
-  game.familyStress=Math.min(100,game.familyStress+(3+Math.floor(Math.random()*4))*game.stressMultiplier);
-  if(game.familyStress>20&&Math.random()<.3){
+  addStress((3+Math.floor(Math.random()*4))*game.stressMultiplier,'行业下行 ');
+  if(playerStress()>20&&Math.random()<.3){
     game.familyPressureEvents++;
     const msgs=['家人嫌弃你挣得太少……','亲戚冷嘲热讽。','前妻/前夫发来嘲讽消息。','父母叹气：当初不如考公。'];
     addLog('😔 '+msgs[Math.floor(Math.random()*msgs.length)],'stress');
@@ -6095,7 +6282,21 @@ function waitWeek(){if(actionDone||game.employed||game.casinoActive||game.market
 
 function processEmployedWeek(){
   if(!game.employed)return;
+  if(!canPlayerWorkWeek()){
+    if(game._stressMadSkipWeek!==game.week){
+      game._stressMadSkipWeek=game.week;
+      addLog('🌀 压力≥'+STRESS_MAD+'，精神崩溃，本周无法上班（仍可求职）','warn');
+    }
+    return;
+  }
   const emp=game.employment, job=game.market[emp.jobIdx];
+  if(isStressMindBlocked()&&!isManualJob(job)){
+    if(game._stressMindSkipWeek!==game.week){
+      game._stressMindSkipWeek=game.week;
+      addLog('🧠 压力≥'+STRESS_MIND_BLOCK+'，无法胜任脑力劳动，本周未出勤','warn');
+    }
+    return;
+  }
   let salary=weeklySalary(job,emp);
   if(game.headhunterDebt>0){const d=Math.min(salary,game.headhunterDebt);game.headhunterDebt-=d;salary-=d;if(d){addLog('扣猎头欠款 ¥'+d,'warn');ledgerAddExpense('debt','💼','猎头欠款',d,false)}}
   game.money+=salary; game.cash+=salary;
@@ -6112,7 +6313,7 @@ function processEmployedWeek(){
       recordCareerHistory(emp);
       const laidOffEmp={...emp};
       game.employed=false; game.layoffs++; game.employment=null;
-      game.familyStress=Math.min(100,game.familyStress+8*game.stressMultiplier);
+      addStress(8*game.stressMultiplier,'被裁 ');
       addLog('💔 '+r.reason+'。本周工资 ¥'+salary.toLocaleString(),'fail');
       updateLongDistanceStatus();
       triggerLayoffSeverance(laidOffEmp,r);
@@ -6195,6 +6396,7 @@ function advanceOneWeek(){
   if(typeof tickContactLoans==='function')tickContactLoans();
   if(typeof tickSpouseLoans==='function')tickSpouseLoans();
   if(typeof tickFertilityOrders==='function')tickFertilityOrders();
+  if(typeof flushMenstrualCycleWeek==='function')flushMenstrualCycleWeek();
   return true;
 }
 function nextWeek(){
@@ -7296,7 +7498,7 @@ function settleRouletteSpin(n,opts){
     '<div class="dice-sum-note">'+colLbl+'</div>'+
     (payoutNote?'<div class="dice-sum-note">'+payoutNote+'</div>':'');
   if(won>0)addLog('轮盘开出 '+n+'（'+colLbl+'）赢得筹码 ¥'+won.toLocaleString(),'success');
-  else if(lost>0){addLog('轮盘开出 '+n+'（'+colLbl+'）输掉筹码 ¥'+lost.toLocaleString(),'fail');game.familyStress=Math.min(100,game.familyStress+4)}
+  else if(lost>0){addLog('轮盘开出 '+n+'（'+colLbl+'）输掉筹码 ¥'+lost.toLocaleString(),'fail');addStress(4)}
   else addLog('轮盘开出 '+n+'（'+colLbl+'）','info');
   let html='<div class="settle-sum dice-result-only">'+n+'</div><div style="text-align:center;color:var(--yellow);font-size:.76rem;margin-bottom:6px">'+colLbl+'</div>';
   if(rows.length){
@@ -7626,7 +7828,7 @@ function settleCasinoRoll(dice,opts){
     (payoutNote?'<div class="dice-sum-note">'+payoutNote+'</div>':'');
   recordDiceHistory(dice);
   if(won>0)addLog('开盅 '+dice.join('+')+'='+sum+' 赢得筹码 ¥'+won.toLocaleString(),'success');
-  else if(lost>0){addLog('开盅 '+dice.join('+')+'='+sum+' 输掉筹码 ¥'+lost.toLocaleString(),'fail');game.familyStress=Math.min(100,game.familyStress+4)}
+  else if(lost>0){addLog('开盅 '+dice.join('+')+'='+sum+' 输掉筹码 ¥'+lost.toLocaleString(),'fail');addStress(4)}
   else addLog('开盅 '+dice.join('+')+'='+sum,'info');
   let html='<div class="settle-sum dice-result-only">'+sum+'</div>'+(triple?'<div style="text-align:center;color:var(--accent);font-size:.76rem;margin-bottom:6px">豹子 '+dice[0]+dice[0]+dice[0]+'</div>':'');
   if(rows.length){
@@ -7728,6 +7930,9 @@ function addLog(msg,type){
   }
   game.log.unshift({date:getDateStr(game.week),msg,type});
   if(game.log.length>120)game.log.pop();
+  if(typeof isAutoLifeSimulating==='function'&&isAutoLifeSimulating()&&typeof autoLifeNote==='function'&&msg){
+    if(/啃老|吃软饭|月支出|低保|无力|被裁|入职|投递|离婚|流浪|房贷|怀孕|精神|压力|无法上班|脑力/.test(msg))autoLifeNote(msg);
+  }
   if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning)return;
   const logEl=document.getElementById('gameLog');
   if(logEl)logEl.innerHTML=game.log.map(l=>'<div class="log-entry '+l.type+'"><span class="date">'+l.date+'</span> '+l.msg+'</div>').join('');
@@ -7949,17 +8154,23 @@ function updateButtons(){
 
 function updateHeaderStats(){
   if(!game)return;
-  document.getElementById('statAge').textContent=getPlayerAge()+'岁';
-  document.getElementById('statDate').textContent=getDateStr(game.week);
-  document.getElementById('statWeek').textContent=(game.week+1)+'/'+TOTAL_WEEKS;
-  document.getElementById('statCash').textContent='¥'+game.cash.toLocaleString();
-  document.getElementById('statMoney').textContent='¥'+game.money.toLocaleString();
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v};
+  set('statAge',getPlayerAge()+'岁');
+  set('statDate',getDateStr(game.week));
+  set('statWeek',(game.week+1)+'/'+TOTAL_WEEKS);
+  set('statCash','¥'+game.cash.toLocaleString());
+  set('statMoney','¥'+game.money.toLocaleString());
   const intim=game.married&&!game.divorced?(game.spouseIntimacy!=null?game.spouseIntimacy:INTIMACY_INITIAL):null;
   const pn=game.partnerDisplayName||(game.married&&!game.divorced?COMPANION_NAME:'');
-  document.getElementById('statMarriage').textContent=game.divorced?'离异':game.married?(game.longDistance?'已婚·'+pn+'·亲'+intim:'已婚·'+pn+'·亲'+intim):'单身';
-  document.getElementById('statMonthly').textContent='¥'+getMonthlyExpenses().total.toLocaleString();
-  document.getElementById('statStress').textContent=game.familyStress;
-  document.getElementById('stressBar').style.width=game.familyStress+'%';
+  set('statMarriage',game.divorced?'离异':game.married?(game.longDistance?'已婚·'+pn+'·亲'+intim:'已婚·'+pn+'·亲'+intim):'单身');
+  set('statMonthly','¥'+getMonthlyExpenses().total.toLocaleString());
+  const stress=playerStress();
+  set('statStress',stress);
+  const bar=document.getElementById('stressBar');
+  if(bar){
+    bar.style.width=Math.min(100,stress)+'%';
+    bar.style.background=stress>=STRESS_MAD?'#a371f7':stress>=STRESS_MIND_BLOCK?'#f0883e':'var(--red)';
+  }
   let life='正常';
   if(game.imprisonedUntilWeek>game.week)life='监禁中';
   else if(game.homeless)life='流浪';
@@ -7967,12 +8178,13 @@ function updateHeaderStats(){
   else if(game.onWelfare)life=game.disabled?'伤残低保':'低保';
   else if(game.livingOffSpouse)life='吃软饭';
   else if(game.livingOffParents)life='啃老';
-  document.getElementById('statLife').textContent=life;
-  document.getElementById('statMortgage').textContent=game.mortgagePaidOff?'已还清':game.mortgagePaymentsMade+'/'+MORTGAGE_MONTHS+'月';
-  document.getElementById('statFamily').textContent=game.pregnant?('孕期剩'+game.pregnancyWeeksLeft+'周'):game.hasChildren?(game.childRaisingMonthsLeft>0?'育儿中':'已育'):'无孩';
+  set('statLife',life);
+  set('statMortgage',game.mortgagePaidOff?'已还清':game.mortgagePaymentsMade+'/'+MORTGAGE_MONTHS+'月');
+  set('statFamily',game.pregnant?('孕期剩'+game.pregnancyWeeksLeft+'周'):game.hasChildren?(game.childRaisingMonthsLeft>0?'育儿中':'已育'):'无孩');
 }
 function updateUI(){
   if(!game)return;
+  try{
   updateHeaderStats();
   if(typeof isAutoLifeSimulating==='function'&&isAutoLifeSimulating()){
     if(typeof renderAutoLifePanel==='function')renderAutoLifePanel();
@@ -7997,6 +8209,8 @@ function updateUI(){
     (game.stdActive?'<div style="color:var(--orange)">性病 · '+stdTreatmentStatusText()+(game.stdWeeksInfected<=STD_STRESS_WEEKS?' · 每周压力+2':' · 超过'+STD_STRESS_WEEKS+'周不再加压')+' · 日常去医院</div>':'')+
     (game.livingOffSpouse?'<div style="color:var(--orange)">吃软饭中 · 每周亲密度-5</div>':'')+
     (game.longDistance?'<div style="color:var(--orange)">异地婚恋 · 每周+1压力 · 可线上约会</div>':'')+
+    (playerStress()>=STRESS_MAD?'<div style="color:#a371f7">精神崩溃（压力≥'+STRESS_MAD+'）· 无法上班 · 仍可求职</div>':'')+
+    (playerStress()>=STRESS_MIND_BLOCK&&playerStress()<STRESS_MAD?'<div style="color:var(--orange)">压力过大（≥'+STRESS_MIND_BLOCK+'）· 无法从事脑力劳动</div>':'')+
     (game.stats?'<div>肉体<b>'+effStat('body')+'</b> 心智<b>'+effStat('mind')+'</b> 精神<b>'+effStat('spirit')+'</b> · 车'+(game.ownedCar?CAR_SHOP[game.ownedCar].name:'无')+' · '+(game.phone&&PHONE_SHOP[game.phone]?PHONE_SHOP[game.phone].name:'无手机')+'</div>':'')+
     '<div style="font-size:.7rem;color:var(--muted)">'+
       (game.employed&&game.longDistance?'工作在 '+game.playerCity+' · 伴侣定居 '+PLAYER_HOME_CITY:
@@ -8034,6 +8248,13 @@ function updateUI(){
   checkLifeStatusModals();
   updateHeadhunterOption();
   updateOfferPreview();
+  }catch(e){
+    console.error('updateUI',e);
+    try{
+      if(typeof renderDailyPanel==='function')renderDailyPanel();
+      if(typeof renderAutoLifePanel==='function')renderAutoLifePanel();
+    }catch(e2){console.error('updateUI fallback',e2)}
+  }
 }
 ${DAILY_ACTIVITY_SRC}
 ${JOB_HUNT_DAILY_SRC}
@@ -8041,6 +8262,7 @@ ${AFFAIR_SYSTEM_SRC}
 ${CONTACTS_SYSTEM_SRC}
 ${SPOUSE_FINANCE_SRC}
 ${FERTILITY_SYSTEM_SRC}
+${MENSTRUAL_CYCLE_SRC}
 ${AUTO_LIFE_SRC}
 renderSlotGrid();
 syncPlayerSchoolEdu();
