@@ -21,7 +21,7 @@ const CONTACTS_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'contacts-syste
 const SPOUSE_FINANCE_SRC = fs.readFileSync(path.join(__dirname, 'spouse-finance.js'), 'utf8');
 const FERTILITY_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'fertility-system.js'), 'utf8');
 const MENSTRUAL_CYCLE_SRC = fs.readFileSync(path.join(__dirname, 'menstrual-cycle.js'), 'utf8');
-const GAME_BUILD_ID = '2026.06.09-meet-story-modal';
+const GAME_BUILD_ID = '2026.06.09-names-natural';
 
 const html = `<!DOCTYPE html>
 <html lang="zh-CN">

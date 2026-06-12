@@ -546,7 +546,7 @@
     <h2>职业股市 · 人生模拟</h2>
     <p class="storage-hint">存档保存在本机浏览器（GitHub Pages 在线玩同样有效，仅当前浏览器；换电脑或换浏览器无存档）</p>
     <p style="font-size:.85rem;color:var(--muted)"><strong>通关目标：</strong>30年还清房贷安度晚年。每周自动存档，共 3 个档位可选。</p>
-    <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 2026.06.09-meet-story-modal · 若线上数值不对请 Ctrl+F5 强刷</p>
+    <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 2026.06.09-names-natural · 若线上数值不对请 Ctrl+F5 强刷</p>
     <div class="slot-grid" id="slotGrid"></div>
     <div id="charCreatePanel" class="char-create-panel" style="display:none">
       <p style="font-weight:600;margin-bottom:8px">档位 <span id="newSlotLabel">1</span> · 新游戏设置</p>
@@ -1098,7 +1098,7 @@ const AFFAIR_CASH_THRESHOLD = 1000000;
 const AFFAIR_MARRIED_WEEKS = 7 * 52;
 const SAVE_SLOT_COUNT = 3;
 const LS_SLOTS = 'csg_slots_v3';
-const GAME_BUILD_ID = '2026.06.09-meet-story-modal';
+const GAME_BUILD_ID = '2026.06.09-names-natural';
 const CHILD_RAISING_MONTHS = 216;
 const CHILD_LIVING_COST = 20000;
 const MANUAL_CATS = ['农林牧渔','制造业','建筑工程','交通运输','餐饮住宿','个人与生活服务'];
@@ -11066,7 +11066,7 @@ function migrateAffairContacts(){
   game.contacts.forEach(ensureContactAffairFields);
 }
 
-/* 中文姓名组合：100姓 × (单名100 + 双名100×100 + 叠字100) ≈ 百万种 */
+/* 中文姓名：姓 + 名；名单字/叠字为主，双字名为常用词或常见名组合 */
 const SURNAME_100=[
   '王','李','张','刘','陈','杨','黄','赵','周','吴','徐','孙','马','朱','胡','郭','何','高','林','罗',
   '郑','梁','谢','宋','唐','许','韩','冯','邓','曹','彭','曾','肖','田','董','潘','袁','蔡','蒋','余',
@@ -11077,50 +11077,75 @@ const SURNAME_100=[
   '俞','章','鲁','葛','伍','申','尤','毕','聂','丛','焦','柳','邢','路','岳','齐','梅','庄','辛','管',
   '祝','左','涂','谷','祁','时','舒','耿','牟','卜','詹','关','苗','凌','费','纪','靳','盛','童','欧'
 ];
-const GIVEN_A_100=[
+/** 单字名用字 */
+const GIVEN_SINGLE_100=[
   '伟','芳','娜','敏','静','丽','强','磊','洋','勇','艳','杰','娟','涛','明','超','霞','平','刚','文',
-  '云','兰','红','鹏','雪','建','飞','玲','桂','华','玉','梅','鑫','浩','宇','欣','怡','子','涵','萱',
-  '轩','博','彤','睿','泽','晨','皓','俊','嘉','梓','思','雨','梦','琪','诗','婉','馨','婧','妍','琳',
-  '瑶','璐','珊','菲','雯','蕾','宁','旭','阳','霖','彦','铭','航','凯','毅','诚','栋','玮','骐','琛',
-  '瑞','昊','承','佑','诺','奕','朗','煜','晖','晟','钊','钧','韬','溢','珩','琦','璨','弘','翔','骏',
-  '腾','威','震','彪','鹰','凤','麟','麒','鹤','鲲','澜','澈','溪','岚','峰','岩','松','柏','枫','柳'
+  '云','兰','红','鹏','雪','建','飞','玲','桂','华','玉','梅','浩','宇','欣','怡','涵','萱','轩','博',
+  '彤','睿','泽','晨','皓','俊','嘉','梓','思','雨','梦','琪','诗','婉','馨','婧','妍','琳','瑶','璐',
+  '珊','菲','雯','蕾','宁','旭','阳','霖','彦','铭','航','凯','毅','诚','栋','玮','瑞','昊','朗','煜',
+  '晖','晟','钊','琦','弘','翔','骏','腾','威','峰','岚','溪','松','柏','枫','柳','安','宁','悦','清',
+  '雅','秀','慧','聪','颖','灵','福','乐','欢','康','泰','顺','正','直','勤','朴','温','良','和','善'
 ];
-const GIVEN_B_100=[
-  '安','宁','平','凡','一','凡','心','意','志','成','德','仁','义','礼','智','信','和','善','美','真',
-  '纯','洁','清','雅','秀','慧','聪','颖','灵','巧','勤','俭','朴','实','厚','重','远','大','正','直',
-  '刚','柔','婉','顺','贤','淑','温','良','恭','俭','让','谦','逊','慎','独','笃','行','致远','明','达',
-  '通','透','亮','朗','清','新','焕','发','荣','昌','盛','兴','旺','隆','泰','康','健','全','福','禄',
-  '寿','喜','乐','欢','欣','悦','怡','畅','舒','适','逸','闲','静','默','思','想','念','忆','怀','恋',
-  '慕','惜','怜','爱','恩','情','谊','友','朋','伴','侣','君','臣','师','生','长','幼','兄','弟','姐'
+/** 适合叠字的名用字（丽丽、晨晨） */
+const GIVEN_STACK_80=[
+  '丽','娜','婷','悦','琳','瑶','璐','菲','雯','蕾','玲','娟','霞','艳','芳','敏','静','欣','怡','彤',
+  '涵','萱','轩','博','睿','泽','晨','皓','俊','嘉','梓','思','雨','梦','琪','诗','婉','馨','婧','妍',
+  '浩','宇','阳','霖','铭','航','凯','毅','诚','玮','瑞','昊','朗','煜','晖','晟','琦','弘','翔','骏',
+  '伟','强','磊','洋','勇','杰','涛','明','超','刚','文','云','兰','红','鹏','雪','飞','桂','华','玉'
+];
+/** 双字名：常见人名或可读词语，不随机拼凑 */
+const GIVEN_DOUBLE_120=[
+  '子涵','子轩','梓涵','梓轩','梓萱','梓晨','子墨','子怡','思涵','思琪','思雨','思远','雨萱','雨桐','雨欣','雨泽',
+  '欣怡','欣悦','欣然','俊杰','俊豪','俊宇','浩然','浩宇','博文','文博','天宇','天佑','嘉怡','嘉豪','嘉宁','佳音',
+  '宇航','宇轩','铭轩','皓轩','晓彤','晓雪','晓明','梦瑶','梦琪','诗涵','诗雨','婉清','婧怡','语嫣','若曦','亦辰',
+  '逸飞','逸轩','承泽','沐辰','景行','怀远','安宁','安然','悠然','如意','乐天','清心','明心','立新','明德','文华',
+  '志明','国强','建平','建军','建华','秀英','桂芳','秀兰','丽华','玉兰','春梅','冬梅','秋月','夏荷','云舒','月明',
+  '星辰','山河','江海','清风','晓峰','雪峰','松柏','竹君','兰心','梅香','芳华','淑贞','贤惠','智勇','仁义','诚信',
+  '和平','康宁','福生','庆丰','永昌','长安','静安','泰然','怡然','自乐','知足','常乐','守信','守正','立言','立德',
+  '承业','继先','绍祖','维藩','景明','曜文','翰飞','鹏程','鹤翔','凤鸣','麒麟','龙腾','虎跃','燕归','莺歌','鹿鸣',
+  '清泉','碧云','紫萱','丹青','墨白','书瑶','琴心','棋韵','画意','诗情','棋逢','书香','翰墨','玉洁','冰清','雪莹'
+];
+const STRANGER_ENGLISH_NAMES=[
+  'Amy','Linda','Jack','Kevin','Coco','Tony','Vivian','Jason','Mia','Leo',
+  'Emma','Ryan','Lucy','Eric','Anna','David','Grace','Tom','Ivy','Alex'
 ];
 
 function nameRng(rng){return rng?rng():Math.random()}
 function namePick(arr,rng){return arr[Math.floor(nameRng(rng)*arr.length)]}
-function composeGivenName(gender,rng){
+/** 名部分：约 46% 单字、38% 叠字、16% 双字（词语/常见名） */
+function composeGivenPart(gender,rng){
   const r=nameRng(rng);
-  const a=namePick(GIVEN_A_100,rng);
-  if(r<0.26)return a;
-  if(r<0.74)return a+namePick(GIVEN_B_100,rng);
-  return a+a;
+  if(r<0.46)return namePick(GIVEN_SINGLE_100,rng);
+  if(r<0.84){
+    const c=namePick(GIVEN_STACK_80,rng);
+    return c+c;
+  }
+  return namePick(GIVEN_DOUBLE_120,rng);
 }
 function randomChineseFullName(gender,rng){
-  return namePick(SURNAME_100,rng)+composeGivenName(gender,rng);
+  return namePick(SURNAME_100,rng)+composeGivenPart(gender,rng);
 }
 function randomChineseGivenName(gender,rng){
-  return composeGivenName(gender,rng);
+  return composeGivenPart(gender,rng);
 }
 function pickPartnerDisplayName(gender){
-  return randomChineseGivenName(gender);
+  return randomChineseFullName(gender);
 }
 function pickBffName(playerGender){
   const g=playerGender==='female'?'female':'male';
-  return randomChineseGivenName(g);
+  return randomChineseFullName(g);
 }
+function pickStrangerAlias(gender){
+  const c=namePick(GIVEN_SINGLE_100);
+  const r=Math.random();
+  if(r<0.34)return '小'+c;
+  if(r<0.58)return '老'+c;
+  if(r<0.78)return '阿'+c;
+  return namePick(STRANGER_ENGLISH_NAMES);
+}
+/** 路人：约 85% 真名，约 15% 小X/老X/阿X/英文名 */
 function pickStrangerDisplayName(gender){
-  if(Math.random()<0.12){
-    const c=namePick(GIVEN_A_100);
-    return Math.random()<0.5?('小'+c):('阿'+c);
-  }
+  if(Math.random()<0.15)return pickStrangerAlias(gender);
   return randomChineseFullName(gender);
 }
 
