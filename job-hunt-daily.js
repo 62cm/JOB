@@ -219,12 +219,30 @@ function dailyPickApp(appKey){
   d.dailyAppRefreshN=0;
   renderDailyPanel();
 }
+function syncRefPanelFromDailyJobPick(lastJi,wasAdded){
+  const d=game&&game.daily;
+  if(!d||typeof selectedIdx==='undefined')return;
+  const picks=d.dailyPickJobIdxs||[];
+  if(picks.length){
+    selectedIdx=wasAdded&&lastJi!=null?lastJi:picks[picks.length-1];
+    if(typeof refPanelView!=='undefined')refPanelView='job';
+    if(game&&game.market[selectedIdx]&&typeof refPanelCategory!=='undefined')refPanelCategory=game.market[selectedIdx].category;
+  }else{
+    selectedIdx=-1;
+    if(typeof refPanelView!=='undefined'&&refPanelView==='job')refPanelView='national';
+  }
+  if(typeof selectedJobIdxs!=='undefined')selectedJobIdxs=new Set(picks);
+  if(typeof renderRefPanel==='function')renderRefPanel();
+  if(typeof showDetail==='function'&&selectedIdx>=0)showDetail(selectedIdx);
+}
 function dailyTogglePickJob(ji){
   const d=ensureDailyJobState();
   if(!d.dailyPickJobIdxs)d.dailyPickJobIdxs=[];
   const idx=d.dailyPickJobIdxs.indexOf(ji);
-  if(idx>=0)d.dailyPickJobIdxs.splice(idx,1);
-  else d.dailyPickJobIdxs.push(ji);
+  const wasAdded=idx<0;
+  if(wasAdded)d.dailyPickJobIdxs.push(ji);
+  else d.dailyPickJobIdxs.splice(idx,1);
+  syncRefPanelFromDailyJobPick(ji,wasAdded);
   renderDailyPanel();
 }
 function dailyDrawAppListings(refresh){

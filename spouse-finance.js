@@ -14,7 +14,14 @@ function migrateSpouseFinance(){
     if(game.companion.secretStashPortfolio==null)game.companion.secretStashPortfolio={};
     if(game.companion.secretStashCash==null&&game.companion.secretStash!=null)
       game.companion.secretStashCash=game.companion.secretStash;
+    if(game.married&&!game.divorced&&game.companion.secretStashRevealed){
+      game.companion.secretStashRevealed=false;
+    }
   }
+}
+function shouldShowPartnerStash(){
+  if(!game||!game.companion)return false;
+  return !!(game.divorced||game.companion.secretStashRevealed);
 }
 function canUseSpouseFinance(){
   return !!(game&&game.married&&!game.divorced&&!game.gameOver);
@@ -71,12 +78,9 @@ function partnerFinanceSnapshot(useStash){
   return {visible,stashCash,stashStock,liquid:visible+stashCash,total:visible+stashCash+stashStock};
 }
 function partnerStashDisplayLabel(){
-  if(!game||!game.companion)return '未知';
-  if(game.divorced||game.companion.secretStashRevealed){
-    refreshPartnerStashTotal();
-    return '¥'+(game.companion.secretStash||0).toLocaleString();
-  }
-  return '未知';
+  if(!shouldShowPartnerStash())return '';
+  refreshPartnerStashTotal();
+  return '¥'+(game.companion.secretStash||0).toLocaleString();
 }
 function sellPartnerStashStocks(targetCash){
   const c=game&&game.companion;
@@ -149,11 +153,14 @@ function renderSpouseLoanCalList(loans){
 function renderSpouseFinanceCompanionHtml(){
   if(!canUseSpouseFinance())return '';
   const pn=partnerDisplayName();
+  if(typeof refreshPartnerStashTotal==='function')refreshPartnerStashTotal();
   const savings=getPartnerVisibleSavings();
   const pocketUsed=game.lastPocketMoneyWeek===game.week;
   let html='<div class="companion-section"><h4>财务</h4>'+
-    '<div class="companion-row"><span>'+pn+'储蓄</span><span>¥'+savings.toLocaleString()+'</span></div>'+
-    '<div class="companion-row"><span>'+pn+'小金库</span><span>'+partnerStashDisplayLabel()+'</span></div>';
+    '<div class="companion-row"><span>'+pn+'储蓄（随身）</span><span>¥'+savings.toLocaleString()+'</span></div>';
+  if(shouldShowPartnerStash()){
+    html+='<div class="companion-row"><span>'+pn+'小金库</span><span>'+partnerStashDisplayLabel()+'</span></div>';
+  }
   const loans=activeSpouseLoans();
   if(loans.length){
     html+='<div style="font-size:.68rem;color:var(--muted);margin:4px 0">待还借款</div>';
@@ -211,7 +218,9 @@ function promptSpouseLoan(){
   else note='<span style="color:var(--muted)">同意须于约定期限归还 · 逾期亲密度-20</span><br>';
   showConsumeModal({
     icon:'💰',title:'向'+pn+'借钱（理财）',
-    html:note+pn+'储蓄约 <b>¥'+savings.toLocaleString()+'</b> · 小金库 <b>'+partnerStashDisplayLabel()+'</b> · 亲密度 <b>'+intim+'</b>/'+(typeof INTIMACY_MAX!=='undefined'?INTIMACY_MAX:200)+'<br>'+
+    html:note+pn+'储蓄约 <b>¥'+savings.toLocaleString()+'</b>'+
+      (shouldShowPartnerStash()?' · 小金库 <b>'+partnerStashDisplayLabel()+'</b>':'')+
+      ' · 亲密度 <b>'+intim+'</b>/'+(typeof INTIMACY_MAX!=='undefined'?INTIMACY_MAX:200)+'<br>'+
       '<span style="font-size:.68rem;color:var(--muted)">本月理财借钱限 1 次</span><br>'+
       '金额 <input type="number" id="spouseLoanAmt" min="1" step="100" value="'+Math.min(1000,Math.max(100,savings))+'" style="width:120px;margin-top:6px;background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 6px;border-radius:4px">',
     buttons:[

@@ -99,6 +99,19 @@ function autoLifeNote(msg){
 function isAutoLifeSimulating(){
   return !!(autoLifeRunning&&_autoLifeJob);
 }
+function ensureAutoLifeNotStuck(){
+  if(autoLifeRunning&&!_autoLifeJob){
+    autoLifeRunning=false;
+    if(_autoLifeTimer!=null){clearTimeout(_autoLifeTimer);_autoLifeTimer=null;}
+  }
+  if(autoLifeRunning&&_autoLifeJob&&_autoLifeTimer==null&&!game.gameOver){
+    scheduleAutoLifeChunk(_autoLifeJob.gen);
+  }
+  const ov=document.getElementById('autoLifeOverlay');
+  if(ov&&!ov.classList.contains('hidden')&&!autoLifeRunning&&!_autoLifeJob){
+    ov.classList.add('hidden');
+  }
+}
 function autoLifeSubmitApplication(report){
   if(game.employed||game.homeless)return;
   const eligible=game.market.map((j,i)=>i).filter(i=>{
@@ -173,6 +186,15 @@ function autoLifeTryAcceptOffer(report){
 function simulateAutoLifeWeek(report){
   const cash0=game.cash,money0=game.money,stress0=game.familyStress;
   const emp0=game.employed;
+  if(typeof isPlayerImprisoned==='function'&&isPlayerImprisoned()){
+    const left=typeof imprisonmentWeeksLeft==='function'?imprisonmentWeeksLeft():
+      Math.max(0,(game.imprisonedUntilWeek||0)-game.week);
+    autoLifePushEvent(report,'🔒 监禁中（剩 '+left+' 周），本周无法在狱外活动');
+    report.cashChange=(report.cashChange||0)+(game.cash-cash0);
+    report.incomeChange=(report.incomeChange||0)+(game.money-money0);
+    report.stressChange=(report.stressChange||0)+(game.familyStress-stress0);
+    return;
+  }
   autoLifeSocialWeek(report);
   if(game.employed){
     const canWork=typeof canPlayerWorkWeek==='function'?canPlayerWorkWeek():true;
@@ -242,7 +264,11 @@ function autoLifeSimulateOneWeek(report){
   }
   if(typeof tickCompanionWeek==='function')tickCompanionWeek();
   report.weeksAdvanced=(report.weeksAdvanced||0)+1;
-  autoLifePushEvent(report,'⏭ 自动推进至 '+getDateStr(game.week));
+  const imprLeft=typeof imprisonmentWeeksLeft==='function'?imprisonmentWeeksLeft():0;
+  if(imprLeft>0)autoLifePushEvent(report,'⏭ 服刑快进至 '+getDateStr(game.week)+'（剩 '+imprLeft+' 周）');
+  else if(weekBefore<game.week&&typeof isPlayerImprisoned==='function'&&!isPlayerImprisoned()&&game.imprisonedUntilWeek>weekBefore)
+    autoLifePushEvent(report,'🔓 刑满出狱 · '+getDateStr(game.week));
+  else autoLifePushEvent(report,'⏭ 自动推进至 '+getDateStr(game.week));
   if(typeof resetWeeklyDaily==='function')resetWeeklyDaily();
   else if(game.daily)game.daily=defaultDailyState();
   if(typeof rollReferralChance==='function')rollReferralChance();
@@ -281,9 +307,14 @@ function finishAutoLifeJob(err,job){
 function runAutoLifeChunk(gen){
   const st=_autoLifeJob;
   if(!st||!game){
+    finishAutoLifeJob(null,st);
     return;
   }
-  if(st.gen!==gen||st.gen!==_autoLifeGen){
+  if(st.gen!==_autoLifeGen){
+    return;
+  }
+  if(st.gen!==gen){
+    scheduleAutoLifeChunk(st.gen);
     return;
   }
   try{
@@ -345,7 +376,9 @@ function startAutoLife(periodKey){
   }
   const cfg=AUTO_LIFE_PERIODS[periodKey];
   if(!cfg)return;
-  if(!confirm('进入「'+cfg.label+'」自动生活？\n\n时间将快速跳过且不可打断，结束后汇报结果。'))return;
+  const impr=typeof isPlayerImprisoned==='function'&&isPlayerImprisoned();
+  const imprTip=impr?('\n\n当前监禁中（剩 '+(typeof imprisonmentWeeksLeft==='function'?imprisonmentWeeksLeft():(game.imprisonedUntilWeek-game.week))+' 周），自动生活将只快进时间。'):'';
+  if(!confirm('进入「'+cfg.label+'」自动生活？\n\n时间将快速跳过且不可打断，结束后汇报结果。'+imprTip))return;
   closeConsumeModal();
   const applyModal=document.getElementById('applyModal');
   if(applyModal)applyModal.classList.add('hidden');
@@ -359,7 +392,9 @@ function renderAutoLifePanel(){
   const el=document.getElementById('autoLifePanel');
   if(!el||!game)return;
   const dis=!canStartAutoLife()||game.gameOver||game.casinoActive||game.marketActive;
-  el.innerHTML='<div class="daily-shop"><b>自动生活</b> <span class="fold-meta">AI 代操作 · 不可打断 · 结束汇报</span><br>'+
+  const impr=typeof isPlayerImprisoned==='function'&&isPlayerImprisoned();
+  const imprNote=impr?'<p class="fold-meta" style="color:var(--orange);margin:4px 0">🔒 监禁中 · 自动生活仅快进刑期（剩 '+(typeof imprisonmentWeeksLeft==='function'?imprisonmentWeeksLeft():(game.imprisonedUntilWeek-game.week))+' 周）</p>':'';
+  el.innerHTML='<div class="daily-shop"><b>自动生活</b> <span class="fold-meta">AI 代操作 · 不可打断 · 结束汇报</span>'+imprNote+'<br>'+
     Object.keys(AUTO_LIFE_PERIODS).map(k=>{
       const p=AUTO_LIFE_PERIODS[k];
       return '<button class="btn" '+(dis?'disabled':'')+' onclick="startAutoLife(\''+k+'\')">'+p.label+'</button> ';

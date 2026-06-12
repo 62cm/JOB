@@ -9,6 +9,154 @@ const BFF_OUT_PLACES={
   store:{key:'store',label:'便利店'}
 };
 const CONTACT_NO_ANSWER_CHANCE=0.22;
+/* 偶遇弹窗三通道：artifact 神人 > person 认识的人 > event 场所/轶事/结果 */
+const encounterLanes={artifact:[],person:[],event:[]};
+let encounterModalBusy=false;
+let encounterModalPendingClose=null;
+let encounterSerialFns=[];
+function encounterLanesPending(){
+  return encounterModalBusy||encounterLanes.artifact.length+encounterLanes.person.length+encounterLanes.event.length>0;
+}
+function pickNextEncounterModal(){
+  if(encounterLanes.artifact.length)return encounterLanes.artifact.shift();
+  if(encounterLanes.person.length)return encounterLanes.person.shift();
+  return encounterLanes.event.length?encounterLanes.event.shift():null;
+}
+function queueArtifactEncounter(opts){if(!opts)return;encounterLanes.artifact.push(opts);pumpEncounterModals()}
+function queuePersonEncounter(opts){if(!opts)return;encounterLanes.person.push(opts);pumpEncounterModals()}
+function queueEventEncounter(opts){if(!opts)return;encounterLanes.event.push(opts);pumpEncounterModals()}
+
+function formatMeetPersonHtml(person,where,isRepeat){
+  if(!person)return '';
+  const prof=typeof contactProfileLabel==='function'?contactProfileLabel(person):(person.jobTitle+' @'+(person.company||'?'));
+  const gender=typeof contactGenderLabel==='function'?contactGenderLabel(person):'';
+  const age=person.age!=null?person.age+'岁':'';
+  const metLbl=typeof contactMetLabel==='function'?contactMetLabel(person):'';
+  let h='<p>在「<b>'+where+'</b>」'+(isRepeat?'又遇见了':'遇见了')+' <b>'+person.name+'</b>';
+  if(gender)h+=' · '+gender;
+  if(age)h+=' · '+age;
+  h+='。</p><p class="fold-meta">'+prof+'</p>';
+  if(person.income)h+='<p class="fold-meta">年收入约 ¥'+person.income.toLocaleString()+'</p>';
+  if(metLbl&&!isRepeat)h+='<p class="fold-meta">'+metLbl+'</p>';
+  if(!isRepeat)h+='<p>已记入通讯录，日后可多联系熟悉。</p>';
+  return h;
+}
+function parseMetWeekFromContactId(id){
+  if(!id||String(id).indexOf('ct_')!==0)return null;
+  const parts=String(id).split('_');
+  if(parts.length<2)return null;
+  const wk=parseInt(parts[1],10);
+  return isNaN(wk)?null:wk;
+}
+function contactMetLabel(c){
+  if(!c)return '';
+  if(c.kind==='parents')return '结识 · 人生起点 · '+(c.metWhere||'家人');
+  if(c.kind==='bff')return '结识 · 人生起点 · '+(c.metWhere||'发小');
+  if(c.kind==='spouse'){
+    const wk0=c.metWeek;
+    const date0=(typeof getDateStr==='function'&&wk0!=null)?getDateStr(wk0):'';
+    return date0?('结识 · '+date0+' · '+(c.metWhere||'婚姻')):(c.metWhere||'婚姻');
+  }
+  if(c.kind==='ex_spouse'){
+    const wk0=c.metWeek;
+    const date0=(typeof getDateStr==='function'&&wk0!=null)?getDateStr(wk0):'';
+    return date0?('结识 · '+date0+' · '+(c.metWhere||'曾经婚姻')):(c.metWhere||'曾经婚姻');
+  }
+  const where=c.metWhere||'';
+  let wk=c.metWeek;
+  if(wk==null&&(c.firstAffairWeek||0)>0)wk=c.firstAffairWeek;
+  if(wk==null&&c.id){
+    const parsed=parseMetWeekFromContactId(c.id);
+    if(parsed!=null)wk=parsed;
+  }
+  if(wk==null&&!where)return '结识 · 时间不明';
+  const date=(typeof getDateStr==='function'&&wk!=null)?getDateStr(wk):'';
+  if(date&&where)return '结识 · '+date+' · '+where;
+  if(date)return '结识 · '+date;
+  return where?('结识 · '+where):'结识 · 时间不明';
+}
+function pumpEncounterModals(){
+  if(encounterModalBusy||!encounterLanesPending())return;
+  if(typeof isAutoLifeSimulating==='function'&&isAutoLifeSimulating()){
+    const m=pickNextEncounterModal();
+    if(m){
+      if(m.logMsg)addLog(m.logMsg,'info');
+      if(typeof m.onClose==='function'){try{m.onClose()}catch(e){console.error('encounter onClose',e)}}
+    }
+    setTimeout(pumpEncounterModals,0);
+    setTimeout(drainEncounterSerial,0);
+    return;
+  }
+  if(typeof artifactEncounterBlocking==='function'&&artifactEncounterBlocking())return setTimeout(pumpEncounterModals,120);
+  if(typeof consumeModalOpen!=='undefined'&&consumeModalOpen)return setTimeout(pumpEncounterModals,120);
+  if(typeof statusModalOpen!=='undefined'&&statusModalOpen)return setTimeout(pumpEncounterModals,120);
+  const m=pickNextEncounterModal();
+  if(!m)return;
+  encounterModalBusy=true;
+  const done=function(){
+    if(!encounterModalBusy&&!encounterModalPendingClose)return;
+    encounterModalBusy=false;
+    encounterModalPendingClose=null;
+    if(typeof m.onClose==='function'){try{m.onClose()}catch(e){console.error('encounter onClose',e)}}
+    setTimeout(pumpEncounterModals,80);
+    setTimeout(drainEncounterSerial,90);
+  };
+  encounterModalPendingClose=done;
+  const wrapBtn=function(b){
+    return{text:b.text,primary:!!b.primary,handler:function(){
+      if(typeof b.handler==='function'){try{b.handler()}catch(e){console.error('encounter btn',e)}}
+      if(encounterModalBusy){
+        if(typeof closeConsumeModal==='function')closeConsumeModal(true);
+        else done();
+      }
+    }};
+  };
+  const btns=(m.buttons&&m.buttons.length)?m.buttons.map(wrapBtn):[wrapBtn({text:m.btn||'知道了',primary:true})];
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({icon:m.icon||'👋',title:m.title||'偶遇',html:m.html||'',buttons:btns});
+  }else if(typeof showConsumeModal==='function'){
+    showConsumeModal({icon:m.icon||'👋',title:m.title||'偶遇',html:m.html||'',buttons:[{text:m.btn||'知道了',primary:true,fn:'closeConsumeModal()'}]});
+    encounterModalBusy=false;
+    if(typeof m.onClose==='function')setTimeout(m.onClose,100);
+    setTimeout(pumpEncounterModals,150);
+    setTimeout(drainEncounterSerial,160);
+  }else{
+    encounterModalBusy=false;
+    if(m.logMsg)addLog(m.logMsg,'info');
+    done();
+  }
+}
+function queueEncounterModal(opts){
+  if(!opts)return;
+  const lane=opts.lane||(opts.priority==='high'?'artifact':'event');
+  if(lane==='artifact')queueArtifactEncounter(opts);
+  else if(lane==='person')queuePersonEncounter(opts);
+  else queueEventEncounter(opts);
+}
+function encounterModalConsumeClosed(){
+  if(encounterModalPendingClose)encounterModalPendingClose();
+}
+function drainEncounterSerial(){
+  const step=function(){
+    if(typeof artifactEncounterBlocking==='function'&&artifactEncounterBlocking())return setTimeout(step,100);
+    if(encounterLanesPending())return setTimeout(step,100);
+    if(typeof consumeModalOpen!=='undefined'&&consumeModalOpen)return setTimeout(step,100);
+    if(typeof statusModalOpen!=='undefined'&&statusModalOpen)return setTimeout(step,100);
+    if(!encounterSerialFns.length)return;
+    const fn=encounterSerialFns.shift();
+    try{fn()}catch(e){console.error('encounter serial',e);}
+    setTimeout(step,100);
+  };
+  step();
+}
+function runAfterEncounterModals(fn){
+  if(typeof fn!=='function')return;
+  encounterSerialFns.push(fn);
+  drainEncounterSerial();
+}
+function hasPendingEncounterModals(){
+  return encounterLanesPending()||encounterSerialFns.length>0;
+}
 
 function contactSlotKey(){
   const d=game&&game.daily;
@@ -47,6 +195,17 @@ function ensureCoreContact(id,fields){
   }else Object.assign(c,fields);
   return c;
 }
+function clearExSpouseContact(){
+  if(!game||!game.contacts)return;
+  game.contacts=game.contacts.filter(c=>c.id!==CORE_CONTACT_IDS.exSpouse&&c.kind!=='ex_spouse');
+}
+function restoreSpouseContactAfterReconcile(){
+  if(!game||!game.married||game.divorced)return;
+  if(game.exPartnerName)delete game.exPartnerName;
+  if(game.exPartnerGender)delete game.exPartnerGender;
+  clearExSpouseContact();
+  syncSpouseContact();
+}
 function syncSpouseContact(){
   if(!game)return;
   if(!game.contacts)game.contacts=[];
@@ -54,6 +213,7 @@ function syncSpouseContact(){
     game.contacts=game.contacts.filter(c=>c.id!==CORE_CONTACT_IDS.spouse);
     return;
   }
+  clearExSpouseContact();
   const name=game.partnerDisplayName||COMPANION_NAME;
   const existing=game.contacts.find(c=>c.id===CORE_CONTACT_IDS.spouse);
   const fields={
@@ -155,6 +315,33 @@ function sortedContactsForModal(){
 }
 function sortedContacts(){return sortedContactsForModal()}
 function escContactId(id){return String(id||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+function isCoreContact(c){
+  if(!c)return true;
+  if(c.id===CORE_CONTACT_IDS.parents||c.kind==='parents')return true;
+  if(c.id===CORE_CONTACT_IDS.bff||c.kind==='bff')return true;
+  if(c.id===CORE_CONTACT_IDS.spouse||c.kind==='spouse')return true;
+  if(c.id===CORE_CONTACT_IDS.exSpouse||c.kind==='ex_spouse')return true;
+  return false;
+}
+function deleteContactFromModal(id){
+  const c=game.contacts&&game.contacts.find(x=>x.id===id);
+  if(!c)return;
+  if(isCoreContact(c)){addLog('初始联系人（家人/伴侣/基友等）无法删除','fail');return;}
+  const name=typeof contactDisplayName==='function'?contactDisplayName(c):c.name;
+  const hadAffair=typeof contactHasAffairRecord==='function'&&contactHasAffairRecord(c);
+  let msg='确定从通讯录删除「'+name+'」？\n删除后压力 +10';
+  if(hadAffair)msg='确定删除「'+name+'」的联系方式？\n其出轨/幽会记录将一并销毁。\n删除后压力 +10';
+  if(!confirm(msg))return;
+  game.contacts=game.contacts.filter(x=>x.id!==id);
+  if(game.contactLoans)game.contactLoans=game.contactLoans.filter(l=>l.contactId!==id);
+  if(hadAffair&&typeof purgeAffairEvidenceForContact==='function')purgeAffairEvidenceForContact(id);
+  if(hadAffair&&typeof syncPlayerAffairStateFromContacts==='function')syncPlayerAffairStateFromContacts();
+  if(typeof addStress==='function')addStress(10,'删联系人 ');
+  addLog(hadAffair?'🗑 已删除 '+name+' 的联系方式，相关出轨记录已销毁 · 压力+10':'🗑 已从通讯录删除 '+name+' · 压力+10','warn');
+  if(typeof updateUI==='function')updateUI();
+  if(typeof renderDailyPanel==='function')renderDailyPanel();
+  renderContactsModal();
+}
 function openContactsModal(){
   if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning)return;
   if(typeof hasUsablePhone==='function'&&!hasUsablePhone()){addLog('暂无可用手机，无法使用通讯录','fail');return}
@@ -176,7 +363,8 @@ function renderContactsModal(){
   const list=sortedContactsForModal();
   const ph=game.daily&&game.daily.phase;
   if(ti)ti.textContent='📇 通讯录 · '+list.length+' 人';
-  let h='<p class="fold-meta" style="margin:0 0 8px">星标置顶 · 按姓名音序 · 每时段每人可联系一次 · 当前 '+PHASE_LABELS[ph||'morning']+'</p>';
+  let h='<p class="fold-meta" style="margin:0 0 8px">星标置顶 · 按姓名音序 · 每时段每人可联系一次 · 当前 '+PHASE_LABELS[ph||'morning']+'</p>'+
+    '<p class="fold-meta" style="margin:0 0 8px;color:var(--accent)">各行「结识 · 日期 · 地点」为认识时间；旧存档无记录时由联系人编号推算</p>';
   if(game.bffOutingPlan&&!game.bffOutingPlan.completed){
     const p=game.bffOutingPlan;
     h+='<p style="color:var(--yellow);font-size:.72rem;margin:0 0 8px">📅 约了 '+DAY_NAMES[p.dayIndex]+' '+PHASE_LABELS[p.phase]+' → '+p.label+'</p>';
@@ -190,7 +378,8 @@ function renderContactsModal(){
     const lbl=contactKindLabel(c);
     const gen=contactGenderLabel(c);
     const eid=escContactId(c.id);
-    const extra=c.jobTitle?(c.jobTitle+' @'+c.company):c.metWhere||'';
+    const extra=c.jobTitle?(c.jobTitle+' @'+c.company):'';
+    const metLbl=contactMetLabel(c);
     const st=(c.affairCount>0?' · 亲热'+(c.affairCount||0)+'次':'')+(c.affairStatus==='fwb'?' · 炮友':'');
     h+='<div class="contact-row'+(c.starred?' starred':'')+'">'+
       '<div class="contact-row-hdr">'+
@@ -198,13 +387,15 @@ function renderContactsModal(){
       '<b>'+contactDisplayName(c)+'</b>'+
       (gen?'<span class="contact-gender">'+gen+'</span>':'')+
       '<span class="fold-meta">'+lbl+'</span>'+
-      (extra?'<span class="fold-meta">'+extra+st+'</span>':'')+
+      (extra?'<span class="fold-meta">'+extra+st+'</span>':(st?'<span class="fold-meta">'+st+'</span>':''))+
       '</div>'+
-      '<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">'+
+      (metLbl?'<div class="fold-meta" style="margin:2px 0 4px 22px;color:var(--accent)">'+metLbl+'</div>':'')+
+      '<div class="contact-actions-row">'+
       '<button class="btn" style="font-size:.72rem;padding:3px 8px" '+(chk.ok?'':'disabled')+' onclick="callContactFromModal(\''+eid+'\')">📞 联系</button>'+
       '<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="promptContactRemark(\''+eid+'\')">✏️ 备注</button>'+
-      (c.affairStatus==='proposal_pending'?' <button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="promptAffairWedding(\''+eid+'\')">办婚礼</button>':'')+
+      (c.affairStatus==='proposal_pending'?'<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="promptAffairWedding(\''+eid+'\')">办婚礼</button>':'')+
       (chk.ok?'':'<span class="fold-meta">'+chk.reason+'</span>')+
+      (!isCoreContact(c)?'<button type="button" class="btn contact-del-btn" onclick="deleteContactFromModal(\''+eid+'\')">🗑 删除</button>':'')+
       '</div></div>';
   });
   body.innerHTML=h;
@@ -324,7 +515,7 @@ function showExChildSupportModal(c,scenario){
       html='<b>'+c.name+'</b> 带孩子，要求你每月支付抚养费 <b>¥'+(typeof CHILD_LIVING_COST!=='undefined'?CHILD_LIVING_COST:20000).toLocaleString()+'</b>。<br><br>你可以先做亲子鉴定（¥'+(typeof PATERNITY_TEST_COST!=='undefined'?PATERNITY_TEST_COST:5000).toLocaleString()+'）确认是否亲生。';
       buttons=[
         {text:'亲子鉴定 ¥'+(typeof PATERNITY_TEST_COST!=='undefined'?PATERNITY_TEST_COST:5000).toLocaleString(),primary:true,fn:'closeConsumeModal();runPaternityTest(false)'},
-        {text:'先挂断',fn:'closeConsumeModal()'}
+        {text:'先挂断',fn:'closeConsumeModal();updateUI()'}
       ];
     }else if(cr.paternityIsPlayer){
       html='亲子鉴定已确认是你的孩子，需按月支付抚养费 <b>¥'+(typeof CHILD_LIVING_COST!=='undefined'?CHILD_LIVING_COST:20000).toLocaleString()+'</b>。';
@@ -688,6 +879,54 @@ function tryCompleteBffOuting(placeKey){
     game.bffOutingPlan=null;
   }
 }
+function showMeetPersonModal(person,where,isRepeat,onAfter){
+  if(!person)return;
+  const payload={
+    lane:'person',
+    icon:isRepeat?'🔄':'👋',
+    title:isRepeat?'又遇见熟人':'结识新朋友',
+    html:formatMeetPersonHtml(person,where,!!isRepeat),
+    logMsg:'👋 '+(isRepeat?'又遇见':'结识')+' '+person.name+'（'+where+'）',
+    onClose:function(){
+      addLog('👋 '+(isRepeat?'又遇见':'结识')+' '+person.name+'（'+where+'）','info');
+      if(typeof maybeTellWorkplaceStory==='function')maybeTellWorkplaceStory(person,where,onAfter);
+      else if(typeof onAfter==='function')onAfter();
+    }
+  };
+  if(typeof queuePersonEncounter==='function'){
+    queuePersonEncounter(payload);
+    return;
+  }
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({
+      icon:payload.icon,title:payload.title,html:payload.html,
+      buttons:[{text:'知道了',primary:true,handler:function(){
+        if(typeof closeConsumeModal==='function')closeConsumeModal(true);
+        if(payload.onClose)payload.onClose();
+      }}]
+    });
+    return;
+  }
+  if(payload.logMsg)addLog(payload.logMsg,'info');
+  if(payload.onClose)payload.onClose();
+}
+function queueBatchMeetModals(persons,where,onAllDone){
+  if(!persons||!persons.length){
+    if(typeof onAllDone==='function')onAllDone();
+    return;
+  }
+  let i=0;
+  const step=function(){
+    if(i>=persons.length){
+      if(typeof onAllDone==='function')onAllDone();
+      return;
+    }
+    const p=persons[i++];
+    showMeetPersonModal(p,where||p.metWhere||'聚会',false,step);
+  };
+  if(typeof runAfterEncounterModals==='function')runAfterEncounterModals(step);
+  else step();
+}
 function tagMeetContact(person){
   if(!person)return person;
   person.kind='acquaintance';
@@ -706,9 +945,14 @@ function renderContactsBlock(){
   const n=(game.contacts||[]).length;
   if(!n)return '';
   const noPhone=typeof hasUsablePhone==='function'&&!hasUsablePhone();
+  let hint='';
+  if(typeof paternityTestChildEligible==='function'&&paternityTestChildEligible()){
+    const cost=typeof PATERNITY_TEST_COST!=='undefined'?PATERNITY_TEST_COST:5000;
+    hint='<p class="fold-meta" style="color:var(--orange);margin:4px 0 0">🧬 对方索要抚养费 · 可点「生活消费」做亲子鉴定（¥'+cost.toLocaleString()+'），或在此联系前任</p>';
+  }
   return '<div class="daily-contacts"><b>通讯录</b>（'+n+'人） '+
     '<button class="btn btn-allnight-plain" style="font-size:.7rem;padding:2px 8px" '+(noPhone?'disabled':'')+' onclick="openContactsModal()">打开</button>'+
-    (noPhone?'<span class="fold-meta" style="color:var(--red)"> · 无可用手机</span>':'')+'</div>';
+    (noPhone?'<span class="fold-meta" style="color:var(--red)"> · 无可用手机</span>':'')+hint+'</div>';
 }
 function migrateContactsSystem(){
   if(!game)return;
@@ -719,6 +963,12 @@ function migrateContactsSystem(){
   game.contacts.forEach(c=>{
     if(c.starred==null)c.starred=false;
     if(c.remark==null)c.remark='';
+    if(!c.metWhere&&(c.kind==='acquaintance'||c.kind==='affair'||!c.kind))c.metWhere='不明';
+    if(c.metWeek==null&&c.id){
+      const parsed=parseMetWeekFromContactId(c.id);
+      if(parsed!=null)c.metWeek=parsed;
+    }
+    if(c.metWeek==null&&(c.kind==='acquaintance'||c.kind==='affair')&&c.id&&String(c.id).indexOf('ct_')===0)c.metWeek=0;
     if(c.id===CORE_CONTACT_IDS.spouse||c.kind==='spouse')return;
     if(c.id===CORE_CONTACT_IDS.exSpouse||c.kind==='ex_spouse')return;
     if(c.id===CORE_CONTACT_IDS.parents||c.kind==='parents')return;
@@ -730,4 +980,5 @@ function migrateContactsSystem(){
   initCoreContacts();
   if(typeof syncParentsContact==='function')syncParentsContact();
   if(game.divorced)syncExSpouseContact();
+  else if(game.married)restoreSpouseContactAfterReconcile();
 }

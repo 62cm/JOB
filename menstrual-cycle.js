@@ -281,6 +281,7 @@ function rollFirstTrimesterMiscarriage(){
   if(Math.random() >= CYCLE_MISCARRIAGE_CHANCE) return false;
   game.pregnant = false;
   game.pregnantSubject = null;
+  game.pregnancyStartWeek = null;
   game.pregnancyWeeksLeft = 0;
   game.pregnancyIntimacyNet = 0;
   game.procreateIntentWeek = -1;
@@ -292,7 +293,8 @@ function makeLovePregnancyWarningHtml(){
   if(!game || !game.pregnant) return '';
   if(typeof pregnancyWeeksElapsed !== 'function') return '';
   if(pregnancyWeeksElapsed() > CYCLE_FIRST_TRIMESTER_WEEKS) return '';
-  return '<br><span style="color:var(--red)">⚠ 孕早期（前三个月）做爱有 ' + Math.round(CYCLE_MISCARRIAGE_CHANCE * 100) + '% 流产风险 · 若流产亲密度 -10</span>';
+  return '<br><span style="color:var(--orange)">🤰 已怀孕 · 不会再受孕<br>戴套（温和）：无流产判定 · 不戴套：孕早期有 ' +
+    Math.round(CYCLE_MISCARRIAGE_CHANCE * 100) + '% 流产风险（亲密度 -10）</span>';
 }
 function makeLoveConceptionHintHtml(){
   if(!game || game.pregnant || game.hasChildren) return '';

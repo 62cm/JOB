@@ -22,7 +22,15 @@ const SPOUSE_FINANCE_SRC = fs.readFileSync(path.join(__dirname, 'spouse-finance.
 const FERTILITY_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'fertility-system.js'), 'utf8');
 const MENSTRUAL_CYCLE_SRC = fs.readFileSync(path.join(__dirname, 'menstrual-cycle.js'), 'utf8');
 const STARTER_JOB_SRC = fs.readFileSync(path.join(__dirname, 'starter-job.js'), 'utf8');
-const GAME_BUILD_ID = '2026.06.09-ot-social';
+const ARTIFACT_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'artifact-system.js'), 'utf8');
+const PROPERTY_COMPANY_SRC = fs.readFileSync(path.join(__dirname, 'property-company.js'), 'utf8');
+const GAME_BUILD_ID = '2026.06.09-affair-preg-proposal';
+
+const _DICE_SUM_ODDS_BUILD = {4:50,5:18,6:14,7:12,8:8,9:6,10:6,11:6,12:6,13:8,14:12,15:14,16:18,17:50};
+const DICE_SUM_ZONES_HTML = [4,5,6,7,8,9,10,11,12,13,14,15,16,17].map(s => {
+  const o = _DICE_SUM_ODDS_BUILD[s];
+  return `<div class="num-zone" data-zone="${s}" onclick="placeTableBet('${s}')"><div class="zone-head"><b>${s}</b><span class="zone-side-gold"><span class="zone-pay-odds">1:${o}</span><span class="dice-zone-pct" id="dicePct${s}"></span></span></div><div class="zone-chip-pile" id="pile${s}"></div></div>`;
+}).join('\n                ');
 
 const html = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -77,7 +85,7 @@ const html = `<!DOCTYPE html>
   .stat value{font-weight:600;font-variant-numeric:tabular-nums}
   .stat value.money{color:var(--green)} .stat value.cash{color:var(--blue)} .stat value.stress{color:var(--red)}
   .stress-track{width:56px;height:5px;background:var(--bg);border-radius:3px;margin-top:2px;overflow:hidden}
-  .stress-fill{height:100%;background:var(--red)}
+  .stress-fill{height:100%;width:0%;background:var(--red)}
   main{display:grid;grid-template-columns:minmax(200px,280px) minmax(160px,200px) minmax(0,1fr) minmax(200px,250px);gap:0;height:calc(100vh - 108px);min-width:960px;transition:grid-template-columns .2s ease}
   main.ref-collapsed{grid-template-columns:34px minmax(160px,200px) minmax(0,1fr) minmax(200px,250px)}
   body.game-active{overflow-x:auto}
@@ -91,6 +99,16 @@ const html = `<!DOCTYPE html>
   .ref-hdr-wrap{flex:1;min-width:0}
   .ref-collapse-btn{flex-shrink:0;padding:2px 7px;font-size:.72rem;line-height:1.25;background:var(--bg);border:1px solid var(--border);color:var(--muted);border-radius:4px;cursor:pointer}
   .ref-collapse-btn:hover{color:var(--text);border-color:var(--accent)}
+  .ref-view-toggle{display:flex;gap:4px;margin-top:6px}
+  .ref-view-btn{flex:1;padding:4px 6px;font-size:.66rem;line-height:1.2;background:var(--bg);border:1px solid var(--border);color:var(--muted);border-radius:5px;cursor:pointer}
+  .ref-view-btn:hover:not(:disabled){color:var(--text);border-color:var(--accent)}
+  .ref-view-btn.active{background:rgba(88,166,255,.15);border-color:var(--accent);color:var(--accent);font-weight:600}
+  .ref-view-btn:disabled{opacity:.45;cursor:not-allowed}
+  .ref-cat-jump-btn{display:block;width:100%;margin-top:8px;padding:6px 8px;font-size:.68rem;line-height:1.2;background:var(--bg);border:1px solid var(--border);color:var(--muted);border-radius:5px;cursor:pointer}
+  .ref-cat-jump-btn:hover{color:var(--text);border-color:var(--accent)}
+  .ref-cat-summary{margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)}
+  .ref-industry-pick{margin-top:8px;display:flex;flex-wrap:wrap;gap:4px}
+  .ref-industry-pick .cat-btn{font-size:.62rem;padding:2px 6px}
   .ref-hdr{font-size:.95rem;font-weight:600;line-height:1.3}
   .ref-sub{font-size:.68rem;color:var(--muted);line-height:1.4;margin-top:2px}
   .stat-section{display:flex;flex-direction:column;gap:6px}
@@ -392,18 +410,22 @@ const html = `<!DOCTYPE html>
   }
   .daily-allnight-gold .daily-shop .btn:not(:disabled),
   .daily-allnight-gold .phone-fold .btn:not(:disabled),
+  .daily-allnight-gold .car-fold .btn:not(:disabled),
   .daily-allnight-gold .daily-contacts .btn:not(:disabled),
   .daily-allnight-devil .daily-shop .btn:not(:disabled),
   .daily-allnight-devil .phone-fold .btn:not(:disabled),
+  .daily-allnight-devil .car-fold .btn:not(:disabled),
   .daily-allnight-devil .daily-contacts .btn:not(:disabled){
     background:var(--panel)!important;border-color:var(--border)!important;color:var(--text)!important;
     font-weight:normal!important;text-shadow:none!important;box-shadow:none!important;animation:none!important;filter:none!important;
   }
   .daily-allnight-gold .daily-shop .btn:not(:disabled):hover,
   .daily-allnight-gold .phone-fold .btn:not(:disabled):hover,
+  .daily-allnight-gold .car-fold .btn:not(:disabled):hover,
   .daily-allnight-gold .daily-contacts .btn:not(:disabled):hover,
   .daily-allnight-devil .daily-shop .btn:not(:disabled):hover,
   .daily-allnight-devil .phone-fold .btn:not(:disabled):hover,
+  .daily-allnight-devil .car-fold .btn:not(:disabled):hover,
   .daily-allnight-devil .daily-contacts .btn:not(:disabled):hover{background:#21262d!important;filter:none!important}
   .daily-allnight-gold .btn.btn-phone-shop:not(:disabled),
   .daily-allnight-devil .btn.btn-phone-shop:not(:disabled){
@@ -451,12 +473,17 @@ const html = `<!DOCTYPE html>
   .storage-hint{font-size:.78rem;color:var(--yellow);background:rgba(210,153,34,.08);padding:8px;border-radius:6px;margin-bottom:10px}
   .slot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
   @media(max-width:640px){.slot-grid{grid-template-columns:1fr}}
-  .slot-card{border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg);text-align:left;min-height:120px;display:flex;flex-direction:column}
+  .slot-card{position:relative;border:1px solid var(--border);border-radius:8px;padding:10px 28px 10px 10px;background:var(--bg);text-align:left;min-height:120px;display:flex;flex-direction:column}
   .slot-card.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
-  .slot-card.empty{opacity:.9}
-  .slot-card .slot-title{font-weight:700;font-size:.85rem;margin-bottom:4px}
+  .slot-card.empty{opacity:.9;padding-right:10px}
+  .slot-del{position:absolute;top:6px;right:6px;width:22px;height:22px;padding:0;border:1px solid transparent;border-radius:4px;
+    background:transparent;color:var(--muted);font-size:.85rem;line-height:1;cursor:pointer;opacity:.55}
+  .slot-del:hover{opacity:1;color:var(--red);border-color:rgba(248,81,73,.35);background:rgba(248,81,73,.08)}
+  .slot-card .slot-title{font-weight:700;font-size:.85rem;margin-bottom:4px;padding-right:4px}
+  .slot-card .slot-char{font-size:.68rem;color:var(--muted);font-weight:400;margin-top:2px}
   .slot-card .save-meta{color:var(--muted);font-size:.7rem;line-height:1.4;flex:1}
-  .slot-actions{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+  .slot-actions{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+  .slot-actions-row{display:flex;gap:5px;flex-wrap:wrap}
   .slot-actions .btn{font-size:.7rem;padding:3px 8px}
   .char-create-panel{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
   .rebirth-btn{position:fixed;bottom:12px;right:12px;z-index:90;padding:6px 12px;font-size:.72rem;
@@ -468,7 +495,20 @@ const html = `<!DOCTYPE html>
   .daily-hdr{font-size:.95rem;margin-bottom:8px}
   .daily-stats{display:flex;flex-wrap:wrap;gap:10px;font-size:.8rem;margin-bottom:8px}
   .daily-stats b{color:var(--green)}
-  .daily-temp{font-size:.75rem;color:var(--muted);margin-bottom:8px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .daily-temp,.daily-stat-panel{font-size:.8rem;margin-bottom:8px;display:block;line-height:1.55}
+  .daily-stat-hint{font-size:.68rem;color:var(--muted);margin-bottom:6px}
+  .daily-stat-person{margin:8px 0 4px}
+  .daily-stat-person-hdr{font-size:.82rem;color:var(--text);margin-bottom:4px}
+  .daily-stat-person-hdr b{color:var(--text)}
+  .daily-stat-line{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:baseline}
+  .stat-dim{display:inline-flex;flex-wrap:wrap;align-items:baseline;gap:4px}
+  .stat-dim .stat-name{color:var(--text);font-weight:600}
+  .stat-dim .stat-val{color:var(--green);font-weight:700;font-size:.92rem}
+  .stat-dim .stat-brk{color:var(--muted);font-size:.68rem}
+  .stat-mod.pos{color:var(--green);font-weight:600}
+  .stat-mod.neg{color:var(--red);font-weight:600}
+  .stat-mod.zero{color:var(--muted)}
+  .daily-temp-row{margin:4px 0}
   .daily-week{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
   .daily-dot{font-size:.7rem;padding:3px 6px;border-radius:4px;background:var(--bg);border:1px solid var(--border);color:var(--muted)}
   .daily-dot.cur{border-color:var(--green);color:var(--green);background:rgba(63,185,80,.1)}
@@ -480,7 +520,7 @@ const html = `<!DOCTYPE html>
   .daily-partner .partner-em{font-size:1.6rem}
   .daily-partner-inline .partner-em{font-size:1.15em;margin-right:2px}
   .daily-partner-inline{font-size:.72rem;color:var(--muted);padding:4px 8px;border:1px dashed var(--border);border-radius:6px;white-space:nowrap}
-  .daily-shop,.phone-fold,.daily-contacts{font-size:.78rem;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+  .daily-shop,.phone-fold,.car-fold,.daily-contacts{font-size:.78rem;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
   .phone-fold-hdr{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:2px 0}
   .phone-fold-body{margin-top:6px;font-size:.72rem}
   .nokia-phone-desc{display:block;margin-top:4px;line-height:1.45;font-size:.7rem}
@@ -489,12 +529,29 @@ const html = `<!DOCTYPE html>
   .contacts-modal{max-width:440px;max-height:88vh;text-align:left}
   .contacts-modal h2{font-size:1.05rem;margin-bottom:8px;text-align:center}
   #contactsModalBody{overflow-y:auto;max-height:62vh;font-size:.78rem;margin-top:6px}
+  .daily-side-tools{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+  .daily-side-tools .daily-contacts,.daily-side-tools .daily-wish{border-top:none;margin-top:0;padding-top:0;flex:1;min-width:140px}
+  .gift-wish-modal{max-width:min(92vw,640px);max-height:88vh;text-align:left}
+  .gift-wish-modal h2{font-size:1.05rem;margin-bottom:8px;text-align:center}
+  .wish-table{width:100%;border-collapse:collapse;font-size:.72rem;margin-top:4px;table-layout:fixed}
+  .wish-table th,.wish-table td{padding:6px 8px;border-bottom:1px dashed var(--border);text-align:left;vertical-align:top}
+  .wish-table th{color:var(--muted);font-weight:600}
+  .wish-table .wish-col-date{width:72px;white-space:nowrap}
+  .wish-table .wish-col-kind{width:64px;white-space:nowrap}
+  .wish-table .wish-col-amt{width:72px;white-space:nowrap}
+  .wish-table .wish-col-status{width:56px;white-space:nowrap;text-align:center}
+  .wish-table .wish-col-gift{word-break:keep-all;line-height:1.45}
+  .wish-table .wish-desc{display:block;margin-top:3px;color:var(--muted);font-size:.68rem;word-break:keep-all;line-height:1.4}
+  .wish-ok{color:var(--green)} .wish-no{color:var(--red)} .wish-broke{color:var(--yellow)}
   .contact-row{border-bottom:1px dashed var(--border);padding:8px 4px}
   .contact-row.starred{background:rgba(210,153,34,.07);border-radius:4px}
   .contact-row-hdr{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .contact-star{cursor:pointer;border:none;background:transparent;font-size:1rem;padding:0 4px;line-height:1;color:var(--yellow)}
   .contact-star.off{color:var(--muted);opacity:.55}
   .contact-gender{font-size:.68rem;color:var(--blue);border:1px solid rgba(88,166,255,.35);padding:0 4px;border-radius:3px}
+  .contact-actions-row{margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;width:100%}
+  .contact-del-btn{font-size:.72rem!important;padding:3px 8px!important;margin-left:auto;color:var(--red)!important;border-color:rgba(248,81,73,.35)!important}
+  .contact-del-btn:hover{background:rgba(248,81,73,.1)!important}
   .daily-done{color:var(--green);font-size:.85rem}
   .auto-life-summary{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:.8rem;margin-bottom:12px}
   .auto-life-summary span{color:var(--muted);display:block;font-size:.7rem}
@@ -529,8 +586,12 @@ const html = `<!DOCTYPE html>
   .port-qty{color:var(--yellow);font-weight:700}
   .port-row .up{color:var(--red);font-weight:600}
   .port-row .down{color:var(--green);font-weight:600}
-  .stock-chart-wrap{flex:1;min-width:120px;max-width:200px}
-  .stock-chart-wrap canvas{width:100%;height:36px;display:block;border-radius:4px;background:rgba(0,0,0,.2)}
+  .stock-chart-wrap{flex:1;min-width:130px;max-width:220px;display:flex;align-items:center;gap:3px}
+  .stock-chart-wrap canvas{flex:1;min-width:0;width:auto;height:36px;display:block;border-radius:4px;background:rgba(0,0,0,.2)}
+  .stock-trend-tag{flex:0 0 16px;width:16px;text-align:center;font-size:.9rem;font-weight:800;line-height:1;user-select:none}
+  .stock-trend-tag.up{color:var(--red)}
+  .stock-trend-tag.down{color:var(--green)}
+  .stock-trend-tag.flat{color:var(--muted)}
   .casino-lobby,.casino-floor{background:linear-gradient(180deg,#0f4d2a,#0a3520);border:1px solid #2d6b45;border-radius:10px;padding:12px;margin:6px 0}
   .chip-cage{padding:10px;background:rgba(0,0,0,.25);border:1px solid rgba(210,153,34,.4);border-radius:8px;margin-bottom:10px}
   .chip-cage-hdr{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px;font-size:.8rem}
@@ -593,8 +654,8 @@ const html = `<!DOCTYPE html>
   .triple-col .zone-chip-pile{min-height:14px;margin-top:2px;padding:1px;flex:1 1 auto;align-content:flex-end;max-height:none;overflow:visible}
   .triple-col .zone-chip-pile.ai-pile{min-height:24px}
   .triple-num-spacer{flex:1;min-width:12px;align-self:stretch}
-  .num-zone-col{flex:0 0 auto;margin-left:auto;display:flex;justify-content:flex-end;align-self:stretch}
-  .num-zone-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;width:max-content;margin:0}
+  .num-zone-col{flex:1 1 auto;min-width:0;display:flex;justify-content:flex-end;align-self:stretch}
+  .num-zone-strip{display:grid;grid-template-columns:repeat(7,minmax(32px,1fr));gap:3px;width:100%;max-width:400px}
   .num-zone{min-height:46px;border:2px solid rgba(255,255,255,.15);border-radius:5px;padding:2px 3px;text-align:center;font-size:.62rem;cursor:pointer;display:flex;flex-direction:column;justify-content:flex-start}
   .num-zone:hover,.num-zone.has-bet{border-color:var(--yellow);background:rgba(210,153,34,.08)}
   .num-zone b{font-size:.64rem;line-height:1.1}
@@ -652,7 +713,7 @@ const html = `<!DOCTYPE html>
   <div class="modal slot-modal">
     <h2>职业股市 · 人生模拟</h2>
     <p class="storage-hint">存档保存在本机浏览器（GitHub Pages 在线玩同样有效，仅当前浏览器；换电脑或换浏览器无存档）</p>
-    <p style="font-size:.85rem;color:var(--muted)"><strong>通关目标：</strong>30年还清房贷安度晚年。每周自动存档，共 3 个档位可选。</p>
+    <p style="font-size:.85rem;color:var(--muted)"><strong>通关目标：</strong>30年还清房贷安度晚年。每周自动存档，共 3 个档位；可为每档<strong>命名</strong>，或将任一档<strong>复制</strong>到空档用于人生分岔。</p>
     <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 ${GAME_BUILD_ID} · 若线上数值不对请 Ctrl+F5 强刷</p>
     <div class="slot-grid" id="slotGrid"></div>
     <div id="charCreatePanel" class="char-create-panel" style="display:none">
@@ -667,6 +728,7 @@ const html = `<!DOCTYPE html>
         <option value="c9">C9/常春藤（擅长大企）</option>
       </select></span></p>
       <p id="schoolEduHint" style="font-size:.78rem;color:var(--muted);margin:-6px 0 10px"></p>
+      <p>档案名 <input type="text" id="slotLabelInput" maxlength="20" placeholder="如：主线、分岔A（可留空）" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:4px;width:240px"></p>
       <p>昵称 <input type="text" id="playerNameInput" maxlength="16" placeholder="本档位角色名" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:4px;width:200px"></p>
       <p>你的性别：<select id="playerGenderSelect" style="background:var(--bg);color:var(--text);border:1px solid var(--border);padding:4px 8px;border-radius:4px">
         <option value="male" selected>男</option><option value="female">女</option>
@@ -718,6 +780,14 @@ const html = `<!DOCTYPE html>
     <div style="text-align:center;margin-top:10px"><button type="button" class="btn" onclick="closeContactsModal()">关闭</button></div>
   </div>
 </div>
+<div id="giftWishOverlay" class="overlay hidden" onclick="if(event.target===this)closeGiftWishModal()">
+  <div class="modal gift-wish-modal">
+    <h2>📜 历史愿望单</h2>
+    <p class="fold-meta" style="text-align:center;margin:-4px 0 8px">伴侣约会时讨要的礼物 · 含年度超级梦想</p>
+    <div id="giftWishModalBody"></div>
+    <div style="text-align:center;margin-top:10px"><button type="button" class="btn" onclick="closeGiftWishModal()">关闭</button></div>
+  </div>
+</div>
 <div id="casinoSettleOverlay" class="overlay hidden" onclick="if(event.target===this)closeCasinoSettleMenu()">
   <div class="modal casino-settle-modal">
     <div class="status-icon" id="casinoSettleIcon">🎲</div>
@@ -742,7 +812,7 @@ const html = `<!DOCTYPE html>
       <div class="stat"><label>现金</label><value class="cash" id="statCash">¥0</value></div>
       <div class="stat"><label>累计收入</label><value class="money" id="statMoney">¥0</value></div>
       <div class="stat"><label>月支出</label><value id="statMonthly">¥11000</value></div>
-      <div class="stat"><label>压力</label><value class="stress" id="statStress">0</value><div class="stress-track"><div class="stress-fill" id="stressBar"></div></div></div>
+      <div class="stat"><label>压力</label><value class="stress" id="statStress">0</value><div class="stress-track"><div class="stress-fill" id="stressBar" style="width:0%"></div></div></div>
       <div class="stat"><label>状态</label><value id="statLife">正常</value></div>
       <div class="stat"><label>房贷</label><value id="statMortgage">0/360月</value></div>
       <div class="stat"><label>家庭</label><value id="statFamily">无孩</value></div>
@@ -774,12 +844,18 @@ const html = `<!DOCTYPE html>
       <div class="ref-hdr-wrap">
         <div class="ref-hdr">中国就业市场</div>
         <div class="ref-sub">242个职业 · 方块面积=就业人数 · 颜色=AI影响（0–10）</div>
+        <div class="ref-view-toggle" id="refViewToggle">
+          <button type="button" class="ref-view-btn active" data-view="national" onclick="setRefPanelView('national')">全国总览</button>
+          <button type="button" class="ref-view-btn" data-view="category" onclick="setRefPanelView('category')">行业分析</button>
+          <button type="button" class="ref-view-btn" data-view="job" onclick="setRefPanelView('job')">职业详情</button>
+        </div>
       </div>
     </div>
     <div class="ref-panel-body" id="refPanelBody">
       <div id="refCasinoStats" class="ref-casino-stats" style="display:none"></div>
       <div id="refNational"></div>
       <div id="refJobDetail" class="ref-job-detail ref-content" style="display:none"></div>
+      <div id="refIndustry" class="ref-job-detail ref-content" style="display:none"></div>
     </div>
   </aside>
   <aside class="sidebar">
@@ -928,7 +1004,7 @@ const html = `<!DOCTYPE html>
     </div>
     <div id="tabStock" style="display:none">
       <div class="finance-panel">
-        <p style="color:var(--muted);margin-bottom:8px">A股真实标的（参考市价），佣金万分之2。股价围绕参考价波动。<b style="color:var(--green)">炒股随时可买卖，不占本周求职/赌博行动</b>，四个活动页签可随时切换。</p>
+        <p style="color:var(--muted);margin-bottom:8px">A股真实标的，佣金万分之2。锚点价为2024年初真实市价，现价围绕锚点波动（<b>不是你的买入价</b>，未持仓不显示）。买入后显示<b>成本价</b>与浮盈浮亏。<b style="color:var(--green)">炒股随时可买卖，不占本周求职/赌博行动</b>，四个活动页签可随时切换。</p>
         <div id="stockList"></div>
       </div>
     </div>
@@ -975,7 +1051,7 @@ const html = `<!DOCTYPE html>
             <div class="bet-zone small" data-zone="small" onclick="placeTableBet('small')"><div class="zone-head"><div class="zone-label">小 4–10</div><span class="zone-side-gold"><span class="zone-pay-odds">1:1</span><span class="dice-zone-pct" id="dicePctSmall"></span></span></div><div class="zone-chip-pile" id="pileSmall"></div></div>
             <div class="bet-zone big" data-zone="big" onclick="placeTableBet('big')"><div class="zone-head"><div class="zone-label">大 11–17</div><span class="zone-side-gold"><span class="zone-pay-odds">1:1</span><span class="dice-zone-pct" id="dicePctBig"></span></span></div><div class="zone-chip-pile" id="pileBig"></div></div>
           </div>
-          <div style="font-size:.72rem;color:#9ecfb0;margin:8px 0 4px">豹子区（左）· 数字区（右，围骰通杀大小）</div>
+          <div style="font-size:.72rem;color:#9ecfb0;margin:8px 0 4px">豹子区（左）· 点数区（右）：<b>4–17 各为一格</b>，仅当三骰总和<b>恰好</b>等于该数才赢；豹子通杀大小</div>
           <div class="dice-triple-num-row">
             <div class="triple-col">
               <div class="bet-zone triple" data-zone="triple1" onclick="placeTableBet('triple1')"><div class="zone-head"><div class="zone-label">豹子 · 111</div><span class="zone-side-gold"><span class="zone-pay-odds">1:150</span><span class="dice-zone-pct" id="dicePctTriple1"></span></span></div><div class="zone-chip-pile" id="pileTriple1"></div></div>
@@ -983,13 +1059,8 @@ const html = `<!DOCTYPE html>
             </div>
             <div class="triple-num-spacer" aria-hidden="true"></div>
             <div class="num-zone-col">
-              <div class="num-zone-grid">
-                <div class="num-zone" data-zone="4" onclick="placeTableBet('4')"><div class="zone-head"><b>4/17</b><span class="zone-side-gold"><span class="zone-pay-odds">1:50</span><span class="dice-zone-pct" id="dicePct4"></span></span></div><div class="zone-chip-pile" id="pile4"></div></div>
-                <div class="num-zone" data-zone="5" onclick="placeTableBet('5')"><div class="zone-head"><b>5/16</b><span class="zone-side-gold"><span class="zone-pay-odds">1:18</span><span class="dice-zone-pct" id="dicePct5"></span></span></div><div class="zone-chip-pile" id="pile5"></div></div>
-                <div class="num-zone" data-zone="6" onclick="placeTableBet('6')"><div class="zone-head"><b>6/15</b><span class="zone-side-gold"><span class="zone-pay-odds">1:14</span><span class="dice-zone-pct" id="dicePct6"></span></span></div><div class="zone-chip-pile" id="pile6"></div></div>
-                <div class="num-zone" data-zone="7" onclick="placeTableBet('7')"><div class="zone-head"><b>7/14</b><span class="zone-side-gold"><span class="zone-pay-odds">1:12</span><span class="dice-zone-pct" id="dicePct7"></span></span></div><div class="zone-chip-pile" id="pile7"></div></div>
-                <div class="num-zone" data-zone="8" onclick="placeTableBet('8')"><div class="zone-head"><b>8/13</b><span class="zone-side-gold"><span class="zone-pay-odds">1:8</span><span class="dice-zone-pct" id="dicePct8"></span></span></div><div class="zone-chip-pile" id="pile8"></div></div>
-                <div class="num-zone" data-zone="9" onclick="placeTableBet('9')"><div class="zone-head"><b>9–12</b><span class="zone-side-gold"><span class="zone-pay-odds">1:6</span><span class="dice-zone-pct" id="dicePct9"></span></span></div><div class="zone-chip-pile" id="pile9"></div></div>
+              <div class="num-zone-strip">
+                ${DICE_SUM_ZONES_HTML}
               </div>
             </div>
           </div>
@@ -1194,6 +1265,15 @@ const DATE_COST = 500;
 const INTIMACY_MIN = -100;
 const INTIMACY_MAX = 200;
 const INTIMACY_INITIAL = 80;
+const DIVORCE_PLEAD_INTIMACY_COST = 100;
+const DIVORCE_BUFFER_WEEKS = WEEKS_PER_MONTH;
+const DIVORCE_RECONCILE_WISH_MIN = 50;
+const DIVORCE_RECONCILE_INTIMACY_AFTER = 120;
+const DIVORCE_LAWYER_TIERS={
+  normal:{fee:10000,label:'普通律师团队',win:0.30,winAdj:0.32},
+  premium:{fee:100000,label:'重点律师团队',win:0.45,winAdj:0.40},
+  director:{fee:1000000,label:'总监律师团队',win:0.58,winAdj:0.50}
+};
 const DIVORCE_MORTGAGE_PAYMENT = 12000;
 const SEX_WEEKLY_LIMIT = 7;
 const PARTNER_STD_ON_AFFAIR_CHANCE = 0.40;
@@ -1212,6 +1292,8 @@ const PREGNANCY_WEEKS = PREGNANCY_MONTHS * WEEKS_PER_MONTH;
 const PREGNANCY_LAYOFF_CHANCE = 0.32;
 const PREGNANCY_POSTPARTUM_INTIMACY_BONUS = 20;
 const DIVORCE_ASSET_CAP = 1000000;
+const DIVORCE_LAWYER_FEE_MIN = 80000;
+const DIVORCE_LAWYER_FEE_RATE = 0.04;
 const CONSOLE_COST = 3000;
 const COMPUTER_COST = 10000;
 const PARENTS_SUPPORT_MONTHS = 120;
@@ -1374,21 +1456,26 @@ function ensureOfferOtProfile(offer,job){
   offer.otProfile=built.otProfile;
   offer.welfare=built.welfare;
 }
-const HOUSE_EDGE = 0.05;
 const MACAU_ENTRY = 2000;
 const SPECTATE_AI_MS = 20000;
 const SPECTATE_FOLLOW_MS = 10000;
 const SPECTATE_REST_MS = 15000;
 const CASINO_AI_NAMES = ['东邪','西毒','南帝','北丐','中神通'];
-const DICE_ZONE_LABELS = {big:'大 11–17',small:'小 4–10',triple1:'豹子 111',triple6:'豹子 666',4:'4/17',5:'5/16',6:'6/15',7:'7/14',8:'8/13',9:'9–12'};
-const DICE_ODDS_NOMINAL = {big:1,small:1,triple1:150,triple6:150,4:50,5:18,6:14,7:12,8:8,9:6};
+const DICE_SUM_ZONES=['4','5','6','7','8','9','10','11','12','13','14','15','16','17'];
+const DICE_SUM_ODDS={4:50,5:18,6:14,7:12,8:8,9:6,10:6,11:6,12:6,13:8,14:12,15:14,16:18,17:50};
+const DICE_ZONE_LABELS={big:'大 11–17',small:'小 4–10',triple1:'豹子 111',triple6:'豹子 666'};
+DICE_SUM_ZONES.forEach(s=>{DICE_ZONE_LABELS[s]='点数 '+s});
+const DICE_ODDS_NOMINAL={big:1,small:1,triple1:150,triple6:150};
+DICE_SUM_ZONES.forEach(s=>{DICE_ODDS_NOMINAL[s]=DICE_SUM_ODDS[+s]});
 const ROULETTE_ODDS_NOMINAL = {red:1,black:1,single:35};
 function fmtCasinoOdds(nominalProfit){
-  const p=nominalProfit*(1-HOUSE_EDGE);
+  const p=nominalProfit;
   if(p>=100)return '1:'+Math.round(p);
   if(p>=10)return '1:'+p.toFixed(1).replace(/\.0$/,'');
   return '1:'+p.toFixed(2).replace(/\.?0+$/,'');
 }
+/** 赢时利润（不含本金）；庄家优势仅来自轮盘0、骰宝豹子通杀等规则 */
+function casinoWinProfit(amount,nominalOdds){return amount*nominalOdds}
 function applyCasinoOddsLabels(){
   BET_ZONES.forEach(z=>{
     const n=DICE_ODDS_NOMINAL[z];
@@ -1401,7 +1488,7 @@ function applyCasinoOddsLabels(){
   const single=fmtCasinoOdds(ROULETTE_ODDS_NOMINAL.single);
   document.querySelectorAll('.rl-color-bet .zone-odds').forEach(el=>{el.textContent=even});
   const hdr=document.getElementById('rlOddsHdr');
-  if(hdr)hdr.textContent='欧洲轮盘 · 红/黑 '+even+' · 0通杀 · 单号 '+single+' · 抽水'+(HOUSE_EDGE*100)+'%';
+  if(hdr)hdr.textContent='欧洲单零轮盘 · 红/黑 '+even+' · 单号 '+single+' · 0通杀（庄家优势≈2.7%）';
 }
 const DICE_PCT_ID = {big:'Big',small:'Small',triple1:'Triple1',triple6:'Triple6'};
 const CHIP_DENOMS = [10,20,50,100,200,500,1000,2000,5000,10000,100000,200000,500000,1000000];
@@ -1422,7 +1509,7 @@ const CHIP_COLORS = {
   1000000:{edge:'#ffc400',edgeDark:'#ff6d00',text:'#e65100'}
 };
 const DIE_PIP_POS = {1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
-const BET_ZONES = ['big','small','triple1','triple6','4','5','6','7','8','9'];
+const BET_ZONES=['big','small','triple1','triple6',...DICE_SUM_ZONES];
 const BET_ZONE_PILE_ID = {big:'Big',small:'Small',triple1:'Triple1',triple6:'Triple6'};
 const ROULETTE_WHEEL = [0,32,15,19,4,21,2,25,17,34,6,27,13,36,11,30,8,23,10,5,24,16,33,1,20,14,31,9,22,18,29,7,28,12,35,3,26];
 const ROULETTE_RED = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
@@ -1443,7 +1530,7 @@ let statusModalOpen = false;
 let statusModalCurrentOnClose = null;
 const DICE_SUM_WAYS = {3:1,4:3,5:6,6:10,7:15,8:21,9:25,10:27,11:27,12:25,13:21,14:15,15:10,16:6,17:3,18:1};
 
-let game=null,selectedIdx=-1,selectedJobIdxs=new Set(),applyCategoryPicks=new Set(),currentSort='heat',currentCategory='全部',actionDone=false,currentTab='daily',applyModalStep=0,pendingBatch=null,applyListingSort='default';
+let game=null,selectedIdx=-1,selectedJobIdxs=new Set(),applyCategoryPicks=new Set(),currentSort='heat',currentCategory='全部',actionDone=false,currentTab='daily',applyModalStep=0,pendingBatch=null,applyListingSort='default',refPanelView='national',refPanelCategory=null;
 let calendarView='month',calendarYear=2024,calendarMonth=0;
 let refPanelCollapsed=false;
 let industryFilterCollapsed=false,industryPickerOpen=false;
@@ -1582,6 +1669,19 @@ function fmtJobsCount(n){
   if(n>=10000)return Math.round(n/10000).toLocaleString()+'万人';
   return n.toLocaleString()+'人';
 }
+function escAttr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}
+function bindRefCatJumpClicks(){
+  const body=document.getElementById('refPanelBody');
+  if(!body||body._catJumpBound)return;
+  body._catJumpBound=1;
+  body.addEventListener('click',function(e){
+    const btn=e.target.closest('[data-ref-cat-jump]');
+    if(!btn)return;
+    e.preventDefault();
+    e.stopPropagation();
+    focusRefCategory(btn.getAttribute('data-ref-cat-jump'));
+  });
+}
 function aiExposureColor(exp){
   const t=Math.max(0,Math.min(10,exp))/10;
   const r=Math.round(63+185*t),g=Math.round(185-115*t),b=Math.round(80-35*t);
@@ -1673,6 +1773,51 @@ function renderRefNational(jobs){
     '<div class="stat-section"><div class="gradient-legend"><canvas id="refGradientLegend" width="72" height="7"></canvas><span>低</span><span>高</span></div></div>';
   drawRefGradientLegend();
 }
+function nationalJobTotal(jobs){
+  return(jobs||[]).reduce((s,d)=>s+(d.jobs||0),0);
+}
+function buildRefCategoryStatsHtml(cat,s,jobCount,opts){
+  opts=opts||{};
+  const compact=!!opts.compact;
+  const all=marketForRef();
+  const natTotal=nationalJobTotal(all);
+  const share=natTotal>0?s.totalJobs/natTotal*100:0;
+  if(compact){
+    return '<div class="ref-cat-summary">'+
+      '<h4 style="margin:0 0 6px;font-size:.76rem;color:var(--muted)">所属行业</h4>'+
+      '<div style="font-weight:600;margin-bottom:6px">'+cat+'</div>'+
+      '<div class="ref-row"><label>就业人数</label><span>'+fmtStatBigJobs(s.totalJobs)+' · 占全国 '+share.toFixed(1)+'%</span></div>'+
+      '<div class="ref-row"><label>本行业职业</label><span>'+jobCount+' 个</span></div>'+
+      '<div class="ref-row"><label>平均 AI</label><span style="color:'+exposureColorCSS(s.weightedAvg,1)+'">'+s.weightedAvg.toFixed(1)+'/10</span></div>'+
+      '<button type="button" class="ref-cat-jump-btn" data-ref-cat-jump="'+escAttr(cat)+'">查看行业详情</button>'+
+      '</div>';
+  }
+  const maxH=Math.max(...s.histogram,1);
+  const histBars=s.histogram.map((cnt,i)=>'<div class="bar" style="height:'+(cnt/maxH*100).toFixed(1)+'%;background:'+exposureColorCSS(i,.85)+'" title="'+i+'分: '+fmtJobsShort(cnt)+'人"></div>').join('');
+  const tierRows=s.tiers.map(t=>'<div class="tier-row"><span class="tier-color" style="background:'+exposureColorCSS((t.range[0]+t.range[1])/2,1)+'"></span><span class="tier-name">'+t.name+' ('+t.range[0]+'–'+t.range[1]+')</span><span class="tier-jobs">'+fmtStatBigJobs(t.jobs)+'</span><span class="tier-pct">'+t.pct.toFixed(0)+'%</span></div>').join('');
+  const payRows=s.payBands.map(b=>'<div class="hbar-row"><span class="hbar-label">'+b.label+'</span><div class="hbar-track"><div class="hbar-fill" style="width:'+(b.avg/10*100).toFixed(0)+'%;background:'+exposureColorCSS(b.avg,1)+'"></div></div><span class="hbar-val">'+b.avg.toFixed(1)+'</span></div>').join('');
+  const eduRows=s.eduBands.map(b=>'<div class="hbar-row"><span class="hbar-label">'+b.label+'</span><div class="hbar-track"><div class="hbar-fill" style="width:'+(b.avg/10*100).toFixed(0)+'%;background:'+exposureColorCSS(b.avg,1)+'"></div></div><span class="hbar-val">'+b.avg.toFixed(1)+'</span></div>').join('');
+  let pickHtml='';
+  if(applyCategoryPicks.size>1){
+    pickHtml='<div class="ref-industry-pick">'+[...applyCategoryPicks].map(c=>'<button type="button" class="cat-btn'+(c===cat?' active':'')+'" data-ref-cat-jump="'+escAttr(c)+'">'+c+'</button>').join('')+'</div>';
+  }
+  return pickHtml+
+    '<div class="stat-section"><h3>行业就业人数</h3><div class="stat-big">'+fmtStatBigJobs(s.totalJobs)+'</div><div class="stat-note">'+jobCount+' 个职业 · 占全国 '+share.toFixed(1)+'%'+(game?' · 本周浮动':'')+'</div></div>'+
+    '<div class="stat-section"><h3>加权平均 AI 影响</h3><div class="stat-big">'+s.weightedAvg.toFixed(1)+'<span style="font-size:.85rem;color:var(--muted)">/10</span></div></div>'+
+    '<div class="stat-section"><h3>就业人数 · AI 分布</h3><div class="histogram">'+histBars+'</div><div class="hist-labels"><span>0</span><span>5</span><span>10</span></div></div>'+
+    '<div class="stat-section"><h3>风险分层</h3><div class="tier-bar">'+tierRows+'</div></div>'+
+    '<div class="stat-section"><h3>收入档位 · AI 影响</h3><div class="hbar-chart">'+payRows+'</div></div>'+
+    '<div class="stat-section"><h3>学历 · AI 影响</h3><div class="hbar-chart">'+eduRows+'</div></div>'+
+    '<div class="stat-section"><h3>高收入暴露薪资</h3><div class="stat-big">'+fmtStatWages(s.wagesExposed)+'</div><div class="stat-note">本行业 AI≥7 职业年薪总额</div></div>';
+}
+function renderRefIndustry(cat){
+  const el=document.getElementById('refIndustry');
+  if(!el)return;
+  if(!cat){el.innerHTML='<p class="fold-meta">请在中栏「筛选行业」添加行业，或先选择职业</p>';return}
+  const jobs=marketForRef().filter(j=>j.category===cat);
+  if(!jobs.length){el.innerHTML='<p class="fold-meta">暂无「'+cat+'」数据</p>';return}
+  el.innerHTML=buildRefCategoryStatsHtml(cat,computeNationalStats(jobs),jobs.length,{compact:false});
+}
 function payMultForOffer(tier,importance,seed){
   const r=seededRand(seed)();
   const rng=PAY_MULT_RANGES[tier][importance];
@@ -1707,8 +1852,48 @@ function loadAllSlots(){
     return slots;
   }catch(e){return [null,null,null]}
 }
-function writeAllSlots(slots){
-  try{localStorage.setItem(LS_SLOTS,JSON.stringify(slots.slice(0,SAVE_SLOT_COUNT)))}catch(e){console.warn(e)}
+function compactGameForSave(g){
+  if(!g)return g;
+  if(Array.isArray(g.log)&&g.log.length>40)g.log=g.log.slice(0,40);
+  if(Array.isArray(g.monthLedgerHistory)&&g.monthLedgerHistory.length>24)g.monthLedgerHistory=g.monthLedgerHistory.slice(0,24);
+  if(Array.isArray(g.stocks))g.stocks.forEach(s=>{
+    if(Array.isArray(s.history)&&s.history.length>24)s.history=s.history.slice(-24);
+  });
+  if(g.casinoHistory)delete g.casinoHistory;
+  if(g.companion&&Array.isArray(g.companion.applications)&&g.companion.applications.length>36)
+    g.companion.applications=g.companion.applications.slice(0,36);
+  if(Array.isArray(g.applications)&&g.applications.length>48)g.applications=g.applications.slice(0,48);
+  if(Array.isArray(g.inbox)&&g.inbox.length>60)g.inbox=g.inbox.slice(0,60);
+  if(Array.isArray(g.giftWishHistory)&&g.giftWishHistory.length>80){
+    g.giftWishHistory=typeof compactGiftWishHistoryForSave==='function'?compactGiftWishHistoryForSave(g.giftWishHistory,80):g.giftWishHistory.slice(-80);
+  }
+  if(Array.isArray(g.archivedPartnerWishLists)){
+    g.archivedPartnerWishLists.forEach(function(a){
+      if(Array.isArray(a.wishes)&&a.wishes.length>80)
+        a.wishes=typeof compactGiftWishHistoryForSave==='function'?compactGiftWishHistoryForSave(a.wishes,80):a.wishes.slice(-80);
+    });
+    if(g.archivedPartnerWishLists.length>8)g.archivedPartnerWishLists=g.archivedPartnerWishLists.slice(-8);
+  }
+  return g;
+}
+function writeAllSlots(slots,opts){
+  opts=opts||{};
+  const slice=slots.slice(0,SAVE_SLOT_COUNT);
+  try{
+    localStorage.setItem(LS_SLOTS,JSON.stringify(slice));
+    return true;
+  }catch(e){
+    const quota=e&&(e.name==='QuotaExceededError'||String(e).includes('quota'));
+    if(quota&&!opts.compacted){
+      const compact=slice.map(rec=>{
+        if(!rec||!rec.game)return rec;
+        return{...rec,game:compactGameForSave(JSON.parse(JSON.stringify(rec.game)))};
+      });
+      return writeAllSlots(compact,{compacted:true});
+    }
+    console.warn('writeAllSlots',e);
+    return false;
+  }
 }
 function stripCoInOffer(offer){
   if(!offer)return offer;
@@ -1738,47 +1923,146 @@ function serializeGameState(){
     g.referralOpportunity={...g.referralOpportunity,positions:g.referralOpportunity.positions.map(p=>({...p,offer:stripCoInOffer(p.offer)}))};
   }
   if(g.monthLedger&&g.monthLedger._closing)delete g.monthLedger._closing;
-  g.log=(g.log||[]).slice(0,80);
+  g.log=(g.log||[]).slice(0,40);
   g.companion=serializeCompanionActor(g.companion);
-  return g;
+  return compactGameForSave(g);
 }
 function serializeUiState(){
   return{actionDone,selectedIdx,selectedJobIdxs:[...selectedJobIdxs],applyCategoryPicks:[...applyCategoryPicks],
-    currentSort,currentCategory,currentTab,calendarView,calendarYear,calendarMonth,refPanelCollapsed,industryFilterCollapsed,portfolioFoldCollapsed,interviewSortMode,
-    inboxFold:{...inboxFoldOpen},financeFoldOpen,phonePanelOpen:!!(game&&game.phonePanelOpen),plannedFoldOpen,plannedExpanded:[...plannedExpandedCompanies]};
+    currentSort,currentCategory,currentTab,calendarView,calendarYear,calendarMonth,refPanelCollapsed,refPanelView,refPanelCategory,industryFilterCollapsed,portfolioFoldCollapsed,interviewSortMode,
+    inboxFold:{...inboxFoldOpen},financeFoldOpen,phonePanelOpen:!!(game&&game.phonePanelOpen),carPanelOpen:!!(game&&game.carPanelOpen),plannedFoldOpen,plannedExpanded:[...plannedExpandedCompanies]};
 }
-function buildSlotMeta(){
-  const job=game.employed&&game.employment?game.market[game.employment.jobIdx]:null;
+const SLOT_LABEL_MAX=20;
+function normalizeSlotLabel(s){
+  if(s==null)return '';
+  return String(s).trim().slice(0,SLOT_LABEL_MAX);
+}
+function slotArchiveTitle(m){
+  if(!m)return '未命名';
+  return normalizeSlotLabel(m.slotLabel)||m.playerName||'未命名';
+}
+function slotCharSubtitle(m){
+  if(!m||!m.playerName)return '';
+  const label=normalizeSlotLabel(m.slotLabel);
+  if(label&&label!==m.playerName)return m.playerName;
+  return '';
+}
+function setSlotLabel(slot,label){
+  const slots=loadAllSlots();
+  const rec=slots[slot];
+  if(!rec)return false;
+  if(!rec.meta)rec.meta={};
+  const n=normalizeSlotLabel(label);
+  if(n)rec.meta.slotLabel=n;
+  else delete rec.meta.slotLabel;
+  slots[slot]=rec;
+  return writeAllSlots(slots);
+}
+function renameSlotUi(slot){
+  const slots=loadAllSlots();
+  const rec=slots[slot];
+  if(!rec||!rec.meta){alert('该档位无存档');return}
+  const cur=rec.meta.slotLabel||'';
+  const next=prompt('为档位 '+(slot+1)+' 设置档案名（留空则仅显示角色名）：',cur);
+  if(next===null)return;
+  if(!setSlotLabel(slot,next)){alert('保存档案名失败');return}
+  renderSlotGrid();
+}
+function buildSlotMetaFromGame(g){
+  if(!g)return null;
+  const job=g.employed&&g.employment&&g.market?g.market[g.employment.jobIdx]:null;
   let endingTitle='';
-  if(game.gameOver)try{endingTitle=determineEnding().title}catch(e){endingTitle='已终局'}
+  if(g.gameOver){
+    if(g.endingType==='overwork')endingTitle='通宵后的清晨';
+    else if(g.homeless)endingTitle='桥洞底的寒夜';
+    else if(g.disabled&&!g.ownsHome&&!g.homeless)endingTitle='出租屋里的沉默';
+    else if(g.mortgagePaidOff&&g.ownsHome&&g.married&&!g.divorced)endingTitle='通关 · 安度晚年';
+    else endingTitle='已终局';
+  }
   return{
-    playerName:game.playerName,week:game.week,year:getYear(game.week),age:getPlayerAge(),
-    cash:game.cash,money:game.money,gameOver:!!game.gameOver,endingTitle,
-    education:game.playerEducation,school:schoolLabelFor(game.playerSchool),
-    jobTitle:job?job.title:'待业',employed:!!game.employed,
-    mortgage:game.mortgagePaidOff?'已还清':game.mortgagePaymentsMade+'/'+MORTGAGE_MONTHS
+    playerName:g.playerName,week:g.week,year:getYear(g.week),age:START_AGE+Math.floor((g.week||0)/52),
+    cash:g.cash,money:g.money,gameOver:!!g.gameOver,endingTitle,
+    education:g.playerEducation,school:schoolLabelFor(g.playerSchool),
+    jobTitle:job?job.title:'待业',employed:!!g.employed,
+    mortgage:g.mortgagePaidOff?'已还清':(g.mortgagePaymentsMade||0)+'/'+MORTGAGE_MONTHS
   };
 }
-function buildSlotRecord(){
+function buildSlotMeta(){
+  return buildSlotMetaFromGame(game);
+}
+function isRecoverableFalseEnd(g){
+  if(!g||!g.gameOver)return false;
+  if((g.week||0)>=TOTAL_WEEKS)return false;
+  if(g.endingType==='overwork')return false;
+  if(g.endingType==='bridge'||(g.homeless&&(g.homelessMonths||0)>=24))return false;
+  if(g.endingType==='corpse'||(g.disabled&&!g.ownsHome&&!g.homeless))return false;
+  if(g.endingType==='victory'||g.endingType==='victory_early')return true;
+  if(g.gameWon&&g.mortgagePaidOff&&g.ownsHome&&g.married&&!g.divorced&&!g.homeless)return true;
+  return false;
+}
+function reviveFalseEndGameRecord(g){
+  if(!isRecoverableFalseEnd(g))return false;
+  g.gameOver=false;
+  g.endingType=null;
+  if(g.mortgagePaidOff)g.mortgageGoalReached=true;
+  if(g.companion)g.companion.gameOver=false;
+  return true;
+}
+function refreshSlotMeta(rec){
+  if(!rec||!rec.game)return;
+  const prevLabel=rec.meta&&rec.meta.slotLabel;
+  const m=buildSlotMetaFromGame(rec.game);
+  if(m){
+    rec.meta={...rec.meta,...m,savedAt:rec.savedAt||(rec.meta&&rec.meta.savedAt)};
+    if(prevLabel)rec.meta.slotLabel=prevLabel;
+  }
+}
+function reviveSlotFromFalseEnd(slot){
+  const slots=loadAllSlots();
+  const rec=slots[slot];
+  if(!rec||!rec.game)return {ok:false,msg:'档位 '+(slot+1)+' 无存档'};
+  if(!isRecoverableFalseEnd(rec.game)){
+    if(!rec.game.gameOver)return {ok:false,msg:'档位 '+(slot+1)+' 并未终局，无需恢复'};
+    return {ok:false,msg:'档位 '+(slot+1)+' 是真实结局（猝死/流浪等）或已满30年，无法用此功能恢复'};
+  }
+  reviveFalseEndGameRecord(rec.game);
+  repairGameRecord(rec.game,slot);
+  refreshSlotMeta(rec);
+  rec.savedAt=new Date().toLocaleString('zh-CN',{hour12:false});
+  slots[slot]=rec;
+  if(!writeAllSlots(slots))return {ok:false,msg:'写入 localStorage 失败，请清理浏览器空间后重试'};
+  return {ok:true,msg:'档位 '+(slot+1)+' 已恢复（第'+(rec.game.week+1)+'周）· 请点「续档」'};
+}
+function buildSlotRecord(opts){
+  opts=opts||{};
   try{
+    const meta=buildSlotMeta();
+    if(opts.slotLabel!=null&&opts.slotLabel!=='')meta.slotLabel=normalizeSlotLabel(opts.slotLabel);
+    else if(currentSlotIndex>=0){
+      const prev=loadAllSlots()[currentSlotIndex];
+      if(prev&&prev.meta&&prev.meta.slotLabel)meta.slotLabel=prev.meta.slotLabel;
+    }
     return{
       v:1,savedAt:new Date().toLocaleString('zh-CN',{hour12:false}),
       stockSeed:game.stockSeed||stockSeedForSlot(currentSlotIndex),
-      meta:buildSlotMeta(),game:serializeGameState(),ui:serializeUiState()
+      meta,game:serializeGameState(),ui:serializeUiState()
     };
   }catch(e){
     console.error('serialize',e);
     return null;
   }
 }
-function autoSaveSlot(){
+function autoSaveSlot(opts){
   if(currentSlotIndex<0||!game)return;
   try{
-    const rec=buildSlotRecord();
+    const rec=buildSlotRecord(opts);
     if(!rec)return;
     const slots=loadAllSlots();
     slots[currentSlotIndex]=rec;
-    writeAllSlots(slots);
+    if(!writeAllSlots(slots)&&game&&!game._saveWarned){
+      game._saveWarned=true;
+      addLog('⚠ 自动存档失败：浏览器 localStorage 已满。请删其他档位或清理站点数据','warn');
+    }
   }catch(e){
     console.warn('autosave',e);
     if(game&&!game._saveWarned){game._saveWarned=true;addLog('⚠ 自动存档失败，浏览器存储可能已满','warn')}
@@ -1826,6 +2110,10 @@ function restoreUiState(ui){
   if(ui&&ui.calendarYear!=null){calendarYear=ui.calendarYear;calendarMonth=ui.calendarMonth||0}
   else syncCalendarMonthToGame();
   refPanelCollapsed=!!(ui&&ui.refPanelCollapsed);
+  refPanelView=(ui&&ui.refPanelView)||'national';
+  refPanelCategory=(ui&&ui.refPanelCategory)||null;
+  if(refPanelView==='job'&&selectedIdx<0)refPanelView='national';
+  if(refPanelView==='category'&&!refPanelCategory)refPanelView='national';
   industryFilterCollapsed=!!(ui&&ui.industryFilterCollapsed);
   portfolioFoldCollapsed=!!(ui&&ui.portfolioFoldCollapsed);
   industryPickerOpen=false;
@@ -1834,6 +2122,7 @@ function restoreUiState(ui){
   else inboxFoldOpen={pending:true,replied:true,confirmed:true,attended:true,missed:true,expired:false,ghost:false,rejected:false};
   financeFoldOpen=!!(ui&&ui.financeFoldOpen);
   if(ui&&ui.phonePanelOpen!=null&&game)game.phonePanelOpen=!!ui.phonePanelOpen;
+  if(ui&&ui.carPanelOpen!=null&&game)game.carPanelOpen=!!ui.carPanelOpen;
   plannedFoldOpen=!!(ui&&ui.plannedFoldOpen);
   plannedExpandedCompanies=new Set((ui&&ui.plannedExpanded)||[]);
   applyRefPanelCollapse();
@@ -1857,9 +2146,90 @@ function applyRefPanelCollapse(){
     btn.title=refPanelCollapsed?'展开就业市场':'折叠就业市场';
   }
 }
+function repairGameRecord(g,slot){
+  if(!g)return false;
+  try{
+    if(!g.market||!g.market.length)g.market=initMarket(RAW_DATA);
+    if(!g.portfolio||typeof g.portfolio!=='object')g.portfolio={};
+    const seed=g.stockSeed!=null?g.stockSeed:stockSeedForSlot(slot>=0?slot:0);
+    if(!Array.isArray(g.stocks)||!g.stocks.length){g.stockSeed=seed;g.stocks=initStocks(seed)}
+    else{
+      g.stocks.forEach(s=>{
+        if(s.refPrice==null&&s.price!=null)s.refPrice=s.price;
+        if(s.prevPrice==null)s.prevPrice=s.price;
+        if(!Array.isArray(s.history)||!s.history.length)s.history=[s.prevPrice,s.price];
+      });
+    }
+    if(!g.ownedCars||!g.ownedCars.length)g.ownedCars=g.ownedCar?[g.ownedCar]:[];
+    else if(g.ownedCar&&!g.ownedCars.includes(g.ownedCar))g.ownedCars.push(g.ownedCar);
+    if(!g.ownedCar&&g.ownedCars.length)g.ownedCar=g.ownedCars[0];
+    if(!g.daily)g.daily=defaultDailyState();
+    if(!g.stats)g.stats=typeof defaultPlayerStats==='function'?defaultPlayerStats():{body:30,mind:30,spirit:30};
+    if(!g.partnerStats)g.partnerStats=typeof rollRandomStats==='function'?rollRandomStats():{body:30,mind:30,spirit:30};
+    if(!g.tempStats)g.tempStats=typeof defaultTempStats==='function'?defaultTempStats():{body:0,mind:0,spirit:0};
+    if(!g.partnerTempStats)g.partnerTempStats=typeof defaultTempStats==='function'?defaultTempStats():{body:0,mind:0,spirit:0};
+    if(!g.contacts)g.contacts=[];
+    if(!g.ownedPhones||!g.ownedPhones.length)g.ownedPhones=g.phone?[g.phone]:['xiaomi'];
+    if(!g.log)g.log=[];
+    if(g.casinoHistory&&g.casinoHistory.dice){
+      const z=g.casinoHistory.dice.zones||{};
+      BET_ZONES.forEach(k=>{if(!z[k])z[k]={hits:0}});
+      g.casinoHistory.dice.zones=z;
+    }
+    if(g.casinoHistory&&g.casinoHistory.roulette){
+      const rz=g.casinoHistory.roulette.zones||{};
+      ROULETTE_ZONES.forEach(k=>{if(!rz[k])rz[k]={hits:0}});
+      g.casinoHistory.roulette.zones=rz;
+    }
+    if(!g.artifactStats)g.artifactStats=typeof defaultArtifactStats==='function'?defaultArtifactStats():{stockCostBasis:{}};
+    if(!g.artifactStats.stockCostBasis)g.artifactStats.stockCostBasis={};
+    Object.keys(g.portfolio).forEach(sym=>{
+      const n=g.portfolio[sym]||0;
+      if(n<=0)return;
+      const b=g.artifactStats.stockCostBasis[sym];
+      if(b&&b.shares>0)return;
+      const st=g.stocks.find(x=>x.symbol===sym);
+      if(!st)return;
+      g.artifactStats.stockCostBasis[sym]={shares:n,cost:st.price*n};
+    });
+    reviveFalseEndGameRecord(g);
+    return true;
+  }catch(e){console.error('repairGameRecord',e);return false}
+}
+function repairSlotRecord(slot){
+  const slots=loadAllSlots();
+  const rec=slots[slot];
+  if(!rec||!rec.game)return false;
+  if(!repairGameRecord(rec.game,slot))return false;
+  refreshSlotMeta(rec);
+  compactGameForSave(rec.game);
+  slots[slot]=rec;
+  return writeAllSlots(slots);
+}
+function reviveSlotFromFalseEndUi(slot){
+  const r=reviveSlotFromFalseEnd(slot);
+  alert(r.msg);
+  if(r.ok)renderSlotGrid();
+}
+function repairSlotRecordUi(slot){
+  if(repairSlotRecord(slot))alert('已尝试修复档位 '+(slot+1)+'，误终局会自动恢复 · 请再点续档');
+  else alert('修复档位 '+(slot+1)+' 失败');
+  renderSlotGrid();
+}
 function loadSlotIntoGame(slot){
   const rec=loadAllSlots()[slot];
   if(!rec||!rec.game)return false;
+  repairGameRecord(rec.game,slot);
+  const finishLoad=(repaired)=>{
+    currentSlotIndex=slot;selectedSlotIndex=slot;
+    if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
+    buildCategories();
+    try{renderJobs();renderCasino();renderInbox();renderOffers()}catch(e){console.error('finishLoad panels',e)}
+    updateUI();
+    rollReferralChance();
+    if(repaired)addLog('⚠ 存档已自动修复后读入','warn');
+    return true;
+  };
   try{
     const market=rec.game.market||initMarket(RAW_DATA);
     const corp=initCompanyUniverse(market);
@@ -1878,11 +2248,23 @@ function loadSlotIntoGame(slot){
     initShownLifeFlagsFromState();
     migrateLoadedGameState();
     restoreUiState(rec.ui||{});
-    currentSlotIndex=slot;selectedSlotIndex=slot;
-    buildCategories();renderJobs();renderCasino();renderInbox();renderOffers();updateUI();
-    rollReferralChance();
-    return true;
-  }catch(e){console.error(e);return false}
+    return finishLoad(false);
+  }catch(e){
+    console.error('loadSlot',e);
+    try{
+      repairGameRecord(rec.game,slot);
+      const market=rec.game.market||initMarket(RAW_DATA);
+      const corp=initCompanyUniverse(market);
+      restoreGameState(rec.game,corp);
+      game.stockSeed=rec.stockSeed||stockSeedForSlot(slot);
+      migrateLoadedGameState();
+      restoreUiState(rec.ui||{});
+      return finishLoad(true);
+    }catch(e2){
+      console.error('loadSlot repair',e2);
+      return false;
+    }
+  }
 }
 function renderSlotGrid(){
   const grid=document.getElementById('slotGrid');
@@ -1898,18 +2280,28 @@ function renderSlotGrid(){
     const m=rec.meta;
     const status=m.gameOver?('<div style="color:var(--yellow);font-size:.72rem;margin-top:4px">'+m.endingTitle+'</div>'):
       ('<div style="color:var(--green);font-size:.72rem;margin-top:4px">进行中</div>');
-    return '<div class="slot-card'+sel+'" onclick="selectSlot('+i+')"><div class="slot-title">档位 '+(i+1)+' · '+m.playerName+'</div>'+
+    const charSub=slotCharSubtitle(m);
+    return '<div class="slot-card'+sel+'" onclick="selectSlot('+i+')">'+
+      '<button type="button" class="slot-del" title="删除存档" onclick="event.stopPropagation();deleteSlotConfirm('+i+')">×</button>'+
+      '<div class="slot-title">档位 '+(i+1)+' · '+slotArchiveTitle(m)+
+      (charSub?'<div class="slot-char">角色 '+charSub+'</div>':'')+'</div>'+
       '<div class="save-meta">'+m.year+'年 · '+m.age+'岁 · 第'+m.week+'周<br>'+
       (m.jobTitle||'待业')+' · 现金 ¥'+(m.cash||0).toLocaleString()+'<br>'+
       '存档 '+rec.savedAt+'</div>'+status+
       '<div class="slot-actions">'+
+      '<div class="slot-actions-row">'+
       (!m.gameOver?'<button type="button" class="btn btn-primary" onclick="event.stopPropagation();continueSlot('+i+')">续档</button>':'')+
-      '<button type="button" class="btn" onclick="event.stopPropagation();beginNewGame('+i+')">重开新档</button>'+
-      '<button type="button" class="btn" onclick="event.stopPropagation();deleteSlotConfirm('+i+')">删档</button></div></div>';
+      (m.gameOver&&rec.game&&(rec.game.week||0)<TOTAL_WEEKS?'<button type="button" class="btn btn-primary" onclick="event.stopPropagation();reviveSlotFromFalseEndUi('+i+')">恢复误终局</button>':'')+
+      '<button type="button" class="btn" onclick="event.stopPropagation();repairSlotRecordUi('+i+')">修复</button>'+
+      '<button type="button" class="btn" onclick="event.stopPropagation();renameSlotUi('+i+')">命名</button>'+
+      '</div>'+
+      '<div class="slot-actions-row">'+renderCopySlotButtons(i,slots)+'</div>'+
+      '</div></div>';
   }).join('');
 }
 function selectSlot(i){selectedSlotIndex=i;renderSlotGrid()}
 function showStartOverlay(){
+  if(currentSlotIndex>=0&&game)autoSaveSlot();
   document.getElementById('startOverlay').classList.remove('hidden');
   document.getElementById('endOverlay').classList.add('hidden');
   document.body.classList.remove('game-active');
@@ -1944,17 +2336,86 @@ function cancelCharCreate(){
   renderSlotGrid();
 }
 function continueSlot(slot){
-  if(!loadSlotIntoGame(slot)){alert('读档失败，存档可能已损坏');return}
+  if(!loadSlotIntoGame(slot)){
+    if(confirm('读档失败。是否尝试修复该档位存档后再读？（不会删除原数据，仅补全缺失字段）')){
+      if(repairSlotRecord(slot)&&loadSlotIntoGame(slot)){
+        hideStartOverlay();
+        consumeModalOpen=false;
+        if(typeof resetAutoLifeState==='function')resetAutoLifeState();
+        else if(typeof autoLifeRunning!=='undefined')autoLifeRunning=false;
+        if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
+        if(typeof migrateDailyState==='function')migrateDailyState();
+        updateUI();
+        addLog('📂 存档已修复并读入（第'+game.week+'周）','success');
+        return;
+      }
+    }
+    alert('读档仍失败。请按 F12 打开控制台查看错误，或把报错信息发给我。');
+    return;
+  }
   hideStartOverlay();
   consumeModalOpen=false;
   if(typeof resetAutoLifeState==='function')resetAutoLifeState();
   else if(typeof autoLifeRunning!=='undefined')autoLifeRunning=false;
-  addLog('📂 读取档位 '+(slot+1)+' 存档（第'+game.week+'周）','info');
+  if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
+  if(typeof migrateDailyState==='function')migrateDailyState();
+  updateUI();
+  const slots=loadAllSlots();
+  const rec=slots[slot];
+  const title=rec&&rec.meta?slotArchiveTitle(rec.meta):'';
+  addLog('📂 读取档位 '+(slot+1)+(title?' · '+title:'')+' 存档（第'+game.week+'周）','info');
 }
 function deleteSlotConfirm(slot){
   if(!confirm('确定删除档位 '+(slot+1)+' 的存档？'))return;
   const slots=loadAllSlots();slots[slot]=null;writeAllSlots(slots);
   renderSlotGrid();
+}
+function cloneSlotRecord(rec){
+  if(!rec)return null;
+  try{return JSON.parse(JSON.stringify(rec))}catch(e){console.warn('cloneSlotRecord',e);return null}
+}
+function copySlotRecord(fromSlot,toSlot){
+  if(fromSlot===toSlot)return {ok:false,msg:'不能复制到同一档位'};
+  const slots=loadAllSlots();
+  const src=slots[fromSlot];
+  if(!src||!src.meta)return {ok:false,msg:'档位 '+(fromSlot+1)+' 无存档可复制'};
+  const clone=cloneSlotRecord(src);
+  if(!clone||!clone.game)return {ok:false,msg:'复制失败，存档数据损坏'};
+  clone.savedAt=new Date().toLocaleString('zh-CN',{hour12:false});
+  if(clone.meta){
+    const baseName=String(clone.meta.playerName||'').replace(/\s*·\s*分岔\d*$/,'').trim();
+    if(baseName)clone.meta.playerName=baseName+' · 分岔';
+    const baseLabel=String(clone.meta.slotLabel||baseName||'').replace(/\s*·\s*分岔\d*$/,'').trim();
+    if(baseLabel)clone.meta.slotLabel=baseLabel+' · 分岔';
+  }
+  if(clone.game.playerName&&clone.meta)clone.game.playerName=clone.meta.playerName.replace(/\s*·\s*分岔\d*$/,'').trim()+' · 分岔';
+  repairGameRecord(clone.game,toSlot);
+  slots[toSlot]=clone;
+  if(!writeAllSlots(slots))return {ok:false,msg:'写入失败：浏览器存储空间可能已满'};
+  return {ok:true,msg:'已将档位 '+(fromSlot+1)+' 复制到档位 '+(toSlot+1)+'（分岔存档）'};
+}
+function copySlotConfirm(fromSlot,toSlot){
+  const slots=loadAllSlots();
+  if(!slots[fromSlot]||!slots[fromSlot].meta){alert('档位 '+(fromSlot+1)+' 无存档');return}
+  if(fromSlot===toSlot)return;
+  if(slots[toSlot]&&slots[toSlot].meta){
+    const m=slots[toSlot].meta;
+    const tip=m.gameOver?'终局':'进行中';
+    if(!confirm('档位 '+(toSlot+1)+' 已有存档（'+slotArchiveTitle(m)+' · '+tip+'）。\\n确定用档位 '+(fromSlot+1)+' 的副本覆盖？'))return;
+  }
+  const r=copySlotRecord(fromSlot,toSlot);
+  alert(r.ok?('✓ '+r.msg):r.msg);
+  if(r.ok)renderSlotGrid();
+}
+function renderCopySlotButtons(fromSlot,slots){
+  let h='';
+  for(let i=0;i<SAVE_SLOT_COUNT;i++){
+    if(i===fromSlot)continue;
+    const empty=!slots[i]||!slots[i].meta;
+    const label=empty?('复制'+(i+1)):('覆盖'+(i+1));
+    h+='<button type="button" class="btn" onclick="event.stopPropagation();copySlotConfirm('+fromSlot+','+i+')">'+label+'</button>';
+  }
+  return h;
 }
 function openCharCreateForSlot(slot,prefillName){
   selectedSlotIndex=slot;pendingNewSlot=slot;
@@ -1963,6 +2424,9 @@ function openCharCreateForSlot(slot,prefillName){
   document.getElementById('newSlotLabel').textContent=String(slot+1);
   const inp=document.getElementById('playerNameInput');
   if(inp)inp.value=prefillName||'';
+  const labelInp=document.getElementById('slotLabelInput');
+  const prev=loadAllSlots()[slot];
+  if(labelInp)labelInp.value=(prev&&prev.meta&&prev.meta.slotLabel)||'';
   syncPlayerSchoolEdu();
 }
 function confirmRebirth(){
@@ -2022,7 +2486,7 @@ function syncPlayerSchoolEdu(){
   if(hint)hint.textContent=EDU_SCHOOL_HINT[edu]||'';
 }
 
-function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
+function createNewGame(slot,playerName,edu,school,playerGender,partnerGender,slotLabel){
   currentSlotIndex=slot;selectedSlotIndex=slot;pendingNewSlot=-1;
   const stockSeed=stockSeedForSlot(slot);
   const market=initMarket(RAW_DATA);
@@ -2039,7 +2503,7 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
     mortgageMonthlyOverride:0,procreateIntentWeek:-1,
     ownsHome:true,mortgagePaymentsMade:0,mortgagePaidOff:false,
     hasChildren:false,childRaisingMonthsLeft:0,childRecord:null,
-    pregnant:false,pregnantSubject:null,pregnancyWeeksLeft:0,pregnancyIntimacyNet:0,
+    pregnant:false,pregnantSubject:null,pregnancyStartWeek:null,pregnancyWeeksLeft:0,pregnancyIntimacyNet:0,
     pregnancyBioFather:null,pregnancyConceivedMarried:false,pendingChildCustody:null,
     exPregnancyDisputed:false,exOtherPregnancyAnnounced:false,
     livingOffParents:false,parentsSupportMonthsLeft:PARENTS_SUPPORT_MONTHS,
@@ -2068,7 +2532,7 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
     companion:createCompanionState(edu,school),
     monthLedger:null,monthLedgerHistory:[],
     stats:rollRandomStats(),partnerStats:rollRandomStats(),tempStats:defaultTempStats(),daily:defaultDailyState(),
-    contacts:[],ownedCar:null,phone:'xiaomi',ownedPhones:['xiaomi'],phonePanelOpen:false,nokiaBonusActive:false,phoneSwitchMonthKey:null,
+    contacts:[],ownedCar:null,ownedCars:[],carPanelOpen:false,carSwitchMonthKey:null,phone:'xiaomi',ownedPhones:['xiaomi'],phonePanelOpen:false,nokiaBonusActive:false,phoneSwitchMonthKey:null,
     playerGender:playerGender||'male',partnerGender:partnerGender||'female',
     hiredOnTempStats:false,partnerSoftRice:0,imprisonedUntilWeek:0,
     outdoorAffairPregnancy:false,partnerKnowsPlayerPregnant:false,
@@ -2103,12 +2567,14 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
   if(typeof initCoreContacts==='function')initCoreContacts();
   if(typeof initMenstrualCycleState==='function')initMenstrualCycleState();
   if(typeof initOpeningJobEvent==='function')initOpeningJobEvent(market,edu,corp.jobCompanies,stockSeed*31+17);
+  if(typeof migrateArtifacts==='function')migrateArtifacts();
   selectedJobIdxs=new Set();applyCategoryPicks=new Set();actionDone=false;pendingBatch=null;
   if(typeof resetAutoLifeState==='function')resetAutoLifeState();
   else if(typeof autoLifeRunning!=='undefined')autoLifeRunning=false;
   consumeModalOpen=false;
   calendarView='month';syncCalendarMonthToGame();
   game.phonePanelOpen=false;
+  game.carPanelOpen=false;
   try{
     buildCategories();renderJobs();renderCasino();updateUI();
     showTab('daily');
@@ -2125,7 +2591,7 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
   addLog('📊 '+game.partnerDisplayName+'：肉体'+game.partnerStats.body+' 心智'+game.partnerStats.mind+' 精神'+game.partnerStats.spirit+'（合计'+statTotal(game.partnerStats)+'）','info');
   addLog('👨‍👩‍👧 配偶 '+game.partnerDisplayName+' 已记入通讯录，可在「家庭」页签查看状态。','info');
   if(game.companion){
-    addLog('💵 '+game.partnerDisplayName+' 随身储蓄约 ¥'+(game.companion.cash||0).toLocaleString()+'（小金库不明）','info');
+    addLog('💵 '+game.partnerDisplayName+' 随身储蓄约 ¥'+(game.companion.cash||0).toLocaleString(),'info');
     if(game.companion.employed&&game.companion.employment){
       const e=game.companion.employment,j=market[e.jobIdx];
       const role=e.roleExtra?IMP_LABEL[e.importance]+'·'+ROLE_EXTRA[e.roleExtra]:IMP_LABEL[e.importance];
@@ -2136,12 +2602,12 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender){
   }
   addLog('劳动力市场：'+st.total+'家企业（大型'+st.byScale.large+'·中型'+st.byScale.medium+'·小型'+st.byScale.small+
     '｜头部'+st.byTier.high+'·重点'+st.byTier.mid+'·草根'+st.byTier.low+'），每职业约'+st.avgPerJob+'个招聘方。','info');
-  autoSaveSlot();
+  autoSaveSlot(slotLabel?{slotLabel}:null);
 }
 function confirmNewGameInSlot(){
   if(pendingNewSlot<0)pendingNewSlot=selectedSlotIndex;
   if(pendingNewSlot<0){
-    alert('请先在档位页点击「新游戏」或「重开新档」');
+    alert('请先在档位页点击「新游戏」');
     return;
   }
   const eduSel=document.getElementById('playerEduSelect');
@@ -2158,9 +2624,11 @@ function confirmNewGameInSlot(){
   }
   const nameInp=document.getElementById('playerNameInput');
   const playerName=((nameInp&&nameInp.value)||'').trim()||'匿名';
+  const labelInp=document.getElementById('slotLabelInput');
+  const slotLabel=labelInp?labelInp.value:'';
   const pg=document.getElementById('playerGenderSelect'),sg=document.getElementById('partnerGenderSelect');
   try{
-    createNewGame(pendingNewSlot,playerName,edu,school,pg?pg.value:'male',sg?sg.value:'female');
+    createNewGame(pendingNewSlot,playerName,edu,school,pg?pg.value:'male',sg?sg.value:'female',slotLabel);
   }catch(e){
     console.error('confirmNewGameInSlot',e);
     alert('开新档失败：'+(e.message||e)+'\\n请 Ctrl+F5 强刷；仍失败请打开浏览器控制台(F12)查看报错');
@@ -2181,7 +2649,8 @@ function showTab(t){
   document.getElementById('tabLife').style.display=t==='life'?'block':'none';
   document.getElementById('tabCompanion').style.display=t==='companion'?'block':'none';
   document.querySelectorAll('#mainTabs .btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
-  if(t==='daily') renderDailyPanel();
+  if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
+  if(t==='daily') safeRender(renderDailyPanel,'renderDailyPanel');
   if(t==='stock') renderStocks();
   if(t==='life') renderSpendingPanel();
   if(t==='companion') renderCompanionPanel();
@@ -2241,8 +2710,30 @@ function toggleIndustryPicker(force){
 }
 function setCategory(c){currentCategory=c;buildCategories();refreshJobTreemapViews()}
 function toggleApplyCategory(c){
-  if(applyCategoryPicks.has(c))applyCategoryPicks.delete(c); else applyCategoryPicks.add(c);
+  const adding=!applyCategoryPicks.has(c);
+  if(adding)applyCategoryPicks.add(c);
+  else applyCategoryPicks.delete(c);
+  if(adding){
+    refPanelCategory=c;
+    refPanelView='category';
+  }else if(refPanelCategory===c){
+    refPanelCategory=applyCategoryPicks.size?[...applyCategoryPicks][0]:null;
+    if(refPanelView==='category'&&!refPanelCategory)refPanelView='national';
+  }
   buildCategories(); refreshJobTreemapViews(); updateButtons();
+  if(typeof renderRefPanel==='function')renderRefPanel();
+}
+function ensureRefPanelCategory(){
+  if(refPanelCategory)return refPanelCategory;
+  if(selectedIdx>=0&&game&&game.market[selectedIdx])return game.market[selectedIdx].category;
+  if(applyCategoryPicks.size)return [...applyCategoryPicks][0];
+  return null;
+}
+function focusRefCategory(cat){
+  if(!cat)return;
+  refPanelCategory=cat;
+  refPanelView='category';
+  renderRefPanel();
 }
 function setSort(s){currentSort=s;document.querySelectorAll('#sortBtns .btn').forEach(b=>b.classList.toggle('active',b.dataset.sort===s));refreshJobTreemapViews()}
 function filterJobsForTreemap(extraFilter){
@@ -2318,7 +2809,7 @@ const ACTOR_FIELDS=[
   'stealthJobSearch','stealthSearchWeeks','pendingHire','severanceBlacklistUntil','severanceLitigation',
   'ownsConsole','ownsComputer','consumption','lifestyleSpent','flirtPeopleTotal','mobileAdFreeUntilWeek',
   'casinoCoupons','shownLifeFlags',
-  'stats','partnerStats','tempStats','daily','contacts','ownedCar','phone','playerGender','partnerGender','hiredOnTempStats','partnerSoftRice'
+  'stats','partnerStats','tempStats','daily','contacts','ownedCar','ownedCars','carSwitchMonthKey','phone','playerGender','partnerGender','hiredOnTempStats','partnerSoftRice'
 ];
 let _companionActor=false;
 function initCompanionStartingEmployment(companion,market,edu,jobCompanies,seed){
@@ -2426,22 +2917,17 @@ function pickCompanionJobIdx(eligible,rng){
   const pool=scored.slice(0,Math.min(8,scored.length));
   return pool[Math.floor(rng()*pool.length)].ji;
 }
-function revealPartnerSecretStashOnDivorce(){
+function revealPartnerSecretStashOnDivorce(skipAnnounce){
   if(!game||!game.companion)return;
   if(typeof refreshPartnerStashTotal==='function')refreshPartnerStashTotal();
   const c=game.companion;
   const stash=c.secretStash||0;
-  const cashPart=c.secretStashCash||0;
-  const stockPart=Math.max(0,stash-cashPart);
-  const pn=game.partnerDisplayName||COMPANION_NAME;
-  if(stash>0){
+  if(!skipAnnounce&&stash>0){
+    const cashPart=c.secretStashCash||0;
+    const stockPart=Math.max(0,stash-cashPart);
+    const pn=game.partnerDisplayName||COMPANION_NAME;
     const detail=stockPart>0?'（现金约 ¥'+cashPart.toLocaleString()+' · 持仓约 ¥'+stockPart.toLocaleString()+'）':'';
-    addLog('💔 离婚清算：发现 '+pn+' 隐瞒小金库 ¥'+stash.toLocaleString()+detail+'（婚前婚后均未告知）','warn');
-    if(typeof queueStatusModal==='function'){
-      queueStatusModal('离婚清算 · 隐瞒财产',pn+' 一直隐瞒的小金库合计 ¥'+stash.toLocaleString()+detail+'。\\n此前你完全不知情，这笔钱随对方离去。','💰');
-    }
-  }else{
-    addLog('离婚清算：未发现 '+pn+' 有额外小金库','info');
+    addLog('💔 离婚清算：'+pn+' 隐瞒小金库 ¥'+stash.toLocaleString()+detail+' 已计入分割','info');
   }
   c.secretStashRevealed=true;
 }
@@ -2458,7 +2944,7 @@ function createCompanionState(edu,school){
     mortgageMonthlyOverride:0,procreateIntentWeek:-1,
     ownsHome:true,mortgagePaymentsMade:0,mortgagePaidOff:false,
     hasChildren:false,childRaisingMonthsLeft:0,childRecord:null,
-    pregnant:false,pregnantSubject:null,pregnancyWeeksLeft:0,pregnancyIntimacyNet:0,
+    pregnant:false,pregnantSubject:null,pregnancyStartWeek:null,pregnancyWeeksLeft:0,pregnancyIntimacyNet:0,
     pregnancyBioFather:null,pregnancyConceivedMarried:false,pendingChildCustody:null,
     exPregnancyDisputed:false,exOtherPregnancyAnnounced:false,
     livingOffParents:false,parentsSupportMonthsLeft:PARENTS_SUPPORT_MONTHS,
@@ -2684,17 +3170,19 @@ function companionAutoReferral(){
 function tickCompanionWeek(){
   if(!game||!game.companion||game.companion.gameOver)return;
   const c=game.companion;
-  if(c.weekWorkSkipDays>=3&&c.employed){
-    if(typeof runAsCompanion==='function'){
-      runAsCompanion(()=>{if(typeof recordCareerHistory==='function')recordCareerHistory(game.employment)});
+  if(typeof ensureCompanionMonthlyAbsenceMonth==='function')ensureCompanionMonthlyAbsenceMonth();
+  const compAbsLim=typeof MONTHLY_ABSENCE_LIMIT!=='undefined'?MONTHLY_ABSENCE_LIMIT:4;
+  if(c.employed&&(c.monthlyAbsenceCount||0)>compAbsLim){
+    if(typeof fireCompanionForWorkAbsence==='function')fireCompanionForWorkAbsence();
+    else{
+      if(typeof runAsCompanion==='function'){
+        runAsCompanion(()=>{if(typeof recordCareerHistory==='function')recordCareerHistory(game.employment)});
+      }
+      c.employed=false;
+      c.employment=null;
+      c.layoffs=(c.layoffs||0)+1;
+      addLog('💔 '+((game.partnerDisplayName)||'伴侣')+'本月旷工超过 '+compAbsLim+' 次，被辞退','fail');
     }
-    c.employed=false;
-    c.employment=null;
-    c.layoffs=(c.layoffs||0)+1;
-    addLog('💔 '+((game.partnerDisplayName)||'伴侣')+'本周旷工过多被辞退','fail');
-    c.weekWorkSkipDays=0;
-  }else if(c.weekWorkSkipDays>0){
-    c.weekWorkSkipDays=0;
   }
   runAsCompanion(()=>{
     if(game.married&&!game.divorced)game.marriedWeeks++;
@@ -2729,7 +3217,8 @@ function familyChildStatusHtml(){
   if(game.pregnant){
     const pn=game.partnerDisplayName||'伴侣';
     const who=game.pregnantSubject==='player'?'你':(game.pregnantSubject==='partner'?pn:'');
-    let preg='孕期中 · '+who+'怀孕 · 剩余 '+game.pregnancyWeeksLeft+' 周';
+    const pregLeft=typeof pregnancyWeeksRemaining==='function'?pregnancyWeeksRemaining():game.pregnancyWeeksLeft;
+    let preg='孕期中 · '+who+'怀孕 · 剩余 '+pregLeft+' 周';
     const net=game.pregnancyIntimacyNet||0;
     if(net)preg+=' · 孕期亲密度净'+(net>=0?'+':'')+net;
     rows.push('<div class="companion-row"><span>孕期</span><span style="color:var(--yellow)">'+preg+'</span></div>');
@@ -2746,7 +3235,7 @@ function familyChildStatusHtml(){
         if(cr.custody==='partner'&&cr.bioFather!=='other'){
           if(cr.paternityTested&&!cr.paternityIsPlayer)detail+=' · 无需抚养费';
           else if(cr.paternityIsPlayer)detail+=' · 抚养费 ¥'+CHILD_LIVING_COST.toLocaleString()+'/月';
-          else if(cr.supportDemand)detail+=' · 对方索要抚养费 · 可亲子鉴定';
+          else if(cr.supportDemand)detail+=' · 对方索要抚养费 · <button class="btn" style="font-size:.62rem;padding:1px 6px;vertical-align:baseline" onclick="showPaternityTestPromptModal(false)">亲子鉴定 ¥'+PATERNITY_TEST_COST.toLocaleString()+'</button>';
           else detail+=' · 抚养费待定';
         }else if(cr.bioFather==='other')detail+=' · 非亲生，无需抚养费';
       }else{
@@ -2776,10 +3265,18 @@ function renderCompanionPanel(){
     const loc=typeof getSpouseLocationLabel==='function'?getSpouseLocationLabel():'';
     const genderLabel=game.partnerGender==='male'?'男':'女';
     const intimColor=game.divorced?'var(--muted)':(intim>=60?'var(--green)':intim>=0?'var(--yellow)':'var(--red)');
+    const pStreak=typeof getCompanionAllnightStreak==='function'?getCompanionAllnightStreak():0;
+    const catchUp=!!(game.daily&&game.daily.partnerCatchUpSleep&&game.daily.phase==='morning');
+    const skipDays=typeof getCompanionMonthlyAbsenceCount==='function'?getCompanionMonthlyAbsenceCount():(game.companion&&game.companion.monthlyAbsenceCount)||0;
+    const skipLim=typeof MONTHLY_ABSENCE_LIMIT!=='undefined'?MONTHLY_ABSENCE_LIMIT:4;
     html+='<div class="companion-hdr">'+(typeof partnerAvatarHtml==='function'?partnerAvatarHtml(game.partnerGender,true):'<span class="avatar">'+(game.partnerGender==='male'?'👨🏻':'👩🏻')+'</span>')+
       '<div><b>'+pn+'</b> · 配偶（'+genderLabel+'）<br>'+
       '<span style="font-size:.72rem;color:var(--muted)">📍 '+(loc||'—')+
-      (game.longDistance?' · <span style="color:var(--orange)">异地</span>':'')+'</span></div></div>';
+      (game.longDistance?' · <span style="color:var(--orange)">异地</span>':'')+'</span>'+
+      (catchUp?'<br><span style="font-size:.72rem;color:var(--blue)">😴 白天在家补觉</span>':'')+
+      '<br><span style="font-size:.72rem;color:var(--orange)">通宵：'+(pStreak?'已连续未睡 '+pStreak+' 天':'未通宵')+'</span>'+
+      (skipDays?'<br><span style="font-size:.72rem;color:var(--yellow)">本月旷工 '+skipDays+'/'+skipLim+' 天</span>':'')+
+      '</div></div>';
     html+='<div class="companion-stats">'+
     '<div class="companion-stat"><label>亲密度</label><value style="color:'+intimColor+'">'+intim+'</value></div>'+
     '<div class="companion-stat"><label>肉体</label><value>'+(ps.body||0)+'</value></div>'+
@@ -2807,6 +3304,7 @@ function renderCompanionPanel(){
     (game.stdActive?'<div class="companion-row"><span style="color:var(--orange)">你的性病</span><span>'+stdTreatmentStatusText()+'</span></div>':'')+
     (typeof cycleStatusCompanionRow==='function'?cycleStatusCompanionRow():'')+
     (typeof cycleStatusPlayerRow==='function'?cycleStatusPlayerRow():'')+
+    (typeof renderDivorceProceedingsCompanionHtml==='function'?renderDivorceProceedingsCompanionHtml():'')+
     '<div style="margin-top:8px"><button class="btn" onclick="confirmPlayerDivorce()">主动离婚</button>'+
     '<span style="font-size:.65rem;color:var(--muted);margin-left:6px">保留房产·房贷¥'+DIVORCE_MORTGAGE_PAYMENT+'/月</span></div></div>';
   }else if(game.divorced){
@@ -2920,6 +3418,17 @@ function updateLongDistanceStatus(silent){
 }
 function migrateLoadedGameState(){
   if(!game)return;
+  if(!game.portfolio||typeof game.portfolio!=='object')game.portfolio={};
+  if(!Array.isArray(game.stocks)||!game.stocks.length){
+    const seed=game.stockSeed!=null?game.stockSeed:stockSeedForSlot(currentSlotIndex>=0?currentSlotIndex:0);
+    game.stockSeed=seed;
+    game.stocks=initStocks(seed);
+  }
+  if(!game.ownedCars||!game.ownedCars.length)game.ownedCars=game.ownedCar?[game.ownedCar]:[];
+  else if(game.ownedCar&&!game.ownedCars.includes(game.ownedCar))game.ownedCars.push(game.ownedCar);
+  if(!game.ownedCar&&game.ownedCars.length)game.ownedCar=game.ownedCars[0];
+  if(game.carPanelOpen==null)game.carPanelOpen=false;
+  if(game.carSwitchMonthKey==null)game.carSwitchMonthKey=null;
   game.playerCity=game.playerCity||PLAYER_HOME_CITY;
   game.consumption=game.consumption||defaultConsumptionState();
   game.casinoCoupons=game.casinoCoupons||0;
@@ -2961,21 +3470,26 @@ function migrateLoadedGameState(){
   if(game.severanceBlacklistUntil==null)game.severanceBlacklistUntil=0;
   if(!game.severanceLitigation)game.severanceLitigation=null;
   if(game.spouseIntimacy==null)game.spouseIntimacy=INTIMACY_INITIAL;
+  if(typeof migrateDivorceBufferRestore==='function')migrateDivorceBufferRestore();
+  if(game.divorceProceedings&&typeof repairDivorceBufferDeadline==='function')repairDivorceBufferDeadline();
   if(game.divorced){game.spouseIntimacy=0;if(game.companion)game.companion.spouseIntimacy=0}
   if(!game.contactLoans)game.contactLoans=[];
   if(typeof migrateSpouseFinance==='function')migrateSpouseFinance();
   if(typeof migrateFertility==='function')migrateFertility();
   if(typeof migrateMenstrualCycle==='function')migrateMenstrualCycle();
+  if(typeof migrateArtifacts==='function')migrateArtifacts();
   if(!game.partnerDisplayName&&game.married&&!game.divorced)game.partnerDisplayName=pickPartnerDisplayName(game.partnerGender||'female');
   game.lastDateWeek=game.lastDateWeek||0;
   game.livingOffSpouse=!!game.livingOffSpouse;
   game.companionFlirtTotal=game.companionFlirtTotal||0;
   game.mortgageMonthlyOverride=game.mortgageMonthlyOverride||0;
+  if(game.mortgageGoalReached==null)game.mortgageGoalReached=!!(game.mortgagePaidOff&&game.gameWon);
   game.procreateIntentWeek=game.procreateIntentWeek!=null?game.procreateIntentWeek:-1;
   game.pregnant=!!game.pregnant;
   if(game.pregnancyWeeksLeft==null)game.pregnancyWeeksLeft=0;
   if(game.pregnancyIntimacyNet==null)game.pregnancyIntimacyNet=0;
-  if(!game.pregnant)game.pregnantSubject=null;
+  if(!game.pregnant){game.pregnantSubject=null;game.pregnancyStartWeek=null}
+  else if(typeof ensurePregnancyStartWeek==='function'){ensurePregnancyStartWeek();if(typeof syncPregnancyWeeksLeft==='function')syncPregnancyWeeksLeft()}
   if(game.imprisonedUntilWeek==null)game.imprisonedUntilWeek=0;
   if(game.outdoorAffairPregnancy==null)game.outdoorAffairPregnancy=false;
   if(game.partnerKnowsPlayerPregnant==null)game.partnerKnowsPlayerPregnant=false;
@@ -3004,6 +3518,7 @@ function migrateLoadedGameState(){
     if(game.daily.partnerSnackPortionsToday==null)game.daily.partnerSnackPortionsToday=0;
   }
   if(typeof migrateAffairContacts==='function')migrateAffairContacts();
+  if(typeof migratePropertyCompany==='function')migratePropertyCompany();
   if(typeof migrateContactsSystem==='function')migrateContactsSystem();
   syncSpouseIntimacyToCompanion();
   if(game.employed&&game.employment){
@@ -3034,6 +3549,11 @@ function migrateLoadedGameState(){
     if(o.contractSigned==null)o.contractSigned=false;
   });
   delete game.casinoWatchMode;
+  if(game.casinoHistory&&game.casinoHistory.dice){
+    const z=game.casinoHistory.dice.zones||{};
+    BET_ZONES.forEach(k=>{if(!z[k])z[k]={hits:0}});
+    game.casinoHistory.dice.zones=z;
+  }
   ensureCasinoHistory();
   (game.applications||[]).forEach(a=>{
     if(a.offer&&a.offer.company){
@@ -3058,6 +3578,7 @@ function migrateLoadedGameState(){
       game.companion.secretStashPortfolio=game.companion.secretStashPortfolio||{};
     }
     if(game.companion.secretStashRevealed==null)game.companion.secretStashRevealed=false;
+    if(game.married&&!game.divorced&&game.companion.secretStashRevealed)game.companion.secretStashRevealed=false;
     if(!game.divorced&&!game.companion.employed&&!game.companion.employment)
       initCompanionStartingEmployment(game.companion,game.market,game.companion.playerEducation||game.playerEducation,game.jobCompanies,(game.stockSeed||0)*19+77);
   }
@@ -3856,9 +4377,11 @@ function getResumeProbability(job,offer,apps){
     const cat=game.market[job.idx]&&game.market[job.idx].category;
     if(cat&&cat===game.severanceLitigation.category)base*=.22;
   }
+  if(typeof artifactHireMult==='function')base*=artifactHireMult(job,offer);
   return Math.min(.88,Math.max(0.002,base));
 }
 function getInterviewProbability(job,offer,hasReferral){
+  if(typeof artifactGuaranteedFor==='function'&&artifactGuaranteedFor(job,offer))return 0.88;
   let base=getResumeProbability(job,offer,offer.apps)*.85+.18;
   base*=1-Math.min(.85,playerStress()*game.stressMultiplier*.001);
   if(game.onWelfare)base*=.75;
@@ -3928,6 +4451,7 @@ function drawRecruitmentRound(jobIdxs,resumeCost,opts){
     shuffleArr(listings,lr);
     listings.splice(opts.drawCount);
   }
+  if(typeof recordJobListingsSeen==='function')recordJobListingsSeen(listings.length);
   return {listings,cats,drawSize:picked.length};
 }
 function formatOfferPay(offer){
@@ -4320,9 +4844,10 @@ function processApplicationPipeline(){
           game.resumeFailCount++;return;
         }
       }
-      const rp=getResumeProbability(job,offer,offer.apps);
-      if(Math.random()>=rp){app.status='silent';game.resumeFailCount++;return}
-      const ghostRate=app.viaReferral?0.25:0.52;
+      const artGuar=typeof artifactGuaranteedFor==='function'&&artifactGuaranteedFor(job,offer);
+      const rp=artGuar?0.88:getResumeProbability(job,offer,offer.apps);
+      if(!artGuar&&Math.random()>=rp){app.status='silent';game.resumeFailCount++;return}
+      const ghostRate=artGuar?0:(app.viaReferral?0.25:0.52);
       if(Math.random()<ghostRate){
         app.status='ghost';
         const ghostMsg=offer.planned?
@@ -4470,6 +4995,7 @@ function attendInterviewSlot(inboxId){
     company:offer.company.name,interviewWeek:app.interviewWeek,interviewSlot:app.interviewSlot,offer,
     msg:offer.company.name+' 面试出席确认：您已按约参加 '+getDateStr(app.interviewWeek)+' '+interviewSlotLabel(app.interviewSlot)+' 的'+modeTxt+'。'});
   addLog('🎤 '+interviewSlotLabel(app.interviewSlot)+' '+modeTxt+'：'+offer.company.name+'（'+IMP_LABEL[offer.importance]+(fee?' ¥'+fee:'')+hourNote+'）','info');
+  if(!isInterviewOnline(app)&&isRemoteCompany(offer.company)&&typeof recordRemoteInterview==='function')recordRemoteInterview();
   if(!(typeof _companionActor!=='undefined'&&_companionActor)&&typeof dailyAdvanceAfterSlotAction==='function'){
     const d=game.daily;
     if(!isInterviewOnline(app)&&d&&d.slotHoursUsed>=SLOT_HOURS_TOTAL)dailyAdvanceAfterSlotAction();
@@ -4722,6 +5248,7 @@ function closeConsumeModal(skipUi){
   const el=document.getElementById('consumeOverlay');
   if(el)el.classList.add('hidden');
   consumeModalOpen=false;
+  if(typeof encounterModalConsumeClosed==='function')encounterModalConsumeClosed();
   if(game&&game._resumeOvertimeAfterModal){
     game._resumeOvertimeAfterModal=false;
     if(game.daily&&game.daily.inOvertime&&typeof showOvertimeChoiceModal==='function'){
@@ -4935,11 +5462,13 @@ function renderSpendingPanel(){
   const scrollLeft=scrollSessionsLeft();
   const scrollOff=scrollLeft<=0;
   const stock=game.snackStock||0;
+  const artifactRows=typeof renderArtifactSpendingRows==='function'?renderArtifactSpendingRows():[];
   const fertRows=typeof renderFertilitySpendingRows==='function'?renderFertilitySpendingRows():[
     {label:'备孕 ¥'+PROC_CREATE_COST,meta:'在宅家备孕',btn:'备孕',fn:'setProcreateIntent()',off:!game.married||game.divorced||game.hasChildren||game.pregnant}
   ];
   const abortRow=typeof renderAbortionSpendingRow==='function'?renderAbortionSpendingRow():null;
-  const rows=fertRows.concat(abortRow?[abortRow]:[]).concat([
+  const paternityRow=typeof renderPaternitySpendingRow==='function'?renderPaternitySpendingRow():null;
+  const rows=artifactRows.concat(fertRows).concat(abortRow?[abortRow]:[]).concat(paternityRow?[paternityRow]:[]).concat([
     {label:game.ownsConsole?'游戏机（已购）':'游戏机 ¥'+CONSOLE_COST,meta:game.ownsConsole?'在宅家时段使用 · 本周'+(c.consolePlayed?'已玩':'可玩'):'一次性购买',btn:game.ownsConsole?'已购':'买',fn:'buyGameConsole()',off:!!game.ownsConsole},
     {label:game.ownsComputer?'电脑（已购）':'电脑 ¥'+COMPUTER_COST,meta:game.ownsComputer?'在宅家时段使用 · 本周'+(c.computerUsed?'已用':'可用'):'一次性购买',btn:game.ownsComputer?'已购':'买',fn:'buyComputer()',off:!!game.ownsComputer}
   ]);
@@ -4955,7 +5484,7 @@ function renderSpendingPanel(){
   if(!hasMobileAdFree())html+='<div class="spend-row"><div><div>手游免广告 ¥'+MOBILE_ADFREE_COST+'/月</div><div class="spend-meta">本月不再看广告（仍计时长）</div></div><button class="btn" onclick="buyMobileAdFree()">开通</button></div>';
   else html+='<div class="spend-owned">📵 手游免广告至 '+getDateStr(game.mobileAdFreeUntilWeek)+'</div>';
   rows.forEach(r=>{
-    const btns=r.fn?'<button class="btn" '+(r.off?'disabled':'')+' onclick="'+r.fn+'">'+r.btn+'</button>':'<span class="fold-meta">—</span>';
+    const btns=r.btn?'<button class="btn" '+(r.off?'disabled':'')+(r.fn?' onclick="'+r.fn+'"':'')+'>'+r.btn+'</button>':'<span class="fold-meta">—</span>';
     html+='<div class="spend-row"><div><div>'+r.label+'</div><div class="spend-meta">'+r.meta+'</div></div>'+
       '<div class="spend-btns">'+btns+'</div></div>';
   });
@@ -5381,10 +5910,13 @@ function tickSpongeMedal(){
   else if(!game.showSpongeInsight&&was)addLog('海绵宝宝勋章已收回（压力回落）','info');
 }
 function getJobLayoffPreview(job,offer){
+  if(!job||!offer)return 0;
+  const co=offer.company||pickCompany(job.idx,offer.tier||'mid');
   const fakeEmp={
     jobIdx:job.idx,
+    company:co,
     weeksInCompany:52,
-    weeksInIndustry:game.industryExperience[job.category]||52,
+    weeksInIndustry:(game.industryExperience&&game.industryExperience[job.category])||52,
     tier:offer.tier,
     importance:offer.importance,
     roleExtra:offer.roleExtra||null
@@ -5410,12 +5942,15 @@ function renderSocialMedals(){
   }).join('');
 }
 function getLayoffWaveProbability(emp){
+  if(!emp||!game||!game.market)return 0;
   if(emp.roleExtra!=='intern'&&emp.roleExtra!=='temp'&&emp.weeksInCompany<12)return 0;
-  const job=game.market[emp.jobIdx],co=emp.company;
+  const job=game.market[emp.jobIdx];
+  if(!job)return 0;
+  const co=emp.company||{scale:'medium',tier:'mid'};
   let base=.0065;
-  base*=Math.exp(Math.max(0,game.macroUnemployment-.055)*5);
+  base*=Math.exp(Math.max(0,(game.macroUnemployment||0)-.055)*5);
   if(game.layoffSeason>0)base*=2.2;
-  base*=1+job.exposure*.09;
+  base*=1+(job.exposure||0)*.09;
   const scaleM={large:1.65,medium:1.25,small:1};
   base*=scaleM[co.scale]||1;
   const tierM={low:1.55,mid:1.12,high:1};
@@ -5593,7 +6128,7 @@ function showNextStatusModal(){
   const btn=document.getElementById('statusChangeBtn');
   if(ic)ic.textContent=m.icon;
   if(ti)ti.textContent=m.title;
-  if(ms)ms.textContent=m.msg;
+  if(ms)ms.innerHTML=String(m.msg||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\\n/g,'<br>');
   if(btn)btn.textContent=m.btn||'继续生活';
   statusModalCurrentOnClose=m.onClose||null;
   el.classList.remove('hidden');
@@ -5929,7 +6464,9 @@ function getMonthlyExpenses(){
   const affairMult=game.affairActive?2:1;
   if(affairMult>1){total*=affairMult;living*=affairMult;mortgage*=affairMult;label+=' · 婚外情（花费×2）'}
   if(game.partnerSoftRice>0){total+=game.partnerSoftRice;living+=game.partnerSoftRice;label+=' · 伴侣吃软饭¥'+game.partnerSoftRice}
-  return {housing:mortgage,living,total,mortgage,label,isRent:false,affairMult};
+  const exp={housing:mortgage,living,total,mortgage,label,isRent:false,affairMult};
+  if(typeof appendPropertyMonthlyExpenses==='function')appendPropertyMonthlyExpenses(exp);
+  return exp;
 }
 
 function fmtSavingsShort(n){
@@ -6013,13 +6550,219 @@ function actorTotalAssets(actor){
   if(!actor)return 0;
   return Math.max(0,(actor.cash||0)+portfolioMarketValue(actor.portfolio||{}));
 }
+function actorDivorceAssets(actor){
+  if(!actor)return 0;
+  let n=actorTotalAssets(actor);
+  if(game&&game.companion&&actor===game.companion){
+    if(typeof refreshPartnerStashTotal==='function')n+=Math.max(0,refreshPartnerStashTotal());
+    else n+=Math.max(0,actor.secretStash||0);
+  }
+  return n;
+}
+function computeDivorceSettlementOwedToPartner(){
+  return computeDivorceSettlementBreakdown().owedToPartner;
+}
+function computeDivorceTakeFromPartner(){
+  if(!game||!game.companion)return 0;
+  const bd=computeDivorceSettlementBreakdown();
+  return bd.takeFromPartner;
+}
+function computeDivorceSettlementBreakdown(){
+  if(!game)return {playerCash:0,playerStock:0,playerTotal:0,partnerCash:0,partnerStock:0,partnerStashCash:0,partnerStashStock:0,partnerStashTotal:0,partnerVisible:0,partnerTotal:0,maritalTotal:0,halfShare:0,owedToPartner:0,takeFromPartner:0};
+  if(typeof refreshPartnerStashTotal==='function')refreshPartnerStashTotal();
+  const playerCash=Math.max(0,game.cash||0);
+  const playerStock=portfolioMarketValue(game.portfolio||{});
+  const playerTotal=playerCash+playerStock;
+  const c=game.companion;
+  const partnerCash=c?Math.max(0,c.cash||0):0;
+  const partnerStock=c?portfolioMarketValue(c.portfolio||{}):0;
+  const partnerStashCash=c?Math.max(0,c.secretStashCash||0):0;
+  const partnerStashStock=typeof partnerStashStockValue==='function'?partnerStashStockValue():Math.max(0,(c&&c.secretStash||0)-partnerStashCash);
+  const partnerStashTotal=partnerStashCash+partnerStashStock;
+  const partnerVisible=partnerCash+partnerStock;
+  const partnerTotal=partnerVisible+partnerStashTotal;
+  const maritalTotal=playerTotal+partnerTotal;
+  const halfShare=Math.round(maritalTotal/2);
+  const owedToPartner=Math.max(0,halfShare-partnerTotal);
+  const takeFromPartner=Math.max(0,partnerTotal-halfShare);
+  return {playerCash,playerStock,playerTotal,partnerCash,partnerStock,partnerStashCash,partnerStashStock,partnerStashTotal,partnerVisible,partnerTotal,maritalTotal,halfShare,owedToPartner,takeFromPartner};
+}
+function computeDivorceLawyerFee(bd){
+  const marital=(bd&&bd.maritalTotal)||0;
+  return Math.max(DIVORCE_LAWYER_FEE_MIN,Math.round(marital*DIVORCE_LAWYER_FEE_RATE));
+}
+function playerAffordableLawyerFee(fee){
+  if(!game||fee<=0)return false;
+  const cash=game.cash||0;
+  if(cash>=fee)return true;
+  const portVal=portfolioMarketValue(game.portfolio||{});
+  return cash+portVal>=fee;
+}
+function evaluateDivorceLawsuitOption(bd,opts){
+  opts=opts||{};
+  const fee=computeDivorceLawyerFee(bd);
+  if(!playerAffordableLawyerFee(fee))return {ok:false,fee,reason:'手头资产不足以支付律师费 ¥'+fee.toLocaleString()+'（含变卖股票）'};
+  if(bd.owedToPartner>fee)return {ok:true,fee,mode:'defend'};
+  if(opts.playerReceives&&bd.takeFromPartner>fee)return {ok:true,fee,mode:'recover'};
+  if(bd.owedToPartner>0)return {ok:false,fee,reason:'应分给对方的 ¥'+bd.owedToPartner.toLocaleString()+' 不足以覆盖律师费 ¥'+fee.toLocaleString()};
+  return {ok:false,fee,reason:'争议金额过小，不必打官司'};
+}
+function buildDivorceSettlementModalHtml(bd,opts,reason,sueInfo){
+  opts=opts||{};sueInfo=sueInfo||{};
+  const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+  let h='<p class="fold-meta" style="margin:0 0 10px">婚内可分割财产按双方合计对半；对方隐瞒的小金库计入其名下资产。</p>';
+  h+='<table class="wish-table" style="font-size:.72rem;margin-bottom:10px"><tbody>';
+  h+='<tr><td colspan="2" style="font-weight:600;padding-top:0">你的财产</td></tr>';
+  h+='<tr><td class="wish-col-kind">现金</td><td class="wish-col-amt">¥'+bd.playerCash.toLocaleString()+'</td></tr>';
+  h+='<tr><td class="wish-col-kind">股票市值</td><td class="wish-col-amt">¥'+bd.playerStock.toLocaleString()+'</td></tr>';
+  h+='<tr><td class="wish-col-kind"><b>小计</b></td><td class="wish-col-amt"><b>¥'+bd.playerTotal.toLocaleString()+'</b></td></tr>';
+  h+='<tr><td colspan="2" style="font-weight:600;padding-top:8px">'+pn+' 的财产</td></tr>';
+  h+='<tr><td class="wish-col-kind">现金</td><td class="wish-col-amt">¥'+bd.partnerCash.toLocaleString()+'</td></tr>';
+  h+='<tr><td class="wish-col-kind">股票市值</td><td class="wish-col-amt">¥'+bd.partnerStock.toLocaleString()+'</td></tr>';
+  if(bd.partnerStashTotal>0){
+    h+='<tr><td class="wish-col-kind">小金库 · 现金</td><td class="wish-col-amt">¥'+bd.partnerStashCash.toLocaleString()+'</td></tr>';
+    h+='<tr><td class="wish-col-kind">小金库 · 持仓</td><td class="wish-col-amt">¥'+bd.partnerStashStock.toLocaleString()+'</td></tr>';
+    h+='<tr><td class="wish-col-kind">小金库合计</td><td class="wish-col-amt" style="color:var(--orange)">¥'+bd.partnerStashTotal.toLocaleString()+'</td></tr>';
+  }else{
+    h+='<tr><td class="wish-col-kind">小金库</td><td class="wish-col-amt">未发现</td></tr>';
+  }
+  h+='<tr><td class="wish-col-kind"><b>小计</b></td><td class="wish-col-amt"><b>¥'+bd.partnerTotal.toLocaleString()+'</b></td></tr>';
+  h+='<tr><td colspan="2" style="font-weight:600;padding-top:8px">分割方案</td></tr>';
+  h+='<tr><td class="wish-col-kind">婚内可分割合计</td><td class="wish-col-amt">¥'+bd.maritalTotal.toLocaleString()+'</td></tr>';
+  h+='<tr><td class="wish-col-kind">各分得一半</td><td class="wish-col-amt">¥'+bd.halfShare.toLocaleString()+'</td></tr>';
+  if(bd.owedToPartner>0)
+    h+='<tr><td class="wish-col-kind" style="color:var(--red)">你须向对方补足</td><td class="wish-col-amt" style="color:var(--red)"><b>¥'+bd.owedToPartner.toLocaleString()+'</b></td></tr>';
+  else if(bd.takeFromPartner>0)
+    h+='<tr><td class="wish-col-kind" style="color:var(--green)">对方须向你退还</td><td class="wish-col-amt" style="color:var(--green)"><b>¥'+bd.takeFromPartner.toLocaleString()+'</b></td></tr>';
+  else h+='<tr><td class="wish-col-kind">资金清算</td><td class="wish-col-amt">双方已大致持平</td></tr>';
+  h+='</tbody></table>';
+  if(opts.playerKeepsHome===false)
+    h+='<p style="color:var(--orange);font-size:.72rem;margin:0 0 8px">房产：你将<b>失去房产</b>，之后需租住出租屋。</p>';
+  else if(opts.playerKeepsHome)
+    h+='<p class="fold-meta" style="margin:0 0 8px">房产：你保留住房，月房贷约 ¥'+DIVORCE_MORTGAGE_PAYMENT.toLocaleString()+'。</p>';
+  if(game.hasChildren||game.pregnant){
+    const cust=typeof resolveChildCustody==='function'?resolveChildCustody():'partner';
+    h+='<p class="fold-meta" style="margin:0 0 8px">子女抚养：预计归 <b>'+custodyHolderLabel(cust)+'</b>（按双方就业与性别规则）。</p>';
+  }
+  if(sueInfo.ok)
+    h+='<p class="fold-meta" style="margin:0">可聘请律师打官司（约 ¥'+sueInfo.fee.toLocaleString()+'），胜诉可'+(sueInfo.mode==='recover'?'多追回对方隐匿财产':'减少你须补足的金额')+'；败诉律师费不退。</p>';
+  else if(sueInfo.reason)
+    h+='<p class="fold-meta" style="margin:0;color:var(--muted)">打官司：'+sueInfo.reason+'</p>';
+  return h;
+}
+function resolveDivorceLawsuit(bd,opts,sueInfo){
+  sueInfo=sueInfo||{};
+  const fee=sueInfo.fee||computeDivorceLawyerFee(bd);
+  const paid=collectFromPlayer(fee,'离婚诉讼律师费');
+  if(paid<fee)return {success:false,feePaid:paid,adjustment:0,underpaid:true};
+  let chance=0.30;
+  if(sueInfo.mode==='recover')chance=0.42;
+  if(opts.playerReceives)chance+=0.08;
+  if(typeof hasSubstantiveAffairEvidence==='function'&&hasSubstantiveAffairEvidence()&&(opts.playerPaysHalf||bd.owedToPartner>0))chance-=0.14;
+  if(bd.partnerStashTotal>500000)chance+=0.10;
+  chance=Math.max(0.08,Math.min(0.62,chance));
+  const success=Math.random()<chance;
+  let adjustment=0;
+  if(success){
+    if(sueInfo.mode==='recover'&&bd.takeFromPartner>0)
+      adjustment=Math.round(Math.max(bd.partnerStashTotal*0.45,bd.takeFromPartner*0.35));
+    else if(bd.owedToPartner>0)
+      adjustment=Math.round(Math.max(bd.partnerStashTotal*0.55,bd.owedToPartner*0.38));
+  }
+  return {success,feePaid:paid,adjustment,chance};
+}
+function applyDivorceAssetSettlement(bd,opts,reason,settlement){
+  settlement=settlement||{};
+  const execLines=[];
+  let owe=bd.owedToPartner;
+  let take=bd.takeFromPartner;
+  const adj=settlement.lawsuit&&settlement.lawsuit.success?settlement.lawsuit.adjustment:0;
+  const adjFail=settlement.lawsuit&&!settlement.lawsuit.success&&settlement.lawsuit.adjustment<0?settlement.lawsuit.adjustment:0;
+  if(adj>0){
+    if(owe>0)owe=Math.max(0,owe-adj);
+    else if(take>0)take+=adj;
+  }else if(adjFail<0&&owe>0)owe=owe+Math.abs(adjFail);
+  if(take>0){
+    const got=transferSettlementFromCompanion(take);
+    if(got>0){
+      const msg='从对方处收回 ¥'+got.toLocaleString()+(adj>0?'（含诉讼获益）':'');
+      addLog('离婚清算：'+msg,'info');
+      execLines.push(msg);
+    }else{
+      const msg='对方应退还 ¥'+take.toLocaleString()+'，但对方手头无钱可执行';
+      addLog('离婚清算：'+msg,'warn');
+      execLines.push(msg);
+    }
+    return execLines;
+  }
+  if(owe>0){
+    const cashBefore=game.cash||0;
+    const paid=collectFromPlayer(owe,divorcePayLabel(reason));
+    if(game.companion)game.companion.cash=(game.companion.cash||0)+paid;
+    const cashUsed=Math.min(cashBefore,paid);
+    const fromStock=Math.max(0,paid-cashUsed);
+    let payLog='婚内财产 ¥'+bd.maritalTotal.toLocaleString()+' · 各半 ¥'+bd.halfShare.toLocaleString()+' · 向对方补足 ¥'+paid.toLocaleString();
+    if(adj>0)payLog+='（诉讼减免，原应补 ¥'+bd.owedToPartner.toLocaleString()+'）';
+    if(paid<owe)payLog+='（应补 ¥'+owe.toLocaleString()+' · 资产不足）';
+    if(fromStock>0)payLog+='（现金 ¥'+cashUsed.toLocaleString()+' + 变卖股票 ¥'+fromStock.toLocaleString()+'）';
+    addLog('离婚清算：'+payLog,paid<owe?'warn':'fail');
+    execLines.push(payLog);
+  }else{
+    execLines.push('双方财产大致持平，无需额外资金清算');
+    addLog('离婚清算：双方财产大致持平','info');
+  }
+  return execLines;
+}
+function showDivorceCompletionModal(reason,opts,bd,settlement,execLines){
+  if(typeof isAutoLifeSimulating==='function'&&isAutoLifeSimulating())return;
+  if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning)return;
+  const lines=execLines&&execLines.length?execLines:['财产清算已执行'];
+  let html='<p>'+(reason||'婚姻已解除').replace(/^💔\s*/,'')+'</p>';
+  if(settlement&&settlement.lawsuit){
+    const lbl=settlement.lawsuit.court?'庭审':'诉讼';
+    html+='<p style="margin:8px 0;color:'+(settlement.lawsuit.success?'var(--green)':'var(--red)')+'"><b>离婚'+lbl+(settlement.lawsuit.success?'胜诉':'败诉')+'</b></p>';
+  }else if(settlement&&settlement.settlementShown){
+    html+='<p class="fold-meta" style="margin:0 0 8px"><b>双方已签署财产分割协议</b></p>';
+  }
+  html+=buildDivorceSettlementModalHtml(bd,opts||{},reason,null);
+  html+='<p class="fold-meta" style="margin-top:8px"><b>执行结果：</b><br>'+lines.map(function(l){return '· '+l}).join('<br>')+'</p>';
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({
+      icon:'💔',title:'离婚 · 财产清算完成',html,
+      buttons:[{text:'知道了',primary:true,handler:function(){closeConsumeModal(true);updateUI();autoSaveSlot();}}]
+    });
+  }
+}
+function transferSettlementFromCompanion(amount){
+  if(!game||!game.companion||amount<=0)return 0;
+  liquidateActorPortfolio(game.companion);
+  let left=amount,taken=0;
+  const c=game.companion;
+  const fromCash=Math.min(left,Math.max(0,c.cash||0));
+  if(fromCash){c.cash-=fromCash;taken+=fromCash;left-=fromCash}
+  if(left>0&&(c.secretStashCash||0)>0){
+    const fromStash=Math.min(left,c.secretStashCash);
+    c.secretStashCash-=fromStash;
+    c.secretStash=Math.max(0,(c.secretStash||0)-fromStash);
+    taken+=fromStash;
+    left-=fromStash;
+  }
+  if(taken>0){
+    game.cash+=taken;
+    game.money+=taken;
+    ledgerAddIncome('divorce','💰','离婚财产分割',taken);
+    checkCashStressMilestones();
+  }
+  return taken;
+}
 function collectFromPlayer(amount,label){
   if(!game||amount<=0)return 0;
-  liquidateActorPortfolio(game);
+  if((game.cash||0)<amount)liquidateActorPortfolio(game);
   const pay=Math.min(amount,Math.max(0,game.cash));
   game.cash-=pay;
   if(pay>0)ledgerAddExpense('divorce','💔',label||'离婚赔偿',pay,false);
   if(pay<amount)addLog('资产不足，已赔付 ¥'+pay.toLocaleString()+' / ¥'+amount.toLocaleString(),'warn');
+  if(label&&(label.indexOf('勒索')>=0||label.indexOf('敲诈')>=0)&&typeof recordImprisonOrExtort==='function')recordImprisonOrExtort();
   return pay;
 }
 function transferAssetsToPlayer(fromActor,cap){
@@ -6121,7 +6864,7 @@ function initChildRecordAtBirth(){
     addLog('⚖️ 孩子出生，抚养权归 '+who,'info');
     if(custody==='partner'&&bioFather!=='other'){
       game.childRecord.supportDemand=true;
-      addLog('💸 '+who+'带孩子向你索要抚养费 ¥'+CHILD_LIVING_COST+'/月，可联系对方做亲子鉴定','warn');
+      showChildSupportDemandModal(who);
     }else if(bioFather==='other'){
       addLog('👶 该子为婚外情受孕，你无需支付抚养费','info');
     }
@@ -6144,40 +6887,147 @@ function applyDivorceChildCustody(){
     addLog('⚖️ 孩子抚养权归 '+custodyHolderLabel(cr.custody),'info');
     if(cr.custody==='partner'&&cr.bioFather!=='other'){
       cr.supportDemand=true;
-      addLog('💸 '+custodyHolderLabel('partner')+'将向你索要抚养费，可联系对方做亲子鉴定','warn');
+      showChildSupportDemandModal(custodyHolderLabel('partner'));
     }else if(cr.bioFather==='other'){
       cr.supportDemand=false;
     }
   }
 }
-function runPaternityTest(forExPregnancyClaim){
+function paternityTestChildEligible(){
+  if(!game)return false;
+  const cr=ensureChildRecord();
+  return !!(cr&&cr.monthsLeft>0&&cr.custody==='partner'&&cr.bioFather!=='other'&&!cr.paternityTested);
+}
+function renderPaternitySpendingRow(){
+  if(!paternityTestChildEligible())return null;
+  return{
+    label:'🧬 亲子鉴定 ¥'+PATERNITY_TEST_COST.toLocaleString(),
+    meta:'对方带孩子索要抚养费 · 亲生则须按月支付 · 非亲生可免除',
+    btn:'鉴定',fn:'showPaternityTestPromptModal(false)',off:false
+  };
+}
+function showChildSupportDemandModal(holderWho){
   if(!game)return;
-  if(game.cash<PATERNITY_TEST_COST){addLog('亲子鉴定需 ¥'+PATERNITY_TEST_COST.toLocaleString()+'，现金不足','fail');return false}
+  if(typeof isAutoLifeSimulating==='function'&&isAutoLifeSimulating())return;
+  if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning)return;
+  const who=holderWho||custodyHolderLabel('partner');
+  const exName=game.exPartnerName||game.partnerDisplayName||(game.partnerGender==='male'?'前夫':'前妻');
+  const html='<p><b>'+who+'</b>（'+exName+'）带着孩子，要求你每月支付抚养费 <b>¥'+CHILD_LIVING_COST.toLocaleString()+'</b>。</p>'+
+    '<p class="fold-meta">若怀疑非亲生，可先花 ¥'+PATERNITY_TEST_COST.toLocaleString()+' 做亲子鉴定；也可在通讯录联系前任协商。</p>';
+  addLog('💸 '+who+'（'+exName+'）索要抚养费 ¥'+CHILD_LIVING_COST+'/月','warn');
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({
+      icon:'💸',title:'抚养费纠纷',html,
+      buttons:[
+        {text:'亲子鉴定 ¥'+PATERNITY_TEST_COST.toLocaleString(),primary:true,handler:function(){
+          closeConsumeModal(true);
+          runPaternityTest(false);
+        }},
+        {text:'知道了',handler:function(){closeConsumeModal(true);updateUI();autoSaveSlot();}}
+      ]
+    });
+  }
+}
+function showPaternityTestResultModal(html){
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({
+      icon:'🧬',title:'亲子鉴定结果',html,
+      buttons:[{text:'知道了',primary:true,handler:function(){
+        closeConsumeModal(true);
+        renderSpendingPanel();updateUI();autoSaveSlot();
+      }}]
+    });
+  }else{
+    renderSpendingPanel();updateUI();autoSaveSlot();
+  }
+}
+function showPaternityTestPromptModal(forExPregnancy){
+  if(!game)return;
+  const cost=PATERNITY_TEST_COST.toLocaleString();
+  let html='',title='亲子鉴定';
+  if(forExPregnancy){
+    const name=game.exPartnerName||game.partnerDisplayName||'前任';
+    html='<p><b>'+name+'</b> 声称怀孕后孩子可能是你的，要求你负责。</p>'+
+      '<p class="fold-meta">花费 ¥'+cost+' 做亲子鉴定，确认是否与你有关。</p>';
+  }else{
+    if(!paternityTestChildEligible()){
+      html='<p>当前没有需要做亲子鉴定的抚养纠纷。</p>';
+      if(typeof showConsumeModalHandlers==='function'){
+        showConsumeModalHandlers({icon:'🧬',title,html,buttons:[{text:'知道了',handler:function(){closeConsumeModal(true);}}]});
+      }
+      return;
+    }
+    const who=custodyHolderLabel('partner');
+    html='<p>'+who+' 带孩子向你索要抚养费，你怀疑孩子并非亲生。</p>'+
+      '<p class="fold-meta">花费 ¥'+cost+' 与孩子做亲子鉴定？</p>';
+  }
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({
+      icon:'🧬',title,html,
+      buttons:[
+        {text:'确认鉴定 ¥'+cost,primary:true,handler:function(){
+          closeConsumeModal(true);
+          runPaternityTest(!!forExPregnancy);
+        }},
+        {text:'取消',handler:function(){closeConsumeModal(true);}}
+      ]
+    });
+  }
+}
+function promptPaternityTest(forExPregnancy){
+  showPaternityTestPromptModal(forExPregnancy===true);
+}
+function runPaternityTest(forExPregnancyClaim){
+  if(!game)return false;
+  if(game.cash<PATERNITY_TEST_COST){
+    addLog('亲子鉴定需 ¥'+PATERNITY_TEST_COST.toLocaleString()+'，现金不足','fail');
+    if(typeof showConsumeModalHandlers==='function'){
+      showConsumeModalHandlers({
+        icon:'🧬',title:'亲子鉴定',html:'现金不足，需 ¥'+PATERNITY_TEST_COST.toLocaleString()+'。',
+        buttons:[{text:'知道了',handler:function(){closeConsumeModal(true);}}]
+      });
+    }
+    return false;
+  }
   game.cash-=PATERNITY_TEST_COST;
   if(typeof ledgerAddExpense==='function')ledgerAddExpense('family','🧬','亲子鉴定',PATERNITY_TEST_COST,false);
+  let html='',logMsg='',logType='info';
   if(forExPregnancyClaim){
     game.exPregnancyDisputed=true;
-    addLog('🧬 鉴定结果：并非你的亲生骨肉，无需承担抚养义务','success');
-    return true;
-  }
-  const cr=ensureChildRecord();
-  if(!cr){addLog('🧬 鉴定结果：并非你的亲生骨肉','success');return true}
-  cr.paternityTested=true;
-  cr.paternityIsPlayer=cr.bioFather==='player';
-  if(cr.paternityIsPlayer){
-    cr.supportDemand=true;
-    addLog('🧬 鉴定确认：是你的孩子，需按月支付抚养费 ¥'+CHILD_LIVING_COST.toLocaleString(),'warn');
+    html='<p style="color:var(--green)"><b>鉴定结果：并非你的亲生骨肉</b></p><p class="fold-meta">无需承担抚养义务。</p>';
+    logMsg='🧬 鉴定结果：并非你的亲生骨肉，无需承担抚养义务';
+    logType='success';
   }else{
-    cr.supportDemand=false;
-    addLog('🧬 鉴定结果：不是你的亲生骨肉，无需支付抚养费','success');
+    const cr=ensureChildRecord();
+    if(!cr){
+      html='<p style="color:var(--green)"><b>鉴定结果：并非你的亲生骨肉</b></p><p class="fold-meta">无需支付抚养费。</p>';
+      logMsg='🧬 鉴定结果：并非你的亲生骨肉';
+      logType='success';
+    }else{
+      cr.paternityTested=true;
+      cr.paternityIsPlayer=cr.bioFather==='player';
+      if(cr.paternityIsPlayer){
+        cr.supportDemand=true;
+        html='<p style="color:var(--orange)"><b>鉴定确认：是你的孩子</b></p><p>需按月支付抚养费 <b>¥'+CHILD_LIVING_COST.toLocaleString()+'</b>（剩余 '+cr.monthsLeft+' 月）。</p>';
+        logMsg='🧬 鉴定确认：是你的孩子，需按月支付抚养费 ¥'+CHILD_LIVING_COST.toLocaleString();
+        logType='warn';
+      }else{
+        cr.supportDemand=false;
+        html='<p style="color:var(--green)"><b>鉴定结果：不是你的亲生骨肉</b></p><p class="fold-meta">无需支付抚养费。</p>';
+        logMsg='🧬 鉴定结果：不是你的亲生骨肉，无需支付抚养费';
+        logType='success';
+      }
+      syncChildRecordCompat();
+    }
   }
-  syncChildRecordCompat();
-  renderSpendingPanel();updateUI();
+  if(logMsg)addLog(logMsg,logType);
+  showPaternityTestResultModal(html);
   return true;
 }
 function finalizeDivorce(opts){
   if(!game||game.divorced)return;
   const o=opts||{};
+  if(typeof archiveGiftWishHistoryOnDivorce==='function')archiveGiftWishHistoryOnDivorce();
   game.divorced=true;game.married=false;game.affairActive=false;game.partnerAffairActive=false;game.partnerStdActive=false;game.livingOffSpouse=false;
   game.longDistance=false;
   game.spouseIntimacy=0;
@@ -6194,13 +7044,18 @@ function finalizeDivorce(opts){
     if(!o.playerInitiated)game.stressMultiplier=Math.max(game.stressMultiplier,2);
   }
   markLifeStressEvent('divorced','离婚 ');
+  game.lastDivorceReason=o.reason||'💔 离婚了。';
+  game.lastDivorceOpts=game.divorceProceedings?game.divorceProceedings.opts:null;
+  game.divorcedWeek=game.week||0;
+  game.divorceProceedings=null;
+  game._pendingDivorce=null;
   addLog(o.reason||'💔 离婚了。','stress');
   if(game.companion){
     game.companion.divorced=true;game.companion.married=false;
     game.companion.affairActive=false;game.companion.livingOffSpouse=false;
     game.companion.spouseIntimacy=0;
     if(!o.playerKeepsHome)game.companion.ownsHome=false;
-    revealPartnerSecretStashOnDivorce();
+    revealPartnerSecretStashOnDivorce(!!o.settlementShown);
   }
   applyDivorceChildCustody();
   if(typeof syncExSpouseContact==='function')syncExSpouseContact();
@@ -6210,26 +7065,437 @@ function finalizeDivorce(opts){
 }
 function confirmPlayerDivorce(){
   if(!game||!game.married||game.divorced)return;
-  if(!confirm('确定主动离婚？你将独自承担房贷 ¥'+DIVORCE_MORTGAGE_PAYMENT+'/月（保留房产），亲密度清零。'))return;
-  finalizeDivorce({
-    reason:'💔 你提出离婚。保留房产，月房贷升至 ¥'+DIVORCE_MORTGAGE_PAYMENT+'。',
-    playerKeepsHome:true,playerInitiated:true,stressDelta:STRESS_DIVORCE
+  if(game.divorceProceedings){
+    addLog('离婚程序已在进行中','info');
+    if(typeof showDivorceMediationModal==='function')showDivorceMediationModal();
+    return;
+  }
+  const html='<p>确定主动提出离婚？</p>'+
+    '<p class="fold-meta">你将保留房产，月房贷约 ¥'+DIVORCE_MORTGAGE_PAYMENT.toLocaleString()+'，亲密度清零。随后进入<b>财产公示与分割调解</b>（可协商或打官司）。</p>';
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({
+      icon:'💔',title:'主动离婚',html,
+      buttons:[
+        {text:'提出离婚',primary:true,handler:function(){
+          closeConsumeModal(true);
+          const reason='💔 你提出离婚。保留房产，月房贷升至 ¥'+DIVORCE_MORTGAGE_PAYMENT+'。';
+          game._pendingDivorce={reason:reason,opts:{playerKeepsHome:true,playerInitiated:true},extra:{}};
+          addLog(reason,'stress');
+          showDivorceMediationModal();
+        }},
+        {text:'取消',handler:function(){closeConsumeModal(true);}}
+      ]
+    });
+  }
+}
+function divorcePayLabel(reason){
+  const r=reason||'';
+  if(r.indexOf('聊骚')>=0)return '聊骚曝光赔偿';
+  if(r.indexOf('偷情')>=0||r.indexOf('婚外情')>=0||r.indexOf('幽会')>=0)return '出轨赔偿';
+  if(r.indexOf('怀孕')>=0)return '怀孕相关赔偿';
+  return '离婚赔偿';
+}
+function hasSubstantiveAffairEvidence(){
+  if(!game)return false;
+  if(game.affairActive||game.affairTriggered)return true;
+  if(game.contacts&&game.contacts.some(c=>
+    (c.affairCount||0)>0||
+    c.affairStatus==='affair'||c.affairStatus==='fwb'||c.affairStatus==='married_affair'
+  ))return true;
+  return false;
+}
+function isFlirtOnlyDivorceReason(reason){
+  return !!(reason&&reason.indexOf('聊骚')>=0);
+}
+function getDivorceProceedings(){
+  return game&&game.divorceProceedings?game.divorceProceedings:null;
+}
+function repairDivorceBufferDeadline(){
+  const dp=getDivorceProceedings();
+  if(!dp||dp.phase==='mediation')return;
+  if(!dp.phase)dp.phase='buffer';
+  const w=game.week||0;
+  const started=dp.startedWeek!=null?dp.startedWeek:w;
+  if(dp.startedWeek==null)dp.startedWeek=started;
+  const expectDeadline=started+DIVORCE_BUFFER_WEEKS;
+  const elapsed=Math.max(0,w-started);
+  if(elapsed<DIVORCE_BUFFER_WEEKS&&(!dp.bufferDeadlineWeek||dp.bufferDeadlineWeek<expectDeadline)){
+    dp.bufferDeadlineWeek=expectDeadline;
+  }
+}
+function divorceBufferWeeksLeft(){
+  const dp=getDivorceProceedings();
+  if(!dp)return 0;
+  if(dp.phase==='mediation')return 0;
+  if(!dp.phase)dp.phase='buffer';
+  if(dp.phase!=='buffer')return 0;
+  repairDivorceBufferDeadline();
+  return Math.max(0,(dp.bufferDeadlineWeek||0)-(game.week||0));
+}
+function hasAffairContactsInPhone(){
+  if(!game||!game.contacts)return false;
+  if(typeof contactHasAffairRecord==='function')return game.contacts.some(contactHasAffairRecord);
+  return game.contacts.some(function(c){
+    return (c.affairCount||0)>0||c.affairStatus==='affair'||c.affairStatus==='fwb'||c.affairStatus==='married_affair';
   });
 }
+function checkDivorceReconciliationEligibility(){
+  const wishCount=typeof getGiftWishCount==='function'?getGiftWishCount():(game.giftWishHistory||[]).length;
+  const noAffair=!hasAffairContactsInPhone();
+  const intim=game.spouseIntimacy!=null?game.spouseIntimacy:INTIMACY_INITIAL;
+  const wishesOk=wishCount>DIVORCE_RECONCILE_WISH_MIN;
+  const intimOk=intim>DIVORCE_RECONCILE_INTIMACY_AFTER;
+  return {wishesOk,noAffair,intimOk,wishCount,intim,ok:wishesOk&&noAffair&&intimOk};
+}
+function buildReconciliationCriteriaHtml(){
+  const el=checkDivorceReconciliationEligibility();
+  return '<p class="fold-meta" style="margin:6px 0 4px"><b>挽回成功须同时满足：</b></p>'+
+    '<ul style="font-size:.72rem;margin:0 0 8px;padding-left:18px;line-height:1.55">'+
+    '<li'+(el.wishesOk?' style="color:var(--green)"':'')+'>历史愿望单 &gt; '+DIVORCE_RECONCILE_WISH_MIN+' 条（当前 <b>'+el.wishCount+'</b>）</li>'+
+    '<li'+(el.noAffair?' style="color:var(--green)"':'')+'>手机通讯录无出轨对象（挽回后旧聊骚累计清零）</li>'+
+    '<li'+(el.intimOk?' style="color:var(--green)"':'')+'>亲密度 &gt; '+DIVORCE_RECONCILE_INTIMACY_AFTER+'（当前 <b>'+el.intim+'</b>）</li>'+
+    '</ul>';
+}
+function startDivorceProceedings(reason,opts,extra){
+  const w=game.week||0;
+  extra=extra||{};
+  const skipDeduct=!!extra.skipIntimacyDeduct;
+  game.divorceProceedings={
+    phase:'buffer',
+    reason:reason||'💔 伴侣提出离婚。',
+    opts:opts||{},
+    extra:extra,
+    startedWeek:w,
+    bufferDeadlineWeek:w+DIVORCE_BUFFER_WEEKS,
+    intimacyDeducted:skipDeduct
+  };
+  game._pendingDivorce={reason:reason,opts:opts||{},extra:extra};
+  if(!skipDeduct){
+    adjustSpouseIntimacy(-DIVORCE_PLEAD_INTIMACY_COST,'提出离婚 ');
+    game.divorceProceedings.intimacyDeducted=true;
+  }
+}
+function clearDivorceProceedings(){
+  if(!game)return;
+  game.divorceProceedings=null;
+  game._pendingDivorce=null;
+}
+function getPendingDivorcePayload(){
+  const dp=getDivorceProceedings();
+  if(dp)return {reason:dp.reason,opts:dp.opts||{},extra:dp.extra||{}};
+  return game._pendingDivorce;
+}
+function buildPartnerDivorceModalHtml(reason,opts,extra){
+  opts=opts||{};extra=extra||{};
+  const flirt=extra.flirt!=null?extra.flirt:(game.flirtPeopleTotal||0);
+  let left=divorceBufferWeeksLeft();
+  if(!left&&getDivorceProceedings())left=DIVORCE_BUFFER_WEEKS;
+  let html='';
+  if(isFlirtOnlyDivorceReason(reason)){
+    html='<p>伴侣从你手机/社交记录中发现你累计聊骚 <b>'+flirt+'</b> 人，情绪激动提出离婚。</p>';
+    if(!hasSubstantiveAffairEvidence())html+='<p class="fold-meta">未发现幽会、偷情等实质出轨记录。</p>';
+    else html+='<p class="fold-meta">同时发现你有实质出轨记录。</p>';
+  }else{
+    html='<p>'+(reason||'伴侣提出离婚').replace(/^💔\s*/,'')+'</p>';
+  }
+  const intimNow=game.spouseIntimacy!=null?game.spouseIntimacy:(extra.intim!=null?extra.intim:INTIMACY_INITIAL);
+  html+='<p class="fold-meta">提出离婚亲密度 -'+DIVORCE_PLEAD_INTIMACY_COST+' · 现 <b>'+intimNow+'</b></p>';
+  html+='<p style="color:var(--orange);margin:8px 0"><b>离婚缓冲期 '+DIVORCE_BUFFER_WEEKS+' 周</b>：婚姻暂不解除，剩余约 <b>'+left+'</b> 周。</p>';
+  html+='<p class="fold-meta">缓冲期内可尝试挽回；届满后进入调解 → 财产/抚养权分配；调解不成可请律师庭审。</p>';
+  html+=buildReconciliationCriteriaHtml();
+  return html;
+}
+function renderDivorceProceedingsCompanionHtml(){
+  const dp=getDivorceProceedings();
+  if(!dp||game.divorced)return '';
+  const inBuffer=!dp.phase||dp.phase==='buffer';
+  const left=inBuffer?divorceBufferWeeksLeft():0;
+  let h='<div class="companion-section"><h4 style="color:var(--orange)">离婚程序进行中</h4>';
+  if(inBuffer){
+    h+='<div class="companion-row"><span>缓冲期</span><span>剩余约 '+left+' 周 · 可挽回</span></div>';
+    h+='<div style="margin-top:6px"><button class="btn btn-primary" onclick="attemptDivorceReconciliation()">尝试挽回</button> ';
+    h+='<button class="btn" onclick="showDivorceBufferInfoModal()">查看条件</button></div>';
+  }else if(dp.phase==='mediation'){
+    h+='<div class="companion-row"><span>调解/诉讼</span><span>待处理财产与抚养权</span></div>';
+    h+='<div style="margin-top:6px"><button class="btn btn-primary" onclick="showDivorceMediationModal()">进入调解</button></div>';
+  }
+  h+='</div>';
+  return h;
+}
+function showDivorceBufferInfoModal(){
+  const dp=getDivorceProceedings();
+  if(!dp)return;
+  const html='<p>'+(dp.reason||'').replace(/^💔\s*/,'')+'</p>'+buildReconciliationCriteriaHtml();
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({icon:'📋',title:'离婚缓冲期 · 挽回条件',html,buttons:[
+      {text:'尝试挽回',primary:true,handler:attemptDivorceReconciliation},
+      {text:'关闭',handler:function(){closeConsumeModal(true)}}
+    ]});
+  }
+}
+function forgiveFlirtHistoryOnReconcile(){
+  if(!game)return 0;
+  const prev=game.flirtPeopleTotal||0;
+  game.flirtPeopleTotal=0;
+  game.flirtReconcileWeek=game.week||0;
+  game.flirtDivorceGraceUntilWeek=(game.week||0)+DIVORCE_BUFFER_WEEKS;
+  return prev;
+}
+function attemptDivorceReconciliation(){
+  closeConsumeModal(true);
+  if(!game||game.divorced||!getDivorceProceedings())return;
+  const el=checkDivorceReconciliationEligibility();
+  if(!el.ok){
+    let html='<p style="color:var(--red)">挽回失败，条件未全部满足。</p>'+buildReconciliationCriteriaHtml();
+    if(typeof showConsumeModalHandlers==='function'){
+      showConsumeModalHandlers({icon:'💔',title:'挽回失败',html,buttons:[{text:'继续缓冲期',handler:function(){closeConsumeModal(true)}}]});
+    }else addLog('挽回失败：条件未满足','fail');
+    return;
+  }
+  const prevFlirt=forgiveFlirtHistoryOnReconcile();
+  clearDivorceProceedings();
+  if(typeof restoreSpouseContactAfterReconcile==='function')restoreSpouseContactAfterReconcile();
+  else if(typeof syncSpouseContact==='function')syncSpouseContact();
+  const okMsg='🙏 挽回成功！婚姻继续（亲密度 '+game.spouseIntimacy+'）'+
+    (prevFlirt>0?' · 旧聊骚记录已删除（累计 '+prevFlirt+' 人）':'');
+  addLog(okMsg,'success');
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({
+      icon:'🙏',title:'挽回成功',html:'<p style="color:var(--green)"><b>婚姻继续</b></p><p class="fold-meta">亲密度 '+game.spouseIntimacy+
+        (prevFlirt>0?' · 旧聊骚记录已删除（累计 '+prevFlirt+' 人）':'')+'</p>',
+      buttons:[{text:'知道了',primary:true,handler:function(){
+        closeConsumeModal(true);
+        if(typeof renderContactsModal==='function'&&document.getElementById('contactsOverlay')&&!document.getElementById('contactsOverlay').classList.contains('hidden'))renderContactsModal();
+        updateUI();autoSaveSlot();
+      }}]
+    });
+  }else{
+    if(typeof renderContactsModal==='function'&&document.getElementById('contactsOverlay')&&!document.getElementById('contactsOverlay').classList.contains('hidden'))renderContactsModal();
+    updateUI();autoSaveSlot();
+  }
+}
+function dismissDivorceBufferModal(){
+  closeConsumeModal(true);
+  const left=divorceBufferWeeksLeft();
+  addLog('📋 进入离婚缓冲期，剩余约 '+left+' 周可挽回','info');
+  updateUI();autoSaveSlot();
+}
+function showDivorceMediationModal(){
+  const p=getPendingDivorcePayload();
+  if(!p||!game||game.divorced)return;
+  if(typeof refreshPartnerStashTotal==='function')refreshPartnerStashTotal();
+  const bd=computeDivorceSettlementBreakdown();
+  const html='<p class="fold-meta" style="margin:0 0 8px">调解阶段：双方公布财产（含对方小金库），协商分割方案与抚养权。</p>'+
+    buildDivorceSettlementModalHtml(bd,p.opts,p.reason,null);
+  const buttons=[
+    {text:'达成一致 · 按此分割',primary:true,handler:acceptDivorceSettlement},
+    {text:'无法达成一致 · 打官司',handler:showDivorceLawyerPickerModal}
+  ];
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({icon:'⚖️',title:'离婚调解 · 财产公示',html,buttons});
+  }else acceptDivorceSettlement();
+}
+function showDivorceLawyerPickerModal(){
+  closeConsumeModal(true);
+  const p=getPendingDivorcePayload();
+  if(!p||!game||game.divorced)return;
+  const bd=computeDivorceSettlementBreakdown();
+  let html='<p class="fold-meta">调解破裂，请选择律师团队进行庭审。法院将宣判财产分割与抚养权并强制执行。</p><ul style="font-size:.72rem;margin:8px 0;padding-left:18px">';
+  ['normal','premium','director'].forEach(function(id){
+    const t=DIVORCE_LAWYER_TIERS[id];
+    const afford=(game.cash||0)>=t.fee||((game.cash||0)+portfolioMarketValue(game.portfolio||{}))>=t.fee;
+    html+='<li><b>'+t.label+'</b> · 律师费 ¥'+t.fee.toLocaleString()+' · 胜诉基准 '+Math.round(t.win*100)+'%'+(afford?'':' · <span style="color:var(--red)">资产不足</span>')+'</li>';
+  });
+  html+='</ul>';
+  const buttons=[
+    {text:'普通（¥1万）',handler:function(){startDivorceCourtTrial('normal')}},
+    {text:'重点（¥10万）',primary:true,handler:function(){startDivorceCourtTrial('premium')}},
+    {text:'总监（¥100万）',handler:function(){startDivorceCourtTrial('director')}}
+  ];
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({icon:'⚖️',title:'选择律师团队',html,buttons});
+  }
+}
+function resolveDivorceCourtTrial(tierId,bd,opts){
+  const t=DIVORCE_LAWYER_TIERS[tierId]||DIVORCE_LAWYER_TIERS.normal;
+  const paid=collectFromPlayer(t.fee,t.label+'律师费');
+  if(paid<t.fee)return {success:false,feePaid:paid,adjustment:0,underpaid:true,tier:t};
+  let chance=t.win;
+  if(typeof hasSubstantiveAffairEvidence==='function'&&hasSubstantiveAffairEvidence())chance-=0.12;
+  if(bd.partnerStashTotal>500000)chance+=0.08;
+  if(opts.playerReceives)chance+=0.06;
+  chance=Math.max(0.1,Math.min(0.78,chance));
+  const success=Math.random()<chance;
+  let adjustment=0,playerKeepsHomeOverride=null;
+  if(success){
+    if(bd.owedToPartner>0)adjustment=Math.round(Math.max(bd.partnerStashTotal*t.winAdj,bd.owedToPartner*0.35));
+    else if(bd.takeFromPartner>0)adjustment=Math.round(Math.max(bd.partnerStashTotal*0.25,bd.takeFromPartner*0.30));
+    if(bd.owedToPartner>0)playerKeepsHomeOverride=true;
+  }else{
+    if(bd.owedToPartner>0)adjustment=-Math.round(bd.owedToPartner*0.12);
+    playerKeepsHomeOverride=false;
+  }
+  return {success,feePaid:paid,adjustment,chance,tier:t,playerKeepsHomeOverride,court:true};
+}
+function startDivorceCourtTrial(tierId){
+  closeConsumeModal(true);
+  const p=getPendingDivorcePayload();
+  if(!p||!game||game.divorced)return;
+  const bd=computeDivorceSettlementBreakdown();
+  const t=DIVORCE_LAWYER_TIERS[tierId];
+  if(!t)return;
+  const afford=(game.cash||0)>=t.fee||((game.cash||0)+portfolioMarketValue(game.portfolio||{}))>=t.fee;
+  if(!afford){
+    addLog('资产不足以支付 '+t.label+'（¥'+t.fee.toLocaleString()+'）','fail');
+    if(typeof showConsumeModalHandlers==='function'){
+      showConsumeModalHandlers({
+        icon:'⚖️',title:'无法开庭',html:'资产不足以支付 <b>'+t.label+'</b>（¥'+t.fee.toLocaleString()+'）。请换档律师或补足资产。',
+        buttons:[{text:'重新选择律师',primary:true,handler:function(){closeConsumeModal(true);showDivorceLawyerPickerModal();}}]
+      });
+    }else showDivorceLawyerPickerModal();
+    return;
+  }
+  const verdict=resolveDivorceCourtTrial(tierId,bd,p.opts);
+  if(verdict.underpaid){
+    addLog('律师费不足，无法开庭','fail');
+    if(typeof showConsumeModalHandlers==='function'){
+      showConsumeModalHandlers({
+        icon:'⚖️',title:'无法开庭',html:'律师费不足，无法开庭。请换档律师或补足现金/股票。',
+        buttons:[{text:'重新选择律师',primary:true,handler:function(){closeConsumeModal(true);showDivorceLawyerPickerModal();}}]
+      });
+    }else showDivorceLawyerPickerModal();
+    return;
+  }
+  let html=verdict.success
+    ?'<p style="color:var(--green)"><b>法院判决（倾向你方）</b> · 胜率约 '+Math.round(verdict.chance*100)+'%</p>'
+    :'<p style="color:var(--red)"><b>法院判决（倾向对方）</b> · 胜率约 '+Math.round(verdict.chance*100)+'%</p>';
+  html+='<p>'+t.label+' 律师费 ¥'+verdict.feePaid.toLocaleString()+(verdict.success?'':'，不予退还')+'。</p>';
+  if(verdict.adjustment>0&&bd.owedToPartner>0)html+='<p>法院减轻你方补足义务约 <b>¥'+verdict.adjustment.toLocaleString()+'</b></p>';
+  else if(verdict.adjustment>0&&bd.takeFromPartner>0)html+='<p>法院判令对方额外支付约 <b>¥'+verdict.adjustment.toLocaleString()+'</b></p>';
+  else if(verdict.adjustment<0)html+='<p>法院判令你方额外支付约 <b>¥'+Math.abs(verdict.adjustment).toLocaleString()+'</b></p>';
+  if(verdict.playerKeepsHomeOverride===false)html+='<p style="color:var(--orange)">房产判归对方或需搬离出租屋。</p>';
+  else if(verdict.playerKeepsHomeOverride===true)html+='<p>房产判归你方保留。</p>';
+  const execOpts=Object.assign({},p.opts);
+  if(verdict.playerKeepsHomeOverride!=null)execOpts.playerKeepsHome=verdict.playerKeepsHomeOverride;
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({
+      icon:'⚖️',title:'法院宣判',html,
+      buttons:[{text:'执行判决 · 离婚',primary:true,handler:function(){
+        closeConsumeModal(true);
+        clearDivorceProceedings();
+        executePartnerDivorce(p.reason,execOpts,p.extra,{bd,lawsuit:verdict,settlementShown:true});
+      }}]
+    });
+  }else{
+    clearDivorceProceedings();
+    executePartnerDivorce(p.reason,execOpts,p.extra,{bd,lawsuit:verdict,settlementShown:true});
+  }
+}
+function acceptDivorceSettlement(){
+  closeConsumeModal(true);
+  const p=getPendingDivorcePayload();
+  if(!p||!game||game.divorced)return;
+  const bd=computeDivorceSettlementBreakdown();
+  addLog('⚖️ 双方达成一致，签署财产分割协议','info');
+  clearDivorceProceedings();
+  executePartnerDivorce(p.reason,p.opts,p.extra,{bd,settlementShown:true});
+}
+function showPartnerDivorceModal(reason,opts,extra){
+  const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+  const html=buildPartnerDivorceModalHtml(reason,opts,extra);
+  const buttons=[
+    {text:'尝试挽回',primary:true,handler:attemptDivorceReconciliation},
+    {text:'进入缓冲期（'+DIVORCE_BUFFER_WEEKS+'周）',handler:dismissDivorceBufferModal}
+  ];
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({icon:'💔',title:pn+' 提出离婚',html,buttons});
+  }else if(typeof queueStatusModal==='function'){
+    queueStatusModal(pn+' 提出离婚',html.replace(/<[^>]+>/g,' '),'💔',{btn:'进入缓冲期',onClose:dismissDivorceBufferModal});
+  }else{
+    startDivorceProceedings(reason,opts,extra);
+    dismissDivorceBufferModal();
+  }
+}
+function tickDivorceProceedings(){
+  if(!game||!game.divorceProceedings||game.divorced)return;
+  const dp=game.divorceProceedings;
+  if(dp.phase==='buffer')repairDivorceBufferDeadline();
+  if(dp.phase==='buffer'&&(game.week||0)>=dp.bufferDeadlineWeek){
+    dp.phase='mediation';
+    dp._mediationPending=true;
+    addLog('⚖️ 离婚缓冲期届满，进入调解程序','warn');
+  }
+}
+function tryShowPendingDivorceModal(){
+  if(!game||!game.divorceProceedings||game.divorced)return;
+  if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning)return;
+  if(typeof isAutoLifeSimulating==='function'&&isAutoLifeSimulating())return;
+  if(game.divorceProceedings._mediationPending){
+    game.divorceProceedings._mediationPending=false;
+    showDivorceMediationModal();
+  }
+}
+function migrateDivorceBufferRestore(){
+  if(!game||game.divorceProceedingsRestored)return;
+  game.divorceProceedingsRestored=true;
+  if(!game.divorced||game.divorceProceedings)return;
+  game.divorced=false;
+  game.married=true;
+  if(game.companion){
+    game.companion.divorced=false;
+    game.companion.married=true;
+    if(game.companion.spouseIntimacy>0)game.spouseIntimacy=game.companion.spouseIntimacy;
+    else if((game.spouseIntimacy||0)<=0)game.spouseIntimacy=INTIMACY_INITIAL;
+  }else if((game.spouseIntimacy||0)<=0)game.spouseIntimacy=INTIMACY_INITIAL;
+  if(!game.ownsHome&&(game.mortgagePaymentsMade>0||game.mortgagePaidOff))game.ownsHome=true;
+  if(typeof restoreSpouseContactAfterReconcile==='function')restoreSpouseContactAfterReconcile();
+  else if(typeof syncSpouseContact==='function')syncSpouseContact();
+  startDivorceProceedings(
+    game.lastDivorceReason||'💔 伴侣提出离婚（缓冲期补档）',
+    game.lastDivorceOpts||{},
+    {intim:game.spouseIntimacy,flirt:game.flirtPeopleTotal||0,skipIntimacyDeduct:true}
+  );
+  repairDivorceBufferDeadline();
+  addLog('📋 离婚缓冲期补档：婚姻恢复，剩余约 '+divorceBufferWeeksLeft()+' 周可挽回','info');
+}
+function executePartnerDivorce(reason,opts,extra,settlement){
+  if(!game||game.divorced)return;
+  opts=opts||{};extra=extra||{};settlement=settlement||{};
+  const bd=settlement.bd||computeDivorceSettlementBreakdown();
+  finalizeDivorce({
+    reason:reason||'💔 伴侣提出离婚。',
+    playerKeepsHome:!!opts.playerKeepsHome,
+    playerInitiated:!!opts.playerInitiated,
+    skipStress:false,
+    settlementShown:!!settlement.settlementShown
+  });
+  const execLines=applyDivorceAssetSettlement(bd,opts,reason,settlement)||[];
+  if(settlement.lawsuit){
+    const lbl=settlement.lawsuit.court?'庭审':'诉讼';
+    addLog(settlement.lawsuit.success?'⚖️ 离婚'+lbl+'胜诉':'⚖️ 离婚'+lbl+'败诉',settlement.lawsuit.success?'success':'fail');
+  }
+  showDivorceCompletionModal(reason,opts,bd,settlement,execLines);
+  updateUI();autoSaveSlot();
+}
 function partnerRequestsDivorce(reason,opts){
-  finalizeDivorce({reason:reason||'💔 伴侣提出离婚。',playerKeepsHome:!!(opts&&opts.playerKeepsHome),skipStress:false});
-  if(opts&&opts.playerReceives){
-    const got=transferAssetsToPlayer(game.companion,DIVORCE_ASSET_CAP);
-    if(got)addLog('对方净身出户，你获得 ¥'+got.toLocaleString()+'（上限 ¥'+DIVORCE_ASSET_CAP.toLocaleString()+'）','info');
+  if(!game||!game.married||game.divorced)return;
+  if(game.divorceProceedings){
+    addLog('离婚程序已在进行中','info');
+    if(typeof showDivorceBufferInfoModal==='function')showDivorceBufferInfoModal();
+    return;
   }
-  if(opts&&opts.playerPaysHalf){
-    const half=Math.round(actorTotalAssets(game.companion)/2);
-    if(half>0){
-      collectFromPlayer(half,'聊骚被发现赔偿');
-      if(game.companion)game.companion.cash=(game.companion.cash||0)+half;
-      addLog('赔偿伴侣 ¥'+half.toLocaleString()+'（现金+变卖股票）','fail');
-    }
+  opts=opts||{};
+  const extra={intim:game.spouseIntimacy,flirt:game.flirtPeopleTotal||0};
+  if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning){
+    startDivorceProceedings(reason,opts,extra);
+    const dp=game.divorceProceedings;
+    if(dp)dp.phase='mediation';
+    executePartnerDivorce(reason,opts,extra,{bd:computeDivorceSettlementBreakdown(),settlementShown:true});
+    return;
   }
+  startDivorceProceedings(reason,opts,extra);
+  extra.intim=game.spouseIntimacy;
+  showPartnerDivorceModal(reason,opts,extra);
 }
 function isSameSexCouple(){
   return !!(game&&game.married&&!game.divorced&&game.playerGender===game.partnerGender);
@@ -6335,6 +7601,7 @@ function playerStdHospitalVisit(){
     game.stdTreatmentVisits=0;
     game.stdLastTreatmentWeek=-1;
     game.stdWeeksInfected=0;
+    if(typeof onArtifactStdVisit==='function')onArtifactStdVisit(true);
     addLog('🏥 完成连续四周治疗，性病已治愈','success');
   }else{
     game.stdTreatmentVisits=next;
@@ -6383,6 +7650,21 @@ function tryPregnancyLayoff(subject){
     if(c.log)c.log.unshift({date:getDateStr(game.week),msg:'怀孕后遭辞退 @'+(co?co.name:'公司'),type:'fail'});
   }
 }
+function ensurePregnancyStartWeek(){
+  if(!game||!game.pregnant)return;
+  if(game.pregnancyStartWeek!=null&&game.pregnancyStartWeek>=0)return;
+  const left=game.pregnancyWeeksLeft||0;
+  game.pregnancyStartWeek=Math.max(0,(game.week||0)-(PREGNANCY_WEEKS-left));
+}
+function pregnancyWeeksRemaining(){
+  if(!game||!game.pregnant)return 0;
+  ensurePregnancyStartWeek();
+  return Math.max(0,(game.pregnancyStartWeek||0)+PREGNANCY_WEEKS-(game.week||0));
+}
+function syncPregnancyWeeksLeft(){
+  if(!game)return;
+  game.pregnancyWeeksLeft=game.pregnant?pregnancyWeeksRemaining():0;
+}
 function startPregnancy(fromAffair,forceSubject){
   if(!game||game.pregnant||game.hasChildren||game.homeless)return false;
   let subject=forceSubject||resolvePregnantSubject();
@@ -6398,6 +7680,7 @@ function startPregnancy(fromAffair,forceSubject){
   }
   game.pregnant=true;
   game.pregnantSubject=subject;
+  game.pregnancyStartWeek=game.week;
   game.pregnancyWeeksLeft=PREGNANCY_WEEKS;
   game.pregnancyIntimacyNet=0;
   game.pregnancyBioFather=pregnancyBioFatherFromContext(!!fromAffair,subject);
@@ -6411,19 +7694,21 @@ function startPregnancy(fromAffair,forceSubject){
   return true;
 }
 function tickPregnancyWeekly(){
-  if(!game||!game.pregnant||game.pregnancyWeeksLeft<=0)return;
+  if(!game||!game.pregnant)return;
+  ensurePregnancyStartWeek();
   if(typeof tickOutdoorPregnancyWeekly==='function')tickOutdoorPregnancyWeekly();
   const swing=Math.random()<0.5?1:-1;
   game.pregnancyIntimacyNet=(game.pregnancyIntimacyNet||0)+swing;
   adjustSpouseIntimacy(swing,'孕期波动 ');
-  game.pregnancyWeeksLeft--;
-  if(game.pregnancyWeeksLeft<=0)completePregnancyBirth();
+  syncPregnancyWeeksLeft();
+  if(pregnancyWeeksRemaining()<=0)completePregnancyBirth();
 }
 function completePregnancyBirth(){
   if(!game)return;
   const net=game.pregnancyIntimacyNet||0;
   game.pregnant=false;
   game.pregnantSubject=null;
+  game.pregnancyStartWeek=null;
   game.pregnancyWeeksLeft=0;
   game.pregnancyIntimacyNet=0;
   game.outdoorAffairPregnancy=false;
@@ -6506,10 +7791,9 @@ function promptPhoneSex(){
     '每次约 -2 压力 · 20% 不和谐 +5<br>'+
     '<span class="fold-meta">不会怀孕 · 占 2h · 与做爱共用每周次数</span>';
   if(devil){
-    const compChoice=typeof rollCompanionSleepChoice==='function'?rollCompanionSleepChoice():'sleep';
-    game._phoneSexCompanionChoice=compChoice;
+    const compChoice=typeof ensureCompanionEndChoicePreview==='function'?ensureCompanionEndChoicePreview():(typeof rollCompanionSleepChoice==='function'?rollCompanionSleepChoice():'sleep');
     const compLabel=typeof companionAllnightEndChoiceLabel==='function'?companionAllnightEndChoiceLabel(compChoice):(compChoice==='sleep'?'😴 第二天白天补觉':'☀ 通宵不睡');
-    html+='<br><br><span style="color:var(--accent)">🌈 通宵后段 · '+pn+' 接下来将：<b>'+compLabel+'</b></span>';
+    html+='<br><br><span style="color:var(--accent)">🌈 通宵后段 · '+pn+' 预计：<b>'+compLabel+'</b>（通宵结束后再确认）</span>';
   }
   showConsumeModal({
     icon:'📞',title:'电话性爱',
@@ -6539,11 +7823,9 @@ function confirmPhoneSex(){
   const devil=typeof isAllnightDevilHours==='function'&&isAllnightDevilHours();
   let partnerChoiceHtml='';
   if(devil){
-    const compChoice=game._phoneSexCompanionChoice||'sleep';
-    game._phoneSexCompanionChoice=null;
-    if(typeof resolveCompanionSleepChoice==='function')resolveCompanionSleepChoice(compChoice);
+    const compChoice=typeof ensureCompanionEndChoicePreview==='function'?ensureCompanionEndChoicePreview():(game._companionSleepChoice||'sleep');
     const compLabel=typeof companionAllnightEndChoiceLabel==='function'?companionAllnightEndChoiceLabel(compChoice):(compChoice==='sleep'?'😴 第二天白天补觉':'☀ 通宵不睡');
-    partnerChoiceHtml='<br><span style="color:var(--accent)">'+pn+' 的选择：<b>'+compLabel+'</b></span>';
+    partnerChoiceHtml='<br><span style="color:var(--accent)">'+pn+' 预计：<b>'+compLabel+'</b>（通宵结束后再确认）</span>';
   }
   let html=(r.harmony?'<span style="color:var(--green)">减压约 -2</span>':'<span style="color:var(--red)">不太和谐 · 压力 +5</span>')+partnerChoiceHtml;
   if(pendingH)html+='<br><span class="fold-meta">占用 '+pendingH+'h</span>';
@@ -6647,14 +7929,20 @@ function promptMakeLove(batch){
     html+='<br><span style="color:var(--green)">🍼 本月备孕中</span>';
     html+='<br><span style="color:var(--orange)">备孕期若戴套：亲密度-20，伴侣怀疑出轨（聊骚/出轨史提高被抓概率）</span>';
   }
-  if(typeof makeLoveConceptionHintHtml==='function')html+=makeLoveConceptionHintHtml();
+  if(!game.pregnant&&typeof makeLoveConceptionHintHtml==='function')html+=makeLoveConceptionHintHtml();
   if(typeof makeLovePregnancyWarningHtml==='function')html+=makeLovePregnancyWarningHtml();
+  if(game.pregnant){
+    html+='<br><span class="fold-meta">怀孕期间戴套表示温和同房；不戴套减压更多但有孕早期流产风险</span>';
+  }
+  const safeBtn=game.pregnant?'戴套（温和 · 无流产风险）':sexSafeOptionLabel();
+  const riskBtn=game.pregnant?'不戴套（额外减压 · 有风险）':sexRiskOptionLabel(false);
   showConsumeModal({
     icon:'💕',title:'夫妻生活 ×'+batch,
     html:html,
     buttons:[
-      {text:sexSafeOptionLabel(),fn:'makeLoveBatch('+batch+',false)'},
-      {text:sexRiskOptionLabel(false),primary:true,fn:'makeLoveBatch('+batch+',true)'}
+      {text:safeBtn,fn:'makeLoveBatch('+batch+',false)'},
+      {text:riskBtn,primary:true,fn:'makeLoveBatch('+batch+',true)'},
+      {text:'返回',fn:'closeSexAndClearReserve()'}
     ]
   });
 }
@@ -6669,10 +7957,10 @@ function makeLoveBatch(batch,noCondom){
     game._dailySexPendingHours=0;
     return;
   }
-  const procBetrayal=game.procreateIntentWeek===game.week&&!noCondom;
+  const procBetrayal=game.procreateIntentWeek===game.week&&!noCondom&&!game.pregnant;
   let conceived=false,harmony=true,miscarried=false;
   for(let i=0;i<batch;i++){
-    if(!miscarried&&typeof rollFirstTrimesterMiscarriage==='function'&&rollFirstTrimesterMiscarriage()){
+    if(!miscarried&&noCondom&&typeof rollFirstTrimesterMiscarriage==='function'&&rollFirstTrimesterMiscarriage()){
       miscarried=true;
       harmony=false;
       break;
@@ -6735,6 +8023,7 @@ function tickMarriageWeekly(){
   tickStdWeekly();
   if(game.pregnant)tickPregnancyWeekly();
   if(game.married&&!game.divorced){
+    if(game.divorceProceedings)return;
     if(game.partnerAffairActive&&!game.partnerStdActive&&Math.random()<0.08)tryInfectPartnerWithStd();
     if(game.longDistance)adjustSpouseIntimacy(-1);
     if(game.livingOffSpouse){
@@ -6755,7 +8044,8 @@ function tickMarriageWeekly(){
         partnerRequestsDivorce('💔 伴侣聊骚成瘾，提出离婚。',{playerReceives:true});
       }
     }
-    if((game.flirtPeopleTotal||0)>=100&&Math.random()<0.035){
+    const flirtGrace=(game.flirtDivorceGraceUntilWeek||0)>(game.week||0);
+    if(!flirtGrace&&(game.flirtPeopleTotal||0)>=100&&Math.random()<0.035){
       partnerRequestsDivorce('💔 伴侣发现你聊骚记录，提出离婚。',{playerPaysHalf:true});
     }
     if((game.spouseIntimacy||0)<=-100){
@@ -6807,16 +8097,12 @@ function tryEnterHomeless(shortfall){
 
 function checkVictory(){
   if(game.gameOver)return;
-  if(_companionActor){
-    if(game.mortgagePaidOff&&game.ownsHome&&game.married&&!game.divorced&&!game.homeless){
-      game.gameWon=true;
-      addLog('🏠 房贷还清，达成人生目标！','success');
-    }
-    return;
-  }
-  if(game.mortgagePaidOff&&game.ownsHome&&game.married&&!game.divorced&&!game.homeless){
+  const goalReady=game.mortgagePaidOff&&game.ownsHome&&game.married&&!game.divorced&&!game.homeless;
+  if(!goalReady)return;
+  if(!game.mortgageGoalReached){
+    game.mortgageGoalReached=true;
     game.gameWon=true;
-    endGame('victory_early');
+    addLog('🏠 房贷已还清！人生目标达成 · 继续生活至满三十年再结算','success');
   }
 }
 
@@ -6946,10 +8232,8 @@ function processMonthlyBills(){
   addLog('⚠ 第'+game.monthsUnderpaid+'月无力交满（缺 ¥'+shortfall.toLocaleString()+'）','warn');
   if(!game.divorced&&game.monthsUnderpaid>=6){
     game.monthsUnderpaid=0;
-    finalizeDivorce({
-      reason:'💔 连续半年无力负担，离婚了。失去房产，租住出租屋（¥6000/月），压力翻倍。',
-      playerKeepsHome:false
-    });
+    const hardshipReason='💔 连续半年无力负担家庭开支，伴侣提出离婚。失去房产，租住出租屋（¥6000/月），压力翻倍。';
+    partnerRequestsDivorce(hardshipReason,{playerKeepsHome:false});
   }
   if(tryEnterHomeless(shortfall))return;
   if(game.parentsSupportMonthsLeft<=0&&!game.parentsInheritanceSettled)settleParentsInheritance();
@@ -7020,6 +8304,7 @@ function recordCareerHistory(emp){
 
 function confirmPlayerResign(){
   if(!game||!game.employed||game.gameOver)return;
+  if(typeof playerEmployerAcquired==='function'&&playerEmployerAcquired()){addLog('已收购就职企业，无法辞职','warn');return}
   const emp=game.employment,co=emp&&emp.company,job=emp&&game.market?game.market[emp.jobIdx]:null;
   const title=job?job.title:'当前岗位';
   const coName=co?co.name:'公司';
@@ -7187,6 +8472,7 @@ function advanceOneWeek(){
   if(game.longDistance&&game.married&&!game.divorced)addStress(STRESS_LONG_DISTANCE_WEEKLY,'异地 ');
   tickWeeklyConsumption();
   tickMarriageWeekly();
+  if(typeof tickDivorceProceedings==='function')tickDivorceProceedings();
   if(game.week%52===0)addLog('—— '+getYear(game.week)+'年 ——','warn');
   tickSpongeMedal();
   checkCashStressMilestones();
@@ -7195,19 +8481,31 @@ function advanceOneWeek(){
   if(typeof tickSpouseLoans==='function')tickSpouseLoans();
   if(typeof tickFertilityOrders==='function')tickFertilityOrders();
   if(typeof flushMenstrualCycleWeek==='function')flushMenstrualCycleWeek();
+  if(typeof tickCompanyRecruitment==='function')tickCompanyRecruitment();
   return true;
 }
 function nextWeek(){
-  if(autoLifeRunning||!actionDone||game.gameOver)return;
+  if(autoLifeRunning||game.gameOver)return;
+  const imprisoned=typeof isPlayerImprisoned==='function'&&isPlayerImprisoned();
+  if(!actionDone&&!imprisoned)return;
+  const wasImprisoned=imprisoned;
   if(!advanceOneWeek())return;
   rollReferralChance();
-  actionDone=false;
   if(typeof resetWeeklyDaily==='function')resetWeeklyDaily();
+  else if(game.daily&&typeof defaultDailyState==='function')game.daily=defaultDailyState();
+  if(wasImprisoned){
+    if(typeof isPlayerImprisoned==='function'&&isPlayerImprisoned())
+      addLog('🔒 服刑中… 剩余 '+(game.imprisonedUntilWeek-game.week)+' 周','info');
+    else addLog('🔓 刑满出狱，可重新安排日程','success');
+  }
+  actionDone=false;
   autoSaveSlot();
   updateUI();
 }
 function nextMonth(){
-  if(autoLifeRunning||!actionDone||game.gameOver)return;
+  if(autoLifeRunning||game.gameOver)return;
+  const imprisoned=typeof isPlayerImprisoned==='function'&&isPlayerImprisoned();
+  if(!actionDone&&!imprisoned)return;
   const steps=Math.min(WEEKS_PER_MONTH,TOTAL_WEEKS-game.week);
   if(steps<=0){endGame('timeout');return}
   let advanced=0;
@@ -7227,6 +8525,25 @@ function nextMonth(){
 }
 
 function stockCommission(amt){return Math.max(.01,amt*.0002)}
+function getStockCostBasis(sym){
+  try{
+    if(!game||!sym)return null;
+    if(typeof migrateArtifacts==='function')migrateArtifacts();
+    const b=game.artifactStats&&game.artifactStats.stockCostBasis&&game.artifactStats.stockCostBasis[sym];
+    if(!b||!b.shares||b.shares<=0)return null;
+    return {shares:b.shares,cost:b.cost,avg:b.cost/b.shares};
+  }catch(e){return null}
+}
+function fmtStockPlPct(price,avg){
+  if(!avg||avg<=0)return '';
+  const pl=(price/avg-1)*100;
+  const sign=pl>=0?'+':'';
+  return sign+pl.toFixed(1)+'%';
+}
+function stockPlColor(price,avg){
+  if(!avg||avg<=0)return 'var(--muted)';
+  return price>=avg?'var(--red)':'var(--green)';
+}
 
 function tradeStock(sym,action,shares){
   if(!game||game.gameOver)return;
@@ -7238,12 +8555,14 @@ function tradeStock(sym,action,shares){
     game.cash-=total; game.stockSpent+=comm;
     ledgerAddExpense('invest','📈','股票买入',total,false);
     game.portfolio[sym]=(game.portfolio[sym]||0)+shares;
-    addLog('买入 '+s.name+' ×'+shares+' @¥'+s.price.toFixed(2)+' 佣金¥'+comm.toFixed(2),'info');
+    if(typeof recordStockTrade==='function')recordStockTrade(sym,'buy',shares,total/shares);
+    addLog('买入 '+s.name+' ×'+shares+' @¥'+s.price.toFixed(2)+' 成本¥'+(total/shares).toFixed(2)+'/股 佣金¥'+comm.toFixed(2),'info');
   }else{
     const held=game.portfolio[sym]||0; if(held<shares){addLog('持仓不足','fail');return}
     const rev=s.price*shares, comm=stockCommission(rev), net=rev-comm;
     game.cash+=net; game.money+=net; game.stockSpent+=comm;
     ledgerAddIncome('invest','📈','股票卖出',net);
+    if(typeof recordStockTrade==='function')recordStockTrade(sym,'sell',shares,s.price);
     game.portfolio[sym]=held-shares; if(game.portfolio[sym]<=0)delete game.portfolio[sym];
     addLog('卖出 '+s.name+' ×'+shares+' 净收¥'+net.toFixed(2),'info');
   }
@@ -7255,9 +8574,32 @@ function tradeStock(sym,action,shares){
   renderHeaderProgress();
 }
 
-function stockPriceClass(s){return s.price>=s.prevPrice?'up':'down'}
+function stockTrendDir(s){
+  if(!s||s.prevPrice==null)return 'flat';
+  if(s.price>s.prevPrice)return 'up';
+  if(s.price<s.prevPrice)return 'down';
+  return 'flat';
+}
+function stockTrendTagHtml(s){
+  const dir=stockTrendDir(s);
+  const glyph=dir==='up'?'▲':dir==='down'?'▼':'─';
+  let tip='较上周持平';
+  if(s.prevPrice>0){
+    const pct=(s.price/s.prevPrice-1)*100;
+    tip='较上周 '+(pct>=0?'+':'')+pct.toFixed(2)+'%';
+  }
+  return '<span class="stock-trend-tag '+dir+'" title="'+tip+'">'+glyph+'</span>';
+}
+function stockPriceClass(s){return stockTrendDir(s)==='down'?'down':'up'}
 function renderStocks(){
   if(!game)return;
+  const listEl=document.getElementById('stockList');
+  if(!listEl)return;
+  if(!Array.isArray(game.stocks)||!game.stocks.length){
+    listEl.innerHTML='<p style="color:var(--muted)">股票数据加载中…</p>';
+    return;
+  }
+  if(!game.portfolio||typeof game.portfolio!=='object')game.portfolio={};
   const sorted=[...game.stocks].sort((a,b)=>{
     const ha=game.portfolio[a.symbol]||0,hb=game.portfolio[b.symbol]||0;
     if(ha>0&&hb<=0)return-1;
@@ -7267,11 +8609,18 @@ function renderStocks(){
   document.getElementById('stockList').innerHTML=sorted.map(s=>{
     const held=game.portfolio[s.symbol]||0;
     const ch=stockPriceClass(s);
-    const ref=s.refPrice?(' <span style="color:var(--muted)">参考¥'+s.refPrice+'</span>'):'';
-    const heldTxt=held>0?' <span class="port-qty">持仓 '+held+'</span>':'';
+    let posTxt='';
+    if(held>0){
+      const basis=getStockCostBasis(s.symbol);
+      posTxt=' <span class="port-qty">持仓 '+held+'</span>';
+      if(basis){
+        posTxt+=' <span style="color:var(--muted)">成本¥'+basis.avg.toFixed(2)+'</span>';
+        posTxt+=' <span style="color:'+stockPlColor(s.price,basis.avg)+'">'+fmtStockPlPct(s.price,basis.avg)+'</span>';
+      }
+    }
     return '<div class="stock-row"><div style="min-width:100px"><b>'+s.name+'</b> <span style="color:var(--muted)">'+s.symbol+'</span><br>'+
-      '<span class="'+ch+'">¥'+s.price.toFixed(2)+'</span>'+ref+heldTxt+'</div>'+
-      '<div class="stock-chart-wrap"><canvas id="stkChart_'+s.symbol+'" height="36"></canvas></div>'+
+      '<span class="'+ch+'">¥'+s.price.toFixed(2)+'</span>'+posTxt+'</div>'+
+      '<div class="stock-chart-wrap"><canvas id="stkChart_'+s.symbol+'" height="36"></canvas>'+stockTrendTagHtml(s)+'</div>'+
       '<div><input type="number" id="sh_'+s.symbol+'" value="100" min="1" style="width:60px">'+
       '<button class="btn" onclick="tradeStock(\\''+s.symbol+'\\',\\'buy\\',+document.getElementById(\\'sh_'+s.symbol+'\\').value)">买</button>'+
       '<button class="btn" onclick="tradeStock(\\''+s.symbol+'\\',\\'sell\\',+document.getElementById(\\'sh_'+s.symbol+'\\').value)">卖</button></div></div>';
@@ -7279,7 +8628,7 @@ function renderStocks(){
   requestAnimationFrame(()=>{
     sorted.forEach(s=>{
       const c=document.getElementById('stkChart_'+s.symbol);
-      if(c){const w=c.parentElement?c.parentElement.clientWidth:160;drawSparkline(c,s.history,w,36)}
+      if(c){const wrap=c.parentElement;const tag=wrap?wrap.querySelector('.stock-trend-tag'):null;const tagW=tag?tag.offsetWidth+6:18;const w=Math.max(80,(wrap?wrap.clientWidth:160)-tagW);drawSparkline(c,s.history,w,36,{cnStock:true,trend:stockTrendDir(s)})}
     });
   });
   let ph='',tv=0;
@@ -7288,8 +8637,11 @@ function renderStocks(){
     if(!s||!n)return;
     tv+=s.price*n;
     const ch=stockPriceClass(s);
+    const basis=getStockCostBasis(sym);
     ph+='<div class="port-row"><b>'+s.name+'</b> <span class="port-qty">×'+n+'</span> '+
-      '<span class="'+ch+'">¥'+s.price.toFixed(2)+'</span> '+
+      '<span class="'+ch+'">现价 ¥'+s.price.toFixed(2)+'</span> '+
+      (basis?'<span style="color:var(--muted)">成本 ¥'+basis.avg.toFixed(2)+'</span> ':'')+
+      (basis?'<span style="color:'+stockPlColor(s.price,basis.avg)+'">'+fmtStockPlPct(s.price,basis.avg)+'</span> ':'')+
       '<span style="color:var(--muted)">≈¥'+(s.price*n).toFixed(0)+'</span></div>';
   });
   document.getElementById('portfolioPanel').innerHTML=ph
@@ -7306,14 +8658,13 @@ function rollDice(){return [1,2,3].map(()=>1+Math.floor(Math.random()*6))}
 function getGamblePayout(betType,betSum,dice,amount){
   const sum=dice[0]+dice[1]+dice[2];
   const isTriple=dice[0]===dice[1]&&dice[1]===dice[2];
-  if(betType==='big'){if(isTriple||sum<11)return 0; return amount*(1-HOUSE_EDGE)}
-  if(betType==='small'){if(isTriple||sum>10)return 0; return amount*(1-HOUSE_EDGE)}
-  if(betType==='triple1'){if(dice[0]===1&&dice[1]===1&&dice[2]===1)return amount*150*(1-HOUSE_EDGE); return 0}
-  if(betType==='triple6'){if(dice[0]===6&&dice[1]===6&&dice[2]===6)return amount*150*(1-HOUSE_EDGE); return 0}
-  const oddsMap={4:50,5:18,6:14,7:12,8:8,9:6};
-  if(betSum==='9'){if(sum>=9&&sum<=12&&!isTriple)return amount*6*(1-HOUSE_EDGE);return 0}
-  const n=+betSum, targets=n<=9?[n,18-n]:[n];
-  if(targets.includes(sum)&&!isTriple)return amount*oddsMap[n]*(1-HOUSE_EDGE);
+  if(betType==='big'){if(isTriple||sum<11)return 0; return casinoWinProfit(amount,1)}
+  if(betType==='small'){if(isTriple||sum>10)return 0; return casinoWinProfit(amount,1)}
+  if(betType==='triple1'){if(dice[0]===1&&dice[1]===1&&dice[2]===1)return casinoWinProfit(amount,150); return 0}
+  if(betType==='triple6'){if(dice[0]===6&&dice[1]===6&&dice[2]===6)return casinoWinProfit(amount,150); return 0}
+  const target=+String(betSum);
+  const odds=DICE_SUM_ODDS[target];
+  if(odds&&sum===target)return casinoWinProfit(amount,odds);
   return 0;
 }
 
@@ -7426,9 +8777,9 @@ function buildSpectateAiSettleNote(zones,resolveFn,labelFn,resultLog){
     });
     if(!rows.length)return;
     totalWon+=w;totalLost+=l;
-    body+='<div style="margin:6px 0"><b style="color:var(--yellow)">'+ai.name+'</b><br>';
+    body+='<div style="margin:6px 0"><b style="color:var(--muted)">'+ai.name+'（旁观，非你的注）</b><br>';
     rows.forEach(r=>{
-      body+='<span class="settle-sum" style="font-size:.74rem;text-align:left;display:block;color:'+(r.win?'var(--green)':'var(--red)')+'">'+r.zone+'：押 ¥'+r.bet+(r.win?' → 可赢 ¥'+r.payout:' → 输')+'</span>';
+      body+='<span style="font-size:.72rem;text-align:left;display:block;color:var(--muted)">'+r.zone+' · 他押 ¥'+r.bet+(r.win?' · 若跟注可赢 ¥'+r.payout:' · 若跟注会输')+'</span>';
     });
     body+='</div>';
   });
@@ -7866,11 +9217,11 @@ function drawRouletteWheel(canvas,rotDeg,ball){
   }
 }
 function getRoulettePayout(zone,n,amount){
-  if(zone==='red')return rouletteColor(n)==='red'?amount*(1-HOUSE_EDGE):0;
-  if(zone==='black')return rouletteColor(n)==='black'?amount*(1-HOUSE_EDGE):0;
+  if(zone==='red')return rouletteColor(n)==='red'?casinoWinProfit(amount,1):0;
+  if(zone==='black')return rouletteColor(n)==='black'?casinoWinProfit(amount,1):0;
   if(zone.charAt(0)==='n'){
     const num=+zone.slice(1);
-    return n===num?amount*35*(1-HOUSE_EDGE):0;
+    return n===num?casinoWinProfit(amount,35):0;
   }
   return 0;
 }
@@ -8272,7 +9623,7 @@ function resolveRouletteZonePayout(zone,chipMap,n){
   const chips=chipMapTotal(chipMap);
   if(!chips)return 0;
   let profit=getRoulettePayout(zone,n,chips);
-  if(!profit&&game.wolfAchievement&&Math.random()<0.12)profit=chips*(1-HOUSE_EDGE);
+  if(!profit&&game.wolfAchievement&&Math.random()<0.12)profit=chips;
   return profit>0?Math.floor(chips+profit):0;
 }
 function settleRouletteSpin(n,opts){
@@ -8300,6 +9651,7 @@ function settleRouletteSpin(n,opts){
   else addLog('轮盘开出 '+n+'（'+colLbl+'）','info');
   let html='<div class="settle-sum dice-result-only">'+n+'</div><div style="text-align:center;color:var(--yellow);font-size:.76rem;margin-bottom:6px">'+colLbl+'</div>';
   if(rows.length){
+    html+='<div style="font-size:.72rem;color:var(--muted);margin:8px 0 4px">你的押注</div>';
     html+=buildCasinoSettleRows(rows);
     if(won>0||lost>0){
       html+='<div class="casino-settle-total">'+(won>0?'赢得筹码 ¥'+won.toLocaleString():'')+(won>0&&lost>0?' · ':'')+(lost>0?'输掉筹码 ¥'+lost.toLocaleString():'')+'</div>';
@@ -8498,6 +9850,7 @@ function enterCasino(){
   if(usedCoupon){game.casinoCoupons--;addLog('🎟 使用赌场优惠券，入场费减免 ¥500','info')}
   game.cash-=entry; game.gambleSpent+=entry; game.gambleCount++;
   ledgerAddExpense('casino','🎰','澳门入场',entry,false);
+  game._casinoSessionStartCash=game.cash;
   game.casinoActive=true;
   game.spectateRunning=false; game.spectatePhase='idle'; game.spectateAis=null; game.spectatePhaseEnd=0;
   game.spectateManualBet=false; game.spectatePausedMs=0; game.spectatePauseKind=null;
@@ -8591,7 +9944,7 @@ function resolveZonePayout(zone,chipMap,dice){
   let profit=0;
   if(zone==='big'||zone==='small'||zone==='triple1'||zone==='triple6')profit=getGamblePayout(zone,null,dice,chips);
   else profit=getGamblePayout('sum',zone,dice,chips);
-  if(!profit&&game.wolfAchievement&&Math.random()<0.12)profit=chips*(1-HOUSE_EDGE);
+  if(!profit&&game.wolfAchievement&&Math.random()<0.12)profit=chips;
   return profit>0?Math.floor(chips+profit):0;
 }
 
@@ -8630,6 +9983,7 @@ function settleCasinoRoll(dice,opts){
   else addLog('开盅 '+dice.join('+')+'='+sum,'info');
   let html='<div class="settle-sum dice-result-only">'+sum+'</div>'+(triple?'<div style="text-align:center;color:var(--accent);font-size:.76rem;margin-bottom:6px">豹子 '+dice[0]+dice[0]+dice[0]+'</div>':'');
   if(rows.length){
+    html+='<div style="font-size:.72rem;color:var(--muted);margin:8px 0 4px">你的押注</div>';
     html+=buildCasinoSettleRows(rows);
     if(won>0||lost>0){
       html+='<div class="casino-settle-total">'+(won>0?'赢得筹码 ¥'+won.toLocaleString():'')+(won>0&&lost>0?' · ':'')+(lost>0?'输掉筹码 ¥'+lost.toLocaleString():'')+'</div>';
@@ -8668,6 +10022,7 @@ function leaveCasino(){
     game.chipHand=emptyChipMap();
     addLog('离桌结款：筹码兑换 ¥'+handVal.toLocaleString(),'info');
   }
+  if(typeof recordCasinoSessionEnd==='function')recordCasinoSessionEnd();
   stopSpectateLoop();
   game.casinoActive=false;
   game.casinoHistory=null;
@@ -8678,7 +10033,7 @@ function leaveCasino(){
   actionDone=true;
   renderCasino();
   renderCasinoRefStats();
-  renderRefPanel(selectedIdx>=0?selectedIdx:-1);
+  renderRefPanel();
   finishWeek();
 }
 
@@ -8736,13 +10091,51 @@ function addLog(msg,type){
   if(logEl)logEl.innerHTML=game.log.map(l=>'<div class="log-entry '+l.type+'"><span class="date">'+l.date+'</span> '+l.msg+'</div>').join('');
 }
 
-function drawSparkline(canvas,history,w,h){
+function drawSparkline(canvas,history,w,h,opts){
+  opts=opts||{};
   if(!canvas)return; const ctx=canvas.getContext('2d'), dpr=devicePixelRatio||1;
   canvas.width=w*dpr;canvas.height=h*dpr;ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);
   const d=history.slice(-30); if(d.length<2)return;
   const mn=Math.min(...d),mx=Math.max(...d),rg=mx-mn||1;
+  const yAt=v=>h-((v-mn)/rg)*(h-4)-2;
+  const xAt=i=>i/(d.length-1)*w;
+  if(opts.cnStock){
+    const padR=14;
+    const plotW=Math.max(40,w-padR);
+    const xPlot=i=>i/(d.length-1)*plotW;
+    const last=d.length-1;
+    const dir=opts.trend||(d[last]>d[last-1]?'up':d[last]<d[last-1]?'down':'flat');
+    const trendCol=dir==='up'?'#f85149':dir==='down'?'#3fb950':'#8b949e';
+    for(let i=1;i<d.length;i++){
+      const v0=d[i-1],v1=d[i];
+      const isLast=i===last;
+      ctx.lineWidth=isLast?2.5:1.5;
+      ctx.strokeStyle=isLast?trendCol:(v1>v0?'#f85149':v1<v0?'#3fb950':'#8b949e');
+      ctx.beginPath();
+      ctx.moveTo(xPlot(i-1),yAt(v0));
+      ctx.lineTo(xPlot(i),yAt(v1));
+      ctx.stroke();
+    }
+    const lx=xPlot(last),ly=yAt(d[last]);
+    ctx.fillStyle=trendCol;
+    ctx.beginPath();
+    ctx.arc(lx,ly,3.5,0,Math.PI*2);
+    ctx.fill();
+    const gx=plotW+padR*0.55,gy=ly;
+    ctx.beginPath();
+    if(dir==='up'){
+      ctx.moveTo(gx,gy-7);ctx.lineTo(gx+7,gy+4);ctx.lineTo(gx-7,gy+4);
+    }else if(dir==='down'){
+      ctx.moveTo(gx,gy+7);ctx.lineTo(gx+7,gy-4);ctx.lineTo(gx-7,gy-4);
+    }else{
+      ctx.rect(gx-5,gy-1.5,10,3);
+    }
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
   ctx.strokeStyle=d[d.length-1]>=d[d.length-2]?'#3fb950':'#f85149';
-  ctx.beginPath(); d.forEach((v,i)=>{const x=i/(d.length-1)*w,y=h-((v-mn)/rg)*(h-4)-2;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}); ctx.stroke();
+  ctx.beginPath(); d.forEach((v,i)=>{const x=xAt(i),y=yAt(v);i?ctx.lineTo(x,y):ctx.moveTo(x,y)}); ctx.stroke();
 }
 
 function fmtJobsShort(n){
@@ -8763,6 +10156,8 @@ function renderRefJobDetail(idx){
   if(!el||!job)return;
   const upPay=job.prevPay!=null?job.pay>=job.prevPay:null;
   const upJobs=job.prevJobs!=null?job.jobs>=job.prevJobs:null;
+  const catJobs=jobs.filter(j=>j.category===job.category);
+  const catStats=computeNationalStats(catJobs);
   el.innerHTML='<h3>'+job.title+'</h3>'+
     '<div class="ref-row"><label>行业</label><span>'+job.category+'</span></div>'+
     '<div class="ref-row"><label>年薪中位数</label><span style="color:'+(upPay===false?'var(--red)':upPay?'var(--green)':'var(--text)')+'">¥'+job.pay.toLocaleString()+'</span></div>'+
@@ -8773,7 +10168,8 @@ function renderRefJobDetail(idx){
     '<div class="ref-row"><label>就业前景</label><span>'+(job.outlook>0?'+':'')+job.outlook+'% · '+job.outlook_desc+'</span></div>'+
     '<div class="ref-row"><label>学历要求</label><span>'+job.education+'</span></div>'+
     '<div class="ref-row"><label>AI 影响</label><span style="color:'+exposureColorCSS(job.exposure,1)+'">'+job.exposure+'/10</span></div>'+
-    '<div class="ref-rationale"><strong>AI 分析</strong><br>'+job.exposure_rationale+'</div>';
+    '<div class="ref-rationale"><strong>AI 分析</strong><br>'+job.exposure_rationale+'</div>'+
+    buildRefCategoryStatsHtml(job.category,catStats,catJobs.length,{compact:true});
 }
 function applyRefPanelCasinoVisibility(){
   if(!game)return;
@@ -8782,10 +10178,12 @@ function applyRefPanelCasinoVisibility(){
   const jd=document.getElementById('refJobDetail');
   const hdr=document.querySelector('#refPanel .ref-hdr');
   const sub=document.querySelector('#refPanel .ref-sub');
+  const ind=document.getElementById('refIndustry');
   if(game.casinoActive){
     if(panel)panel.classList.add('casino-ref-mode');
     if(nat)nat.style.display='none';
     if(jd)jd.style.display='none';
+    if(ind)ind.style.display='none';
     if(hdr)hdr.textContent='赌桌胜率';
     if(sub)sub.textContent=game.casinoGame==='roulette'?'轮盘 · 环状号码 + 红黑概率':'骰宝 · 各押注区概率';
     renderCasinoRefStats();
@@ -8794,23 +10192,65 @@ function applyRefPanelCasinoVisibility(){
   if(panel)panel.classList.remove('casino-ref-mode');
   return false;
 }
-function renderRefPanel(idx){
+function syncRefViewToggleButtons(){
+  const wrap=document.getElementById('refViewToggle');
+  if(!wrap)return;
+  const casino=!!(game&&game.casinoActive);
+  wrap.style.display=casino?'none':'flex';
+  wrap.querySelectorAll('.ref-view-btn').forEach(btn=>{
+    const v=btn.getAttribute('data-view');
+    btn.classList.toggle('active',v===refPanelView);
+    if(v==='job')btn.disabled=selectedIdx<0;
+    if(v==='category')btn.disabled=!ensureRefPanelCategory();
+  });
+}
+function setRefPanelView(view){
+  if(view==='job'){
+    if(selectedIdx<0){addLog('请先在求职页点击职业方块','info');return}
+    refPanelView='job';
+    if(game&&game.market[selectedIdx])refPanelCategory=game.market[selectedIdx].category;
+  }else if(view==='category'){
+    const cat=ensureRefPanelCategory();
+    if(!cat){addLog('请先筛选行业或选择职业','info');return}
+    refPanelCategory=cat;
+    refPanelView='category';
+  }else refPanelView='national';
+  renderRefPanel();
+}
+function renderRefPanel(){
   const nat=document.getElementById('refNational');
   const jd=document.getElementById('refJobDetail');
+  const ind=document.getElementById('refIndustry');
   const hdr=document.querySelector('#refPanel .ref-hdr');
   const sub=document.querySelector('#refPanel .ref-sub');
   if(applyRefPanelCasinoVisibility())return;
-  if(idx>=0){
-    const job=marketForRef()[idx];
+  syncRefViewToggleButtons();
+  const showJob=refPanelView==='job'&&selectedIdx>=0;
+  const showCat=refPanelView==='category'&&!!ensureRefPanelCategory();
+  if(showJob){
+    const job=marketForRef()[selectedIdx];
     if(nat)nat.style.display='none';
-    if(jd){jd.style.display='block';renderRefJobDetail(idx)}
+    if(ind)ind.style.display='none';
+    if(jd){jd.style.display='block';renderRefJobDetail(selectedIdx)}
     if(hdr&&job)hdr.textContent=job.title;
-    if(sub)sub.textContent='再次点击取消选择 · 返回全国统计';
+    if(sub&&job)sub.textContent=job.category+' · AI '+job.exposure+'/10';
+  }else if(showCat){
+    const cat=refPanelCategory||ensureRefPanelCategory();
+    const catJobs=marketForRef().filter(j=>j.category===cat);
+    if(nat)nat.style.display='none';
+    if(jd)jd.style.display='none';
+    if(ind){ind.style.display='block';renderRefIndustry(cat)}
+    if(hdr)hdr.textContent=cat;
+    if(sub)sub.textContent='行业分析 · '+catJobs.length+' 个职业';
   }else{
+    if(refPanelView==='job'&&selectedIdx<0)refPanelView='national';
+    if(refPanelView==='category'&&!ensureRefPanelCategory())refPanelView='national';
     if(nat){nat.style.display='block';renderRefNational(marketForRef())}
     if(jd)jd.style.display='none';
+    if(ind)ind.style.display='none';
     if(hdr)hdr.textContent='中国就业市场';
     if(sub)sub.textContent='242个职业 · 方块面积=就业人数 · 颜色=AI影响（0–10）';
+    syncRefViewToggleButtons();
   }
 }
 function renderJobs(){
@@ -8841,8 +10281,10 @@ function renderJobs(){
     }).join('');
     return '<div class="industry-block"><div class="industry-hdr"><span>'+cat+'</span><span style="font-size:.7rem;color:var(--muted)">'+fmtJobsCount(totalJ)+'</span></div><div class="industry-inner">'+tiles+'</div></div>';
   }).join('');
-  if(selectedIdx>=0){renderRefPanel(selectedIdx);showDetail(selectedIdx)}
-  else renderRefPanel(-1);
+  if(refPanelView==='job'&&selectedIdx<0)refPanelView='national';
+  if(refPanelView==='category'&&!ensureRefPanelCategory())refPanelView='national';
+  renderRefPanel();
+  if(selectedIdx>=0)showDetail(selectedIdx);
   renderCasinoRefStats();
 }
 
@@ -8867,15 +10309,26 @@ function updateOfferPreview(){
 function selectJob(idx){
   if(!game)return;
   if(game.onWelfare&&!canApplyJob(game.market[idx]))return;
-  if(selectedJobIdxs.has(idx)){selectedJobIdxs.delete(idx);if(selectedIdx===idx)selectedIdx=selectedJobIdxs.size?[...selectedJobIdxs][0]:-1}
-  else{selectedJobIdxs.add(idx);selectedIdx=idx;}
+  if(selectedJobIdxs.has(idx)){
+    selectedJobIdxs.delete(idx);
+    if(selectedIdx===idx)selectedIdx=selectedJobIdxs.size?[...selectedJobIdxs][0]:-1;
+    if(selectedIdx<0&&refPanelView==='job')refPanelView='national';
+  }else{
+    selectedJobIdxs.add(idx);
+    selectedIdx=idx;
+    refPanelView='job';
+    if(game.market[idx])refPanelCategory=game.market[idx].category;
+  }
   renderJobs(); updateOfferPreview(); updateButtons();
 }
 
 function fmtProb(p){return p<0.0001?(p*1e6).toFixed(2)+'ppm':p<0.01?(p*100).toFixed(3)+'%':Math.round(p*100)+'%'}
 
 function showDetail(idx){
-  const job=game.market[idx], offer=computeOffer(job,{isSwitch:game.employed});
+  if(!game||!game.market||idx<0||idx>=game.market.length)return;
+  const job=game.market[idx];
+  if(!job)return;
+  const offer=computeOffer(job,{isSwitch:game.employed});
   offer.apps=getSelectedApps();
   const mod=getHireProbabilityModifiers(offer);
   const ageLim=getAgeLimit(job);
@@ -8978,39 +10431,40 @@ function updateHeaderStats(){
   else if(game.livingOffParents)life='啃老';
   set('statLife',life);
   set('statMortgage',game.mortgagePaidOff?'已还清':game.mortgagePaymentsMade+'/'+MORTGAGE_MONTHS+'月');
-  set('statFamily',game.pregnant?('孕期剩'+game.pregnancyWeeksLeft+'周'):game.hasChildren?(game.childRaisingMonthsLeft>0?'育儿中':'已育'):'无孩');
+  const pregLeft=game.pregnant?(typeof pregnancyWeeksRemaining==='function'?pregnancyWeeksRemaining():game.pregnancyWeeksLeft):0;
+  set('statFamily',game.pregnant?('孕期剩'+pregLeft+'周'):game.hasChildren?(game.childRaisingMonthsLeft>0?'育儿中':'已育'):'无孩');
 }
-function updateUI(){
+function safeRender(fn,label){
+  try{if(typeof fn==='function')fn()}catch(e){console.error(label||'render',e)}
+}
+function renderLifePanelContent(){
   if(!game)return;
-  try{
-  updateHeaderStats();
-  if(typeof isAutoLifeSimulating==='function'&&isAutoLifeSimulating()){
-    if(typeof renderAutoLifePanel==='function')renderAutoLifePanel();
-    if(typeof updateAutoLifeProgress==='function')updateAutoLifeProgress();
-    return;
-  }
+  const lifeEl=document.getElementById('lifePanel');
+  if(!lifeEl)return;
   const intim=game.married&&!game.divorced?(game.spouseIntimacy!=null?game.spouseIntimacy:INTIMACY_INITIAL):null;
   const exp=getMonthlyExpenses();
-  document.getElementById('lifePanel').innerHTML=
+  const carLbl=(game.ownedCar&&typeof CAR_SHOP!=='undefined'&&CAR_SHOP[game.ownedCar])?CAR_SHOP[game.ownedCar].name:'无';
+  const phoneLbl=(game.phone&&typeof PHONE_SHOP!=='undefined'&&PHONE_SHOP[game.phone])?PHONE_SHOP[game.phone].name:'无手机';
+  const affairHtml=typeof playerAffairStatusHtml==='function'?playerAffairStatusHtml():'';
+  lifeEl.innerHTML=
     '<div><b>人生目标</b></div><div style="color:var(--muted);margin:4px 0">还清30年房贷，与伴侣在自己的房中度晚年</div>'+
     '<div><b>本月 ¥'+exp.total.toLocaleString()+'</b> · '+exp.label+'</div>'+
     (game.ownsHome&&!game.mortgagePaidOff?'<div>房贷进度 '+game.mortgagePaymentsMade+'/'+MORTGAGE_MONTHS+'</div>':'')+
-    (game.pregnant?'<div style="color:var(--green)">怀孕中 · 剩 '+game.pregnancyWeeksLeft+' 周 · 亲密度每周±1'+
+    (game.pregnant?'<div style="color:var(--green)">怀孕中 · 剩 '+(typeof pregnancyWeeksRemaining==='function'?pregnancyWeeksRemaining():game.pregnancyWeeksLeft)+' 周 · 亲密度每周±1'+
       ' · '+pregnancyWhoLabel()+' · 净波动 '+(game.pregnancyIntimacyNet||0)+'</div>':'')+
     (game.hasChildren&&game.childRaisingMonthsLeft>0?'<div>育儿剩余 '+game.childRaisingMonthsLeft+' 月</div>':'')+
     (game.married&&!game.divorced?'<div>夫妻亲密度 <b style="color:'+(intim>=60?'var(--green)':intim>=0?'var(--yellow)':'var(--red)')+'">'+intim+'</b> · 约会+1 · 一月未约会-'+(game.longDistance?'10':'5')+'</div>':'')+
     (game.fertilityOrder?'<div style="color:var(--green)">'+(game.fertilityOrder.type==='surrogacy'?'代孕':'试管')+'进行中 · 预计 '+getDateStr(game.fertilityOrder.dueWeek)+' 交货</div>':'')+
     (game.procreateIntentWeek===game.week?'<div style="color:var(--green)">本月备孕中（须做爱）</div>':'')+
     (game.partnerAffairActive?'<div style="color:var(--red)">伴侣婚外情'+(game.partnerStdActive?' · 伴侣已患性病':'')+'</div>':'')+
-    (game.affairActive&&!game.partnerAffairActive?'<div style="color:var(--red)">婚外情中 · 月支出×2</div>':'')+
+    affairHtml+
     (game.affairActive&&game.partnerAffairActive?'<div style="color:var(--red)">双方婚外情 · 月支出×2</div>':'')+
     (game.stdActive?'<div style="color:var(--orange)">性病 · '+stdTreatmentStatusText()+(game.stdWeeksInfected<=STD_STRESS_WEEKS?' · 每周压力+2':' · 超过'+STD_STRESS_WEEKS+'周不再加压')+' · 日常去医院</div>':'')+
     (game.livingOffSpouse?'<div style="color:var(--orange)">吃软饭中 · 每周亲密度-5</div>':'')+
     (game.longDistance?'<div style="color:var(--orange)">异地婚恋 · 每周+1压力 · 可线上约会 · 宅家可电话性爱（效果减半·伴侣须在家醒着）</div>':'')+
     (playerStress()>=STRESS_MAD?'<div style="color:#a371f7">精神崩溃（压力≥'+STRESS_MAD+'）· 无法上班 · 仍可求职</div>':'')+
     (playerStress()>=STRESS_MIND_BLOCK&&playerStress()<STRESS_MAD?'<div style="color:var(--orange)">压力过大（≥'+STRESS_MIND_BLOCK+'）· 无法从事脑力劳动</div>':'')+
-    (game.stats?'<div>肉体<b>'+effStat('body')+'</b> 心智<b>'+effStat('mind')+'</b> 精神<b>'+effStat('spirit')+'</b> · 车'+(game.ownedCar?CAR_SHOP[game.ownedCar].name:'无')+' · '+(game.phone&&PHONE_SHOP[game.phone]?PHONE_SHOP[game.phone].name:'无手机')+'</div>':'')+
-    '<div style="font-size:.7rem;color:var(--muted)">'+
+    '<div style="font-size:.7rem;color:var(--muted)">车'+carLbl+' · '+phoneLbl+' · '+
       (game.employed&&game.longDistance?'工作在 '+game.playerCity+' · 伴侣定居 '+PLAYER_HOME_CITY:
         game.employed?'在 '+game.playerCity+' 工作 · 同城':'无业 · 在 '+PLAYER_HOME_CITY+' 本地')+
     '</div>'+
@@ -9019,44 +10473,76 @@ function updateUI(){
     (game.parentsInheritanceSettled?'<div style="color:'+(game.parentsInheritanceAmount>=0?'var(--green)':'var(--red)')+'">父母遗产结算：'+
       (game.parentsInheritanceAmount>=0?'¥':'-¥')+Math.abs(game.parentsInheritanceAmount||0).toLocaleString()+'</div>':'')+
     '<div style="margin-top:6px;font-size:.72rem;color:var(--muted)">35/40/45岁录取递减 · 等级=头部/重点/草根 · 规模=大/中/小（仅影响行业覆盖）</div>';
-
+}
+function renderEmpCard(){
+  if(!game)return;
   const empCard=document.getElementById('empCard');
+  if(!empCard)return;
   if(game.employed&&game.employment){
     const e=game.employment,j=game.market[e.jobIdx];
     empCard.style.display='block';
     const role=e.roleExtra?IMP_LABEL[e.importance]+'·'+ROLE_EXTRA[e.roleExtra]:IMP_LABEL[e.importance];
     const payLbl=e.roleExtra==='temp'?'周薪¥'+Math.round(e.annualPay/52).toLocaleString():e.roleExtra==='intern'?'实习年薪¥'+Math.round(e.annualPay*0.55).toLocaleString():'年薪¥'+e.annualPay.toLocaleString();
     const otLbl=e.otProfile?e.otProfile.otLabel:(e.tier==='high'?'加班常态化':e.tier==='mid'?'周末偶尔加班':'加班费不稳定');
-    empCard.innerHTML='<b>'+j.title+'</b> @ '+e.company.name+' · '+payLbl+
+    empCard.innerHTML='<b>'+(j?j.title:'未知岗位')+'</b> @ '+e.company.name+' · '+payLbl+
       ' <span class="badge badge-tier-'+e.tier[0]+'">'+TIER_LABEL[e.tier]+'</span>'+
       ' <span class="badge badge-scale-'+e.company.scale[0]+'">'+SCALE_LABEL[e.company.scale]+'</span>'+
       ' <span class="badge badge-imp-'+e.importance[0]+'">'+role+'</span>'+
       (e.internWeeksLeft>0?' <span style="color:var(--yellow)">实习剩'+e.internWeeksLeft+'周</span>':'')+
       '<div style="font-size:.7rem;color:var(--muted);margin-top:2px">加班：'+otLbl+'</div>';
   }else empCard.style.display='none';
-
+}
+function updateUI(){
+  if(!game)return;
+  if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
+  else if(!game.tempStats&&typeof defaultTempStats==='function')game.tempStats=defaultTempStats();
+  if(typeof ensureAutoLifeNotStuck==='function')ensureAutoLifeNotStuck();
+  safeRender(updateHeaderStats,'updateHeaderStats');
+  safeRender(renderHeaderProgress,'renderHeaderProgress');
+  safeRender(renderSocialMedals,'renderSocialMedals');
+  safeRender(renderLifePanelContent,'renderLifePanelContent');
+  safeRender(renderInterviewCalendar,'renderInterviewCalendar');
+  if(typeof isAutoLifeSimulating==='function'&&isAutoLifeSimulating()){
+    safeRender(renderAutoLifePanel,'renderAutoLifePanel');
+    if(typeof updateAutoLifeProgress==='function')updateAutoLifeProgress();
+    return;
+  }
+  try{
+  safeRender(renderEmpCard,'renderEmpCard');
   const d=game.daily||{dayIndex:0,phase:'morning'};
   const dailyHint=d.dayIndex>=7?'':(' · 日常 '+DAY_NAMES[Math.min(d.dayIndex,6)]+' '+PHASE_LABELS[d.phase||'morning']);
-  document.getElementById('actionTip').innerHTML=actionDone
+  const actionTipEl=document.getElementById('actionTip');
+  if(actionTipEl)actionTipEl.innerHTML=actionDone
     ?'<strong>本周日程已满</strong> → 日常页「进入下周」或自动生活':'<strong>'+getDateStr(game.week)+'</strong>'+dailyHint+' · 每时段8h · 炒股工作日白天更新';
-  if(game.employed&&selectedIdx<0)selectedIdx=game.employment.jobIdx;
-  renderDailyPanel();
-  if(typeof renderAutoLifePanel==='function')renderAutoLifePanel();
-  renderHeaderProgress(); renderSocialMedals(); renderJobs(); renderStocks(); renderCasino(); renderInbox(); renderOffers(); renderInterviewCalendar(); renderSpendingPanel(); renderCompanionPanel(); renderCasinoRefStats(); renderFinanceLedger(); updateButtons();
-  checkLifeStatusModals();
-  updateHeadhunterOption();
-  updateOfferPreview();
+  const inDailyJobMenu=game.daily&&game.daily.subMenu==='job';
+  if(game.employed&&selectedIdx<0&&!inDailyJobMenu)selectedIdx=game.employment.jobIdx;
+  safeRender(renderDailyPanel,'renderDailyPanel');
+  safeRender(renderAutoLifePanel,'renderAutoLifePanel');
+  safeRender(renderJobs,'renderJobs');
+  safeRender(renderStocks,'renderStocks');
+  safeRender(renderCasino,'renderCasino');
+  safeRender(renderInbox,'renderInbox');
+  safeRender(renderOffers,'renderOffers');
+  safeRender(renderSpendingPanel,'renderSpendingPanel');
+  safeRender(renderCompanionPanel,'renderCompanionPanel');
+  safeRender(renderCasinoRefStats,'renderCasinoRefStats');
+  safeRender(renderFinanceLedger,'renderFinanceLedger');
+  safeRender(updateButtons,'updateButtons');
+  safeRender(checkLifeStatusModals,'checkLifeStatusModals');
+  if(typeof tryShowPendingDivorceModal==='function')tryShowPendingDivorceModal();
+  safeRender(updateHeadhunterOption,'updateHeadhunterOption');
+  safeRender(updateOfferPreview,'updateOfferPreview');
   }catch(e){
     console.error('updateUI',e);
-    try{
-      if(typeof renderDailyPanel==='function')renderDailyPanel();
-      if(typeof renderAutoLifePanel==='function')renderAutoLifePanel();
-    }catch(e2){console.error('updateUI fallback',e2)}
+    safeRender(renderDailyPanel,'renderDailyPanel');
+    safeRender(renderAutoLifePanel,'renderAutoLifePanel');
   }
 }
 ${WORKPLACE_STORIES_DATA_SRC}
 ${WORKPLACE_STORIES_POOLS_SRC}
 ${WORKPLACE_STORIES_SRC}
+${ARTIFACT_SYSTEM_SRC}
+${PROPERTY_COMPANY_SRC}
 ${DAILY_ACTIVITY_SRC}
 ${JOB_HUNT_DAILY_SRC}
 ${AFFAIR_SYSTEM_SRC}
@@ -9069,7 +10555,8 @@ ${STARTER_JOB_SRC}
 ${AUTO_LIFE_SRC}
 renderSlotGrid();
 syncPlayerSchoolEdu();
-renderRefPanel(-1);
+bindRefCatJumpClicks();
+renderRefPanel();
 applyCasinoOddsLabels();
 </script>
 </body>

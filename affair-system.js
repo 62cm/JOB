@@ -5,11 +5,14 @@ const AFFAIR_BLACKMAIL_TOILET=1000;
 const AFFAIR_BLACKMAIL_PARTNER_HOME=10000;
 const AFFAIR_BLACKMAIL_NO_WEDDING=100000;
 const AFFAIR_WEDDING_COST=100000;
-const AFFAIR_MIN_WEEKS_FOR_PROPOSAL=26;
+const AFFAIR_MIN_WEEKS_FOR_PROPOSAL=16;
 const AFFAIR_WEDDING_DEADLINE_WEEKS=26;
 const IMPRISON_DAYS=15;
 const IMPRISON_WEEKS=2;
-const AFFAIR_OUTDOOR_PREGNANCY_CHANCE=0.01;
+const AFFAIR_OUTDOOR_PREGNANCY_CHANCE=0.08;
+const AFFAIR_INDOOR_MISTRESS_PREGNANCY_CHANCE=0.05;
+const AFFAIR_PROPOSAL_WEEKLY_CHANCE=0.10;
+const AFFAIR_RECENT_ACTIVE_WEEKS=10;
 const AFFAIR_PREGNANCY_PAYOFF=50000;
 const AFFAIR_PREGNANCY_MARRY_WEEKS=16;
 const ABORTION_COST=3000;
@@ -29,7 +32,11 @@ function oppositeAffairGender(){
 }
 function pregnancyWeeksElapsed(){
   if(!game||!game.pregnant)return 0;
+  if(typeof ensurePregnancyStartWeek==='function')ensurePregnancyStartWeek();
+  if(game.pregnancyStartWeek!=null&&game.pregnancyStartWeek>=0)
+    return Math.max(0,(game.week||0)-game.pregnancyStartWeek);
   const total=typeof PREGNANCY_WEEKS!=='undefined'?PREGNANCY_WEEKS:40;
+  if(typeof pregnancyWeeksRemaining==='function')return Math.max(0,total-pregnancyWeeksRemaining());
   return total-(game.pregnancyWeeksLeft||0);
 }
 function canPlayerAbort(){
@@ -49,14 +56,26 @@ function applyPregnancyBlackmailRefuseFx(c,opts){
   if(game.married&&!game.divorced){
     if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-12,'出轨曝光 ');
     addLog('🚨 '+c.name+' 向你的伴侣告密出轨','fail');
-    if(Math.random()<0.55&&typeof partnerRequestsDivorce==='function'){
-      partnerRequestsDivorce('💔 '+c.name+' 告知伴侣你让她怀孕，提出离婚。',{playerPaysHalf:true});
-    }
+    queueAffairModal({
+      icon:'🚨',title:'怀孕要挟 · 告密',
+      html:'<p><b>'+c.name+'</b> 把怀孕的事捅给了你的伴侣，家里炸开了锅。</p><p class="fold-meta">亲密度 -12 · 压力 +20</p>',
+      btn:'……',
+      onClose:function(){
+        if(Math.random()<0.55&&typeof partnerRequestsDivorce==='function'){
+          partnerRequestsDivorce('💔 '+c.name+' 告知伴侣你让她怀孕，提出离婚。',{playerPaysHalf:true});
+        }
+      }
+    });
   }else if(opts.rape!==false){
     imprisonActor(IMPRISON_WEEKS,'强奸指控');
     if(typeof collectFromPlayer==='function')collectFromPlayer(10000,'强奸赔偿');
     else if(game.cash>=10000){game.cash-=10000;addLog('赔偿 ¥1万','fail')}
     addLog('⚖️ '+c.name+' 控告强奸 · 监禁'+IMPRISON_DAYS+'天','fail');
+    queueAffairModal({
+      icon:'⚖️',title:'强奸指控',
+      html:'<p><b>'+c.name+'</b> 报警称你强奸，你被带走调查。</p><p style="color:var(--red)">监禁约 '+IMPRISON_DAYS+' 天 · 赔偿 ¥1万</p>',
+      btn:'认栽'
+    });
   }
 }
 function triggerMaleImpregnateBlackmail(c){
@@ -64,10 +83,21 @@ function triggerMaleImpregnateBlackmail(c){
   c.pregnantByPlayer=true;
   c.pendingPregnancyBlackmail=true;
   const dl=game.week+AFFAIR_PREGNANCY_MARRY_WEEKS;
+  const html='幽会之后她确认怀孕。<br>可选择：<b>限时结婚</b>（须在 '+getDateStr(dl)+' 前完婚）或 <b>支付 ¥'+AFFAIR_PREGNANCY_PAYOFF.toLocaleString()+'</b> 封口。<br>'+
+    '<span class="fold-meta">拒付封口费压力+20；无论是否付钱都将断绝联系。拒绝结婚压力+20'+(game.married&&!game.divorced?'，并告知伴侣':'，无伴侣则控告强奸')+'。</span>';
+  if(typeof queueAffairModal==='function'){
+    queueAffairModal({
+      icon:'🤰',title:c.name+' 怀孕了',html:html,
+      buttons:[
+        {text:'支付五万',handler:function(){pregBlackmailPay(c.id)}},
+        {text:'答应结婚',primary:true,handler:function(){pregBlackmailAgreeMarry(c.id)}},
+        {text:'拒绝',handler:function(){pregBlackmailRefuse(c.id)}}
+      ]
+    });
+    return;
+  }
   showConsumeModal({
-    icon:'🤰',title:c.name+' 怀孕了',
-    html:'户外亲热后她确认怀孕。<br>可选择：<b>限时结婚</b>（须在 '+getDateStr(dl)+' 前完婚）或 <b>支付 ¥'+AFFAIR_PREGNANCY_PAYOFF.toLocaleString()+'</b> 封口。<br>'+
-      '<span class="fold-meta">拒付封口费压力+20；无论是否付钱都将断绝联系。拒绝结婚压力+20'+(game.married&&!game.divorced?'，并告知伴侣':'，无伴侣则控告强奸')+'。</span>',
+    icon:'🤰',title:c.name+' 怀孕了',html:html,
     buttons:[
       {text:'支付五万',fn:'pregBlackmailPay(\''+c.id+'\')'},
       {text:'答应结婚',primary:true,fn:'pregBlackmailAgreeMarry(\''+c.id+'\')'},
@@ -89,6 +119,14 @@ function pregBlackmailPay(contactId){
   if(!paid&&typeof addStress==='function')addStress(20,'拒付封口费 ');
   addLog(paid?'💸 已付 ¥'+AFFAIR_PREGNANCY_PAYOFF.toLocaleString()+' 封口费':'无力支付封口费 · 压力+20','fail');
   cutContactForever(c);
+  queueAffairModal({
+    icon:paid?'💸':'🚨',
+    title:paid?'封口费已付':'无力支付封口费',
+    html:paid
+      ?'<p>你咬牙付了 ¥'+AFFAIR_PREGNANCY_PAYOFF.toLocaleString()+'，<b>'+c.name+'</b> 收下钱后断绝联系。</p>'
+      :'<p>你拿不出封口费，<b>'+c.name+'</b> 愤而离去。</p><p class="fold-meta">压力 +20 · 已断绝联系</p>',
+    btn:'知道了'
+  });
   if(typeof updateUI==='function')updateUI();
 }
 function pregBlackmailAgreeMarry(contactId){
@@ -120,24 +158,37 @@ function pregBlackmailRefuse(contactId){
   cutContactForever(c);
   if(typeof updateUI==='function')updateUI();
 }
+function affairMistressPregnancyChance(loc){
+  if(loc==='outdoor')return AFFAIR_OUTDOOR_PREGNANCY_CHANCE;
+  if(loc==='luxury'||loc==='hotel')return AFFAIR_INDOOR_MISTRESS_PREGNANCY_CHANCE;
+  return AFFAIR_INDOOR_MISTRESS_PREGNANCY_CHANCE*0.85;
+}
+function tryAffairMistressPregnancy(c,loc){
+  if(!c||!isOppositeSexContact(c)||game.playerGender!=='male')return false;
+  if(c.gender==='male'||c.pregnantByPlayer||c.pendingPregnancyBlackmail)return false;
+  if(Math.random()>=affairMistressPregnancyChance(loc))return false;
+  addLog('🤰 幽会后 '+c.name+' 怀孕了…','warn');
+  triggerMaleImpregnateBlackmail(c);
+  return true;
+}
+function tryAffairPlayerPregnancy(c){
+  if(!c||game.pregnant||game.hasChildren||!isOppositeSexContact(c)||game.playerGender!=='female')return false;
+  const p=typeof AFFAIR_PREGNANCY_CHANCE!=='undefined'?AFFAIR_PREGNANCY_CHANCE:0.15;
+  if(Math.random()>=p)return false;
+  game.outdoorAffairPregnancy=true;
+  if(typeof startPregnancy!=='function'||!startPregnancy(true,'player'))return false;
+  addLog('🤰 幽会后你怀孕了（可消费页堕胎，12周内）','warn');
+  queueAffairModal({
+    icon:'🤰',title:'幽会 · 意外怀孕',
+    html:'<p>与 <b>'+c.name+'</b> 幽会后，你发现自己怀孕了。</p><p class="fold-meta">可在消费页堕胎（12周内）；逾期伴侣可能察觉</p>',
+    btn:'知道了'
+  });
+  return true;
+}
 function tryAffairEncounterPregnancy(c,loc){
-  if(!c||game.pregnant||game.hasChildren)return false;
-  if(loc==='outdoor'&&isOppositeSexContact(c)){
-    if(Math.random()>=AFFAIR_OUTDOOR_PREGNANCY_CHANCE)return false;
-    if(game.playerGender==='male'&&(c.gender==='female'||!c.gender)){
-      addLog('🤰 户外亲热后 '+c.name+' 怀孕了…','warn');
-      triggerMaleImpregnateBlackmail(c);
-      return true;
-    }
-    if(game.playerGender==='female'&&(c.gender==='male'||!c.gender)){
-      game.outdoorAffairPregnancy=true;
-      if(typeof startPregnancy==='function')startPregnancy(true,'player');
-      addLog('🤰 户外亲热后你怀孕了（可消费页堕胎，12周内）','warn');
-      return true;
-    }
-    return false;
-  }
-  if(Math.random()<0.12&&typeof tryConceiveFromSex==='function')return tryConceiveFromSex(true,true);
+  if(!c)return false;
+  if(tryAffairMistressPregnancy(c,loc))return true;
+  if(tryAffairPlayerPregnancy(c))return true;
   return false;
 }
 function renderAbortionSpendingRow(){
@@ -156,6 +207,7 @@ function promptPlayerAbortion(){
   if(typeof spendCash==='function'&&!spendCash(ABORTION_COST,'堕胎'))return;
   game.pregnant=false;
   game.pregnantSubject=null;
+  game.pregnancyStartWeek=null;
   game.pregnancyWeeksLeft=0;
   game.pregnancyIntimacyNet=0;
   game.outdoorAffairPregnancy=false;
@@ -171,6 +223,12 @@ function tickOutdoorPregnancyWeekly(){
     if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-10,'隐瞒怀孕 ');
     if(typeof addStress==='function')addStress(8,'怀孕曝光 ');
     addLog('🚨 怀孕超过12周 · 伴侣发现你曾可堕胎却隐瞒','fail');
+    const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+    queueAffairModal({
+      icon:'🚨',title:'怀孕隐瞒败露',
+      html:'<p>孕期已超过12周，<b>'+pn+'</b> 察觉你本可堕胎却隐瞒至今。</p><p class="fold-meta">亲密度 -10 · 压力 +8</p>',
+      btn:'……'
+    });
   }
 }
 function tickAffairWifePregnancy(c){
@@ -183,13 +241,33 @@ function tickAffairWifePregnancy(c){
     game.childRaisingMonthsLeft=typeof CHILD_RAISING_MONTHS!=='undefined'?CHILD_RAISING_MONTHS:216;
     addLog('👶 与 '+c.name+' 的孩子降生','success');
     if(typeof addLog==='function')addLog('月生活费上升','info');
+    queueAffairModal({
+      icon:'👶',title:'私生子降生',
+      html:'<p>你与 <b>'+c.name+'</b> 的孩子出生了，抚养费与生活开支随之上升。</p>',
+      btn:'知道了'
+    });
   }
 }
 
+function imprisonmentWeeksLeft(){
+  if(!game||!game.imprisonedUntilWeek)return 0;
+  return Math.max(0,game.imprisonedUntilWeek-game.week);
+}
 function imprisonActor(weeks,label){
   if(!game)return;
-  game.imprisonedUntilWeek=Math.max(game.imprisonedUntilWeek||0,game.week+(weeks||IMPRISON_WEEKS));
+  const w=weeks||IMPRISON_WEEKS;
+  game.imprisonedUntilWeek=Math.max(game.imprisonedUntilWeek||0,game.week+w);
+  if(typeof recordImprisonOrExtort==='function')recordImprisonOrExtort();
   addLog('🔒 '+label+' · 监禁约 '+IMPRISON_DAYS+' 天','fail');
+  const left=imprisonmentWeeksLeft();
+  const html='<p><b>'+label+'</b> · 约 '+IMPRISON_DAYS+' 天（'+w+' 周）</p>'+
+    '<p class="fold-meta">剩余刑期 <b>'+left+'</b> 周 · 无法上班、外出或偷情</p>'+
+    '<p style="margin-top:8px;font-size:.82rem">日常页可点 <b>服刑快进一周</b>，或用下方 <b>自动生活</b> 批量跳过。</p>';
+  if(typeof queueAffairModal==='function'){
+    queueAffairModal({icon:'🔒',title:'被监禁',html,btn:'知道了'});
+  }else if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({icon:'🔒',title:'被监禁',html,buttons:[{text:'知道了',primary:true,handler:function(){if(typeof closeConsumeModal==='function')closeConsumeModal(true)}}]});
+  }
 }
 function isPlayerImprisoned(){
   return !!(game&&game.imprisonedUntilWeek>game.week);
@@ -207,12 +285,12 @@ function companionJob(){
   if(!c||!c.employed||!c.employment)return null;
   return game.market[c.employment.jobIdx]||null;
 }
-function isCompanionWorkSlot(phase){
+function companionWorkSlotScheduled(phase,dayIndex){
   const c=game.companion;
   if(!c||!c.employed||!c.employment)return false;
   const job=companionJob();
   if(!job)return false;
-  const day=(game.daily&&game.daily.dayIndex)||0;
+  const day=dayIndex!=null?dayIndex:((game.daily&&game.daily.dayIndex)||0);
   const weekend=day>=5;
   if(job.exposure>=4||INTERNET_CATS.includes(job.category)){
     if(weekend)return phase==='morning'||phase==='evening';
@@ -228,6 +306,69 @@ function isCompanionWorkSlot(phase){
   if(weekend)return false;
   return phase==='morning';
 }
+function isCompanionWorkSlotForDay(phase,dayIndex){
+  const ph=phase||'morning';
+  if(ph==='morning'&&typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return false;
+  return companionWorkSlotScheduled(ph,dayIndex);
+}
+function isCompanionWorkSlot(phase){
+  return isCompanionWorkSlotForDay(phase);
+}
+function isCompanionEffectivelyAtWork(phase){
+  const ph=phase||(game.daily&&game.daily.phase)||'morning';
+  if(ph==='morning'&&typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return false;
+  return isCompanionWorkSlot(ph);
+}
+function ensureCompanionMonthlyAbsenceMonth(){
+  const c=game&&game.companion;
+  if(!c)return;
+  const mk=typeof getMonthlyAbsenceMonthKey==='function'?getMonthlyAbsenceMonthKey():1;
+  if(c.monthlyAbsenceMonthKey!==mk){
+    c.monthlyAbsenceMonthKey=mk;
+    c.monthlyAbsenceCount=0;
+  }
+}
+function getCompanionMonthlyAbsenceCount(){
+  ensureCompanionMonthlyAbsenceMonth();
+  return (game.companion&&game.companion.monthlyAbsenceCount)||0;
+}
+function recordCompanionWorkSkip(reason){
+  const c=game&&game.companion;
+  if(!c||!c.employed)return;
+  if(typeof companionEmployerOwnerImmune==='function'&&companionEmployerOwnerImmune())return;
+  ensureCompanionMonthlyAbsenceMonth();
+  c.monthlyAbsenceCount=(c.monthlyAbsenceCount||0)+1;
+  const lim=typeof MONTHLY_ABSENCE_LIMIT!=='undefined'?MONTHLY_ABSENCE_LIMIT:4;
+  const n=c.monthlyAbsenceCount;
+  const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+  addLog('💼 '+pn+(reason||'旷工')+' · 本月 '+n+'/'+lim,'warn');
+  if(n>lim)fireCompanionForWorkAbsence();
+}
+function fireCompanionForWorkAbsence(){
+  const c=game&&game.companion;
+  if(!c||!c.employed)return;
+  if(typeof runAsCompanion==='function'){
+    runAsCompanion(()=>{if(typeof recordCareerHistory==='function')recordCareerHistory(game.employment)});
+  }
+  c.employed=false;
+  c.employment=null;
+  c.layoffs=(c.layoffs||0)+1;
+  ensureCompanionMonthlyAbsenceMonth();
+  const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+  const lim=typeof MONTHLY_ABSENCE_LIMIT!=='undefined'?MONTHLY_ABSENCE_LIMIT:4;
+  addLog('💔 '+pn+'本月旷工超过 '+lim+' 次，被辞退','fail');
+  setTimeout(function(){
+    if(typeof renderCompanionPanel==='function')renderCompanionPanel();
+    if(typeof updateUI==='function')updateUI();
+  },0);
+}
+function tickCompanionMorningCatchUp(){
+  const d=game&&game.daily;
+  if(!d||d.phase!=='morning'||!d.partnerCatchUpSleep||d.companionMorningSkipLogged)return;
+  if(!game.companion||!game.companion.employed)return;
+  d.companionMorningSkipLogged=true;
+  if(isCompanionWorkSlotForDay('morning',d.dayIndex))recordCompanionWorkSkip('补觉旷工');
+}
 function isWeekendDayIndex(dayIndex){return dayIndex>=5}
 function ensureLongDistancePartnerPresence(phase){
   if(!game||!game.married||game.divorced||!game.longDistance)return;
@@ -235,12 +376,12 @@ function ensureLongDistancePartnerPresence(phase){
   const ph=phase||(d.phase)||'morning';
   if(d.partnerPresenceRolled&&d._partnerPresencePhase===ph)return;
   d._partnerPresencePhase=ph;
-  if(isCompanionWorkSlot(ph)){
+  if(ph==='morning'&&d.partnerCatchUpSleep){
     d.partnerOutForFun=false;
     d.partnerPresenceRolled=true;
     return;
   }
-  if(ph==='morning'&&d.partnerCatchUpSleep){
+  if(isCompanionEffectivelyAtWork(ph)){
     d.partnerOutForFun=false;
     d.partnerPresenceRolled=true;
     return;
@@ -255,7 +396,7 @@ function isPartnerAwakeForPhoneSex(phase){
   if(!game||!game.married||game.divorced)return false;
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return false;
-  if(isCompanionWorkSlot(ph))return false;
+  if(isCompanionEffectivelyAtWork(ph))return false;
   if(game.longDistance){
     ensureLongDistancePartnerPresence(ph);
     if(game.daily&&game.daily.partnerOutForFun)return false;
@@ -294,7 +435,7 @@ function getPhoneSexBlockReason(skipIntimacy){
     if(menstrualBlock)return menstrualBlock.replace(/做爱/g,'电话性爱');
   }
   if(typeof isPartnerAwakeForPhoneSex==='function'&&!isPartnerAwakeForPhoneSex(ph)){
-    if(isCompanionWorkSlot(ph))return '伴侣在上班，无法电话性爱';
+    if(isCompanionEffectivelyAtWork(ph))return '伴侣在上班，无法电话性爱';
     if(typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return '伴侣在家补觉，无法电话性爱';
     if(ph==='allnight')return '伴侣睡梦中，无法电话性爱';
     if(game.daily&&game.daily.partnerOutForFun)return '伴侣在外面玩，无法电话性爱';
@@ -308,12 +449,12 @@ function ensurePartnerPresence(phase){
   const ph=phase||(d.phase)||'morning';
   if(d.partnerPresenceRolled&&d._partnerPresencePhase===ph)return;
   d._partnerPresencePhase=ph;
-  if(isCompanionWorkSlot(ph)){
+  if(ph==='morning'&&d.partnerCatchUpSleep){
     d.partnerOutForFun=false;
     d.partnerPresenceRolled=true;
     return;
   }
-  if(ph==='morning'&&d.partnerCatchUpSleep){
+  if(isCompanionEffectivelyAtWork(ph)){
     d.partnerOutForFun=false;
     d.partnerPresenceRolled=true;
     return;
@@ -371,7 +512,8 @@ function isPartnerOutForFun(phase){
   if(!game||!game.married||game.divorced||game.longDistance)return false;
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(ph==='rest')return false;
-  if(isCompanionWorkSlot(ph))return false;
+  if(typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return false;
+  if(isCompanionEffectivelyAtWork(ph))return false;
   ensurePartnerPresence(ph);
   return !!(game.daily&&game.daily.partnerOutForFun);
 }
@@ -393,7 +535,8 @@ function isSpouseAtHome(phase){
   if(!game||!game.married||game.divorced||game.longDistance)return false;
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(ph==='rest')return true;
-  if(isCompanionWorkSlot(ph))return false;
+  if(typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return true;
+  if(isCompanionEffectivelyAtWork(ph))return false;
   if(ph==='evening'||ph==='allnight'||(ph==='morning'&&isWeekendDayIndex((game.daily&&game.daily.dayIndex)||0))){
     ensurePartnerPresence(ph);
     return !game.daily.partnerOutForFun;
@@ -412,7 +555,8 @@ function getSpouseLocationLabel(phase){
   if(!game||!game.married||game.divorced)return '';
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(game.longDistance)return '异地·'+(typeof PLAYER_HOME_CITY!=='undefined'?PLAYER_HOME_CITY:'家乡');
-  if(isCompanionWorkSlot(ph)){
+  if(ph==='morning'&&typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return '在家补觉';
+  if(isCompanionEffectivelyAtWork(ph)){
     const c=game.companion,co=c&&c.employment&&c.employment.company;
     return '上班'+(co&&co.name?'·'+co.name:'');
   }
@@ -421,7 +565,6 @@ function getSpouseLocationLabel(phase){
     if(ph==='allnight')return '外面玩·通宵';
     return '在外面玩';
   }
-  if(ph==='morning'&&typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return '在家补觉';
   if(ph==='allnight'){
     const ad=game.daily;
     if(ad&&ad.partnerAllnightStayedOut)return '外面玩·通宵';
@@ -453,7 +596,7 @@ function partnerAbsentSexReason(ph){
   if(ph==='allnight'&&typeof isPartnerAllnightSleeping==='function'&&isPartnerAllnightSleeping())
     return '伴侣睡梦中，无法同房';
   if(!isSpouseAtHome(ph)){
-    if(isCompanionWorkSlot(ph)){
+    if(isCompanionEffectivelyAtWork(ph)){
       if(ph==='morning')return '白天伴侣不在家（上班中）';
       if(ph==='evening')return '晚上伴侣在上班';
       return '伴侣在上班，无法同房';
@@ -499,23 +642,34 @@ function maybePartnerPhoneCheckOnNokia(context){
   return partnerDiscoversPhoneAffairs();
 }
 function partnerDiscoversPhoneAffairs(){
+  const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
   const lovers=(game.contacts||[]).filter(c=>
     (c.affairCount||0)>0||c.affairStatus==='affair'||c.affairStatus==='fwb'||c.affairStatus==='married_affair'
   );
   if(!lovers.length){
-    if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-1);
     if(typeof addStress==='function')addStress(2,'被查手机 ');
-    addLog('📱 伴侣翻了你的经典诺基亚，没发现情人记录 · 亲密度-1','info');
+    addLog('📱 伴侣翻了你的经典诺基亚，没发现情人记录 · 压力+2','info');
+    queueAffairModal({
+      icon:'📱',title:'查手机 · 虚惊一场',
+      html:'<p><b>'+pn+'</b> 趁你不注意翻了经典诺基亚，翻了一圈没发现情人记录，但气氛很尴尬。</p><p class="fold-meta">压力 +2</p>',
+      btn:'知道了'
+    });
     return false;
   }
   const names=lovers.map(c=>c.name).slice(0,3).join('、');
   if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-5);
   if(typeof addStress==='function')addStress(5,'被发现 ');
   addLog('🚨 伴侣检查经典诺基亚，发现情人/炮友：'+names+' · 亲密度-5 · 压力+5','fail');
-  if(Math.random()<0.45&&typeof partnerRequestsDivorce==='function'){
-    partnerRequestsDivorce('💔 伴侣从你经典诺基亚里发现情人记录，提出离婚。',{playerPaysHalf:true});
-    return true;
-  }
+  queueAffairModal({
+    icon:'🚨',title:'手机里的情人记录',
+    html:'<p><b>'+pn+'</b> 从你的经典诺基亚里翻出情人/炮友记录：<b>'+names+'</b>。</p><p class="fold-meta">亲密度 -5 · 压力 +5</p>',
+    btn:'……',
+    onClose:function(){
+      if(Math.random()<0.45&&typeof partnerRequestsDivorce==='function'){
+        partnerRequestsDivorce('💔 伴侣从你经典诺基亚里发现情人记录，提出离婚。',{playerPaysHalf:true});
+      }
+    }
+  });
   return true;
 }
 function rollPartnerCaughtAffair(context){
@@ -531,10 +685,19 @@ function rollPartnerCaughtAffair(context){
   if(typeof adjustSpouseIntimacy==='function')adjustSpouseIntimacy(-3);
   if(typeof addStress==='function')addStress(3,'被发现 ');
   const what=context==='phone'?'联系情人':'聊骚';
+  const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
   addLog('🚨 伴侣发现你'+what+' · 亲密度-3 · 压力+3','fail');
-  if(p>=0.38&&Math.random()<0.32&&typeof partnerRequestsDivorce==='function'){
-    partnerRequestsDivorce('💔 伴侣发现你'+what+'，提出离婚。',{playerPaysHalf:true});
-  }
+  const caughtP=p;
+  queueAffairModal({
+    icon:'🚨',title:'偷情被撞见',
+    html:'<p><b>'+pn+'</b> 撞见你在'+what+'，场面一度非常尴尬。</p><p class="fold-meta">亲密度 -3 · 压力 +3</p>',
+    btn:'……',
+    onClose:function(){
+      if(caughtP>=0.38&&Math.random()<0.32&&typeof partnerRequestsDivorce==='function'){
+        partnerRequestsDivorce('💔 伴侣发现你'+what+'，提出离婚。',{playerPaysHalf:true});
+      }
+    }
+  });
   return true;
 }
 function contactGenderLabel(g){
@@ -567,7 +730,8 @@ function findContact(id){
   if(!game||!game.contacts)return null;
   return ensureContactAffairFields(game.contacts.find(x=>x.id===id)||null);
 }
-function createAffairContact(where,existing){
+function createAffairContact(where,existing,opts){
+  opts=opts||{};
   if(existing)return ensureContactAffairFields(existing);
   const jobs=game.market.filter(j=>!isOverAgeLimit(j));
   if(!jobs.length)return null;
@@ -591,6 +755,14 @@ function affairDurationWeeks(c){
   if(!c||!c.firstAffairWeek||!c.lastAffairWeek)return 0;
   return Math.max(0,c.lastAffairWeek-c.firstAffairWeek);
 }
+function affairRelationshipWeeks(c){
+  if(!c||!c.firstAffairWeek)return 0;
+  return Math.max(0,(game.week||0)-c.firstAffairWeek);
+}
+function affairRecentlyActive(c){
+  if(!c||!c.lastAffairWeek)return false;
+  return (game.week-c.lastAffairWeek)<=AFFAIR_RECENT_ACTIVE_WEEKS;
+}
 function recordAffairSession(contact){
   if(!contact)return;
   if(!contact.firstAffairWeek)contact.firstAffairWeek=game.week;
@@ -598,18 +770,224 @@ function recordAffairSession(contact){
   contact.affairCount=(contact.affairCount||0)+1;
   if(contact.affairStatus==='none')contact.affairStatus='affair';
   if(game.married&&!game.divorced)game.affairActive=true;
+  if(typeof recordStrangerSex==='function')recordStrangerSex(contact);
+}
+function playerAffairSessionCount(){
+  if(!game||!game.contacts)return 0;
+  return game.contacts.reduce((s,c)=>s+(c.affairCount||0),0);
+}
+function contactHasAffairRecord(c){
+  if(!c)return false;
+  const st=c.affairStatus;
+  return (c.affairCount||0)>0||st==='affair'||st==='fwb'||st==='married_affair'||st==='proposal_pending';
+}
+function playerHasAffairContactRecords(){
+  return !!(game&&game.contacts&&game.contacts.some(contactHasAffairRecord));
+}
+function purgeAffairEvidenceForContact(contactId){
+  if(pendingAffairContactId===contactId)pendingAffairContactId=null;
+  if(queuedAffairProposalId===contactId)queuedAffairProposalId=null;
+  if(game&&game.artifacts&&game.artifacts.stats&&Array.isArray(game.artifacts.stats.strangerSexIds)){
+    const idx=game.artifacts.stats.strangerSexIds.indexOf(contactId);
+    if(idx>=0)game.artifacts.stats.strangerSexIds.splice(idx,1);
+  }
+}
+function syncPlayerAffairStateFromContacts(){
+  if(!game)return;
+  if(playerHasAffairContactRecords()){
+    if(game.married&&!game.divorced)game.affairActive=true;
+    return;
+  }
+  if(game.partnerAffairActive)return;
+  game.affairActive=false;
+}
+function playerAffairStatusHtml(){
+  if(!game||!game.married||game.divorced)return '';
+  const sessions=playerAffairSessionCount();
+  if(game.affairActive){
+    return '<div style="color:var(--red)">婚外情进行中 · 幽会'+sessions+'次 · 月支出×2'+
+      '<div style="font-size:.66rem;color:var(--muted);margin-top:2px">规则：完成1次幽会即成立；维持约'+
+      AFFAIR_MIN_WEEKS_FOR_PROPOSAL+'周且近期有联系可能求婚；异性幽会有怀孕几率；已有亲生子则你无法再怀孕</div></div>';
+  }
+  if(sessions>0){
+    return '<div style="color:var(--orange);font-size:.72rem">婚外情已结束（曾幽会'+sessions+'次）</div>';
+  }
+  return '';
 }
 function triggerAffairEncounter(contactOrId,source){
   if(!game||game.gameOver||isPlayerImprisoned())return;
+  ensureAffairSlotFlags();
+  if(game.daily&&game.daily.affairDoneThisSlot){addLog('本时段已经幽会过','fail');return;}
+  if(game.daily&&(game.daily.slotHoursUsed||0)>0&&game.daily.slotActivity!=='out'&&game.daily.slotActivity!=='affair'){
+    addLog('本时段已有其他安排，无法幽会','fail');return;
+  }
   let contact=typeof contactOrId==='string'?findContact(contactOrId):contactOrId;
   if(!contact)contact=createAffairContact(source||'艳遇');
   if(!contact){addLog('艳遇未果','warn');return}
   pendingAffairContactId=contact.id;
-  showAffairLocationModal(contact.id,source||'艳遇');
+  const src=source||'艳遇';
+  const prof=typeof contactProfileLabel==='function'?contactProfileLabel(contact):contact.jobTitle;
+  const intro=typeof formatMeetPersonHtml==='function'
+    ?formatMeetPersonHtml(contact,src,false)+'<p style="color:var(--orange);margin-top:8px">气氛暧昧，你们越聊越投机…</p>'
+    :'<p>与 <b>'+contact.name+'</b>（'+prof+'）· '+src+'</p>';
+  if(typeof queuePersonEncounter==='function'){
+    queuePersonEncounter({
+      lane:'person',
+      icon:'💋',title:'艳遇 · '+src,html:intro,btn:'继续',
+      onClose:function(){showAffairLocationModal(contact.id,src)}
+    });
+  }else if(typeof queueEncounterModal==='function'){
+    queueEncounterModal({
+      lane:'person',
+      icon:'💋',title:'艳遇 · '+src,html:intro,btn:'继续',
+      onClose:function(){showAffairLocationModal(contact.id,src)}
+    });
+  }else showAffairLocationModal(contact.id,src);
+}
+function ensureAffairSlotFlags(){
+  const d=game&&game.daily;
+  if(!d)return;
+  if(d.affairDoneThisSlot==null)d.affairDoneThisSlot=false;
+  if(d.affairReservedThisSlot==null)d.affairReservedThisSlot=false;
+}
+function reserveAffairSlot(){
+  ensureAffairSlotFlags();
+  const d=game&&game.daily;
+  if(!d)return false;
+  if(d.affairDoneThisSlot){addLog('本时段已经幽会过','fail');return false;}
+  if(d.affairReservedThisSlot)return true;
+  if(d.slotActivity==='out'){
+    game._affairNestedInOut=true;
+    d.affairReservedThisSlot=true;
+    return true;
+  }
+  if((d.slotHoursUsed||0)>0){addLog('本时段已在安排其他事，无法幽会','fail');return false;}
+  if(typeof dailyUseMainActivity==='function'&&!dailyUseMainActivity())return false;
+  d.affairReservedThisSlot=true;
+  d.slotActivity='affair';
+  return true;
+}
+function releaseAffairSlot(){
+  const d=game&&game.daily;
+  if(!d)return;
+  if(game._affairNestedInOut){game._affairNestedInOut=false;return;}
+  if(d.affairReservedThisSlot){
+    d.affairReservedThisSlot=false;
+    d.slotActivity=null;
+    if(typeof dailyReleaseMainActivity==='function')dailyReleaseMainActivity();
+  }
+}
+function finishAffairSlotAdvance(){
+  pendingAffairContactId=null;
+  const d=game&&game.daily;
+  if(!d)return;
+  d.affairDoneThisSlot=true;
+  d.affairReservedThisSlot=false;
+  const nested=!!game._affairNestedInOut;
+  game._affairNestedInOut=false;
+  const hasPending=!!(game._eveningOutAffairPending||game._affairAfterClose);
+  if(!nested){
+    d.slotActivity=null;
+    if(!hasPending&&typeof dailyAdvanceAfterSlotAction==='function')dailyAdvanceAfterSlotAction();
+  }
+  drainAffairPendingCallbacks();
+  if(game._overtimeSocialEndAction){
+    const act=game._overtimeSocialEndAction;
+    game._overtimeSocialEndAction=null;
+    if(typeof applyOvertimeSocialEnd==='function')applyOvertimeSocialEnd(act);
+  }
+  if(typeof renderSpendingPanel==='function')renderSpendingPanel();
+  if(typeof renderDailyPanel==='function')renderDailyPanel();
+  if(typeof updateUI==='function')updateUI();
+}
+function queueAffairModal(opts){
+  if(!opts)return;
+  const payload={
+    lane:'person',
+    icon:opts.icon||'💋',
+    title:opts.title||'幽会',
+    html:opts.html||'',
+    btn:opts.btn,
+    buttons:opts.buttons,
+    onClose:opts.onClose,
+    logMsg:opts.logMsg
+  };
+  if(typeof queuePersonEncounter==='function'){
+    queuePersonEncounter(payload);
+    return;
+  }
+  const done=opts.onClose||function(){};
+  if(typeof showConsumeModalHandlers==='function'){
+    const btns=opts.buttons&&opts.buttons.length?opts.buttons.map(function(b){
+      return{text:b.text,primary:!!b.primary,handler:function(){
+        if(typeof b.handler==='function')b.handler();
+        if(typeof closeConsumeModal==='function')closeConsumeModal(true);
+        if(!b.keepOpen)done();
+      }};
+    }):[{text:opts.btn||'知道了',primary:true,handler:function(){
+      if(typeof closeConsumeModal==='function')closeConsumeModal(true);
+      done();
+    }}];
+    showConsumeModalHandlers({icon:payload.icon,title:payload.title,html:payload.html,buttons:btns});
+    return;
+  }
+  if(opts.logMsg&&typeof addLog==='function')addLog(opts.logMsg,'info');
+  done();
+}
+function drainAffairPendingCallbacks(){
+  if(!game)return;
+  const fn=game._eveningOutAffairPending||game._affairAfterClose;
+  game._eveningOutAffairPending=null;
+  game._affairAfterClose=null;
+  if(!fn)return;
+  if(typeof runAfterEncounterModals==='function')runAfterEncounterModals(fn);
+  else try{fn()}catch(e){console.error('affair pending',e)}
+}
+function showAffairResultModal(opts){
+  if(!opts)return;
+  queueAffairModal({
+    icon:opts.icon||'💋',
+    title:opts.title||'幽会',
+    html:opts.html||'',
+    btn:opts.btn||'知道了',
+    onClose:finishAffairSlotAdvance
+  });
+}
+function buildAffairSuccessNarrative(c,loc,stressRelief){
+  const name=c.name;
+  const locLbl=affairLocLabel(loc);
+  const narratives={
+    hotel:'你们在'+locLbl+'开了间房。门一关上，彼此心照不宣，这一时段在暧昧与喘息里飞快过去。',
+    luxury:'行政套房里灯光昏黄，'+name+' 低声说了句「就这一次」。你们在丝绸床单上纠缠，几乎忘了时间。',
+    toilet:'地点仓促，你们躲在'+locLbl+'解决欲望。心跳得厉害，但快感来得又快又猛。',
+    outdoor:'夜风拂过皮肤，你们在'+locLbl+'彼此取暖。远处偶有脚步声，反而更刺激。',
+    car:'座椅放倒，车窗起雾。狭窄空间里，你们用最原始的方式宣泄渴望。',
+    their_home:name+' 家里没人（或装作没人）。沙发、走廊、卧室——你们几乎没浪费任何角落。',
+    player_home:'把家门关上的一刻，理智就断了。你们在自己家里放肆了一整个时段。'
+  };
+  let h='<p>'+(narratives[loc]||('你与 '+name+' 在'+locLbl+'幽会，度过了一个隐秘的时段。'))+'</p>';
+  h+='<p class="fold-meta">压力 '+(stressRelief<0?stressRelief:'+'+stressRelief)+' · 本时段已占用</p>';
+  return h;
+}
+function concludeAffairEncounter(c,loc,payload){
+  const prof=typeof contactProfileLabel==='function'?contactProfileLabel(c):c.jobTitle;
+  if(payload&&payload.log)addLog(payload.log,payload.logType||'info');
+  let html=payload&&payload.html?payload.html:'';
+  if(payload&&payload.meta)html+='<p class="fold-meta">'+payload.meta+'</p>';
+  showAffairResultModal({
+    icon:payload&&payload.icon?payload.icon:'💋',
+    title:payload&&payload.title?payload.title:('幽会 · '+affairLocLabel(loc)),
+    html:html,
+    btn:payload&&payload.btn?payload.btn:'离开'
+  });
 }
 function showAffairLocationModal(contactId,source){
   const c=findContact(contactId);
   if(!c)return;
+  if(!reserveAffairSlot()){
+    pendingAffairContactId=null;
+    return;
+  }
   const ph=game.daily&&game.daily.phase||'evening';
   const spouseHome=isSpouseAtHome(ph);
   const hasCar=!!game.ownedCar;
@@ -630,60 +1008,127 @@ function showAffairLocationModal(contactId,source){
       L.label+'<br><span class="fold-meta">'+L.meta+'</span></button>';
   });
   html+='</div>';
-  showConsumeModal({icon:'💋',title:'选择幽会地点',html,buttons:[{text:'放弃',fn:'cancelAffairEncounter()'}]});
+  queueAffairModal({
+    icon:'💋',
+    title:'选择幽会地点',
+    html,
+    buttons:[{text:'放弃',handler:function(){cancelAffairEncounter(true)}}]
+  });
 }
-function cancelAffairEncounter(){
+function cancelAffairEncounter(fromPicker){
   pendingAffairContactId=null;
-  closeConsumeModal();
+  if(typeof closeConsumeModal==='function')closeConsumeModal(true);
+  releaseAffairSlot();
   addLog('你放弃了这次艳遇','info');
+  if(!fromPicker){
+    queueAffairModal({
+      icon:'💋',title:'已放弃艳遇',
+      html:'<p>你没有继续这次幽会。</p>',
+      btn:'知道了'
+    });
+  }
   if(game&&game._overtimeSocialEndAction){
     const act=game._overtimeSocialEndAction;
     game._overtimeSocialEndAction=null;
     if(typeof applyOvertimeSocialEnd==='function')applyOvertimeSocialEnd(act);
   }
+  if(typeof renderDailyPanel==='function')renderDailyPanel();
 }
 function pickAffairLocation(contactId,loc){
   const c=findContact(contactId);
   if(!c)return;
-  closeConsumeModal();
+  if(typeof closeConsumeModal==='function')closeConsumeModal(true);
   resolveAffairLocation(c,loc);
+}
+function affairCashFailModal(locLabel,cost){
+  releaseAffairSlot();
   pendingAffairContactId=null;
+  queueAffairModal({
+    icon:'💸',
+    title:'幽会 · 现金不足',
+    html:'<p>你想在<b>'+locLabel+'</b>幽会，但现金不够（需 ¥'+cost.toLocaleString()+'）。</p>',
+    btn:'算了'
+  });
 }
 function resolveAffairLocation(c,loc){
   const ph=game.daily&&game.daily.phase||'evening';
+  const prof=typeof contactProfileLabel==='function'?contactProfileLabel(c):c.jobTitle;
   let stressRelief=-3;
+  let costNote='';
   if(loc==='hotel'){
-    if(!spendCash(AFFAIR_HOTEL_COST,'幽会·酒店'))return;
+    if(!spendCash(AFFAIR_HOTEL_COST,'幽会·酒店')){
+      addLog('现金不足，无法开房','fail');
+      affairCashFailModal('普通酒店',AFFAIR_HOTEL_COST);return;
+    }
+    costNote='花费 ¥'+AFFAIR_HOTEL_COST;
+    if(typeof onArtifactHotelVisit==='function')onArtifactHotelVisit();
   }else if(loc==='luxury'){
-    if(!spendCash(AFFAIR_LUXURY_HOTEL_COST,'幽会·五星酒店'))return;
+    if(!spendCash(AFFAIR_LUXURY_HOTEL_COST,'幽会·五星酒店')){
+      addLog('现金不足，无法入住五星酒店','fail');
+      affairCashFailModal('五星酒店',AFFAIR_LUXURY_HOTEL_COST);return;
+    }
+    costNote='花费 ¥'+AFFAIR_LUXURY_HOTEL_COST;
+    if(typeof onArtifactHotelVisit==='function')onArtifactHotelVisit();
     addStress(-1,'五星酒店 ');
     stressRelief=-5;
   }else if(loc==='toilet'){
     if(Math.random()<0.28){
-      if(!collectFromPlayer(AFFAIR_BLACKMAIL_TOILET,'厕所幽会被勒索'))addLog('无力支付勒索 ¥'+AFFAIR_BLACKMAIL_TOILET,'fail');
-      else addLog('厕所幽会被发现，勒索 ¥'+AFFAIR_BLACKMAIL_TOILET,'fail');
+      let html='<p>你们刚躲进隔间，就有人撞破。对方勒索封口费，场面极其难堪。</p><p class="fold-meta">厕所幽会 · 被撞破</p>';
+      if(!collectFromPlayer(AFFAIR_BLACKMAIL_TOILET,'厕所幽会被勒索')){
+        html+='<p style="color:var(--red)">你拿不出 ¥'+AFFAIR_BLACKMAIL_TOILET+'，对方扬言要曝光。</p>';
+        concludeAffairEncounter(c,loc,{icon:'🚽',title:'幽会 · 厕所翻车',html:html,log:'无力支付勒索 ¥'+AFFAIR_BLACKMAIL_TOILET,logType:'fail',btn:'狼狈离开'});
+      }else{
+        if(typeof recordImprisonOrExtort==='function')recordImprisonOrExtort();
+        html+='<p style="color:var(--red)">你被迫支付 ¥'+AFFAIR_BLACKMAIL_TOILET+' 才脱身。</p>';
+        concludeAffairEncounter(c,loc,{icon:'🚽',title:'幽会 · 厕所翻车',html:html,log:'厕所幽会被发现，勒索 ¥'+AFFAIR_BLACKMAIL_TOILET,logType:'fail',btn:'狼狈离开'});
+      }
       return;
     }
   }else if(loc==='outdoor'){
     if(Math.random()<0.18){
       addStress(4,'户外被发现 ');
-      addLog('🌿 户外幽会被人撞见，尴尬压力+4','warn');
+      concludeAffairEncounter(c,loc,{
+        icon:'🌿',title:'幽会 · 户外被撞见',
+        html:'<p>你们正在'+affairLocLabel(loc)+'亲热，远处有人经过，尴尬到极点。</p><p class="fold-meta">压力 +4 · 本时段已占用</p>',
+        log:'🌿 户外幽会被人撞见，尴尬压力+4',logType:'warn',btn:'赶紧离开'
+      });
+      return;
     }
     if(Math.random()<0.1&&game.married&&!game.divorced){
       partnerRequestsDivorce('💔 户外偷情被曝光，伴侣提出离婚。',{playerPaysHalf:true});
+      concludeAffairEncounter(c,loc,{
+        icon:'🌿',title:'幽会 · 户外曝光',
+        html:'<p>你们以为四下无人，却被熟人认了出来。消息很快传开。</p><p style="color:var(--red)">伴侣提出离婚。</p>',
+        log:'💔 户外偷情被曝光',logType:'fail',btn:'……'
+      });
       return;
     }
   }else if(loc==='car'){
     if(Math.random()<0.22&&game.married&&!game.divorced){
       partnerRequestsDivorce('💔 车内偷情被发现，伴侣提出离婚。',{playerPaysHalf:true});
+      concludeAffairEncounter(c,loc,{
+        icon:'🚗',title:'幽会 · 车内败露',
+        html:'<p>车窗上的雾气、凌乱的衣服——一切都被撞破。伴侣当场提出离婚。</p>',
+        log:'💔 车内偷情被发现',logType:'fail',btn:'……'
+      });
       return;
     }
-    if(Math.random()<0.15)addStress(2,'车内紧张 ');
+    if(Math.random()<0.15){
+      addStress(2,'车内紧张 ');
+      stressRelief=-1;
+      costNote='紧张感 +2 压力';
+    }
   }else if(loc==='their_home'){
     if(c.hasPartner&&Math.random()<0.32){
+      let html='<p>你们以为安全，在 <b>'+c.name+'</b> 家里偷欢时，对方伴侣却突然回家。场面一度失控。</p><p class="fold-meta">对方家里 · 被撞破</p>';
       if(!collectFromPlayer(AFFAIR_BLACKMAIL_PARTNER_HOME,'对方家里幽会被勒索')){
-        addLog('无力支付勒索 ¥'+AFFAIR_BLACKMAIL_PARTNER_HOME,'fail');
-      }else addLog('🚨 在对方家里被其伴侣发现，勒索 ¥'+AFFAIR_BLACKMAIL_PARTNER_HOME,'fail');
+        html+='<p style="color:var(--red)">你无力支付 ¥'+AFFAIR_BLACKMAIL_PARTNER_HOME+' 封口费。</p>';
+        concludeAffairEncounter(c,loc,{icon:'🏠',title:'幽会 · 对方家里翻车',html:html,log:'无力支付勒索 ¥'+AFFAIR_BLACKMAIL_PARTNER_HOME,logType:'fail',btn:'逃离'});
+      }else{
+        if(typeof recordImprisonOrExtort==='function')recordImprisonOrExtort();
+        html+='<p style="color:var(--red)">你咬牙支付 ¥'+AFFAIR_BLACKMAIL_PARTNER_HOME+' 才没被当场闹大。</p>';
+        concludeAffairEncounter(c,loc,{icon:'🏠',title:'幽会 · 对方家里翻车',html:html,log:'🚨 在对方家里被其伴侣发现，勒索 ¥'+AFFAIR_BLACKMAIL_PARTNER_HOME,logType:'fail',btn:'逃离'});
+      }
       return;
     }
     if(c.hasPartner&&Math.random()<0.22){
@@ -691,18 +1136,32 @@ function resolveAffairLocation(c,loc){
       if(pb>=tb+Math.floor(Math.random()*16)-8){
         imprisonActor(IMPRISON_WEEKS,'打架获胜');
         collectFromPlayer(10000,'打架赔偿');
-        addLog('👊 与对方伴侣冲突，你打赢但被拘押并赔偿 ¥1万','fail');
+        concludeAffairEncounter(c,loc,{
+          icon:'👊',title:'幽会 · 对方家里打架',
+          html:'<p>在 <b>'+c.name+'</b> 家里，对方伴侣冲进来与你们扭打。你勉强占了上风，但警察很快赶到。</p><p style="color:var(--red)">被拘押 '+IMPRISON_WEEKS+' 周 · 赔偿 ¥1万</p>',
+          log:'👊 与对方伴侣冲突，你打赢但被拘押并赔偿 ¥1万',logType:'fail',btn:'认栽'
+        });
         return;
       }
       game.cash=(game.cash||0)+10000;
       game.money=(game.money||0)+10000;
       ledgerAddIncome('affair','💰','冲突对方入狱赔偿',10000);
       c.imprisonedUntilWeek=game.week+IMPRISON_WEEKS;
-      addLog('👊 冲突中落败方入狱，你获得 ¥1万','info');
+      concludeAffairEncounter(c,loc,{
+        icon:'👊',title:'幽会 · 对方家里打架',
+        html:'<p>在 <b>'+c.name+'</b> 家里一场混战之后，对方伴侣落败入狱。你惊魂未定地整理衣服。</p><p class="fold-meta">意外获得 ¥1万 · 本时段已占用</p>',
+        log:'👊 冲突中落败方入狱，你获得 ¥1万',logType:'info',btn:'离开'
+      });
+      return;
     }
   }else if(loc==='player_home'){
     if(ph==='morning'&&Math.random()<0.35&&game.married&&!game.divorced){
       partnerRequestsDivorce('💔 白天偷情时伴侣突然回家，提出离婚。',{playerPaysHalf:true});
+      concludeAffairEncounter(c,loc,{
+        icon:'🏠',title:'幽会 · 家里被撞破',
+        html:'<p>你们在自己家里正缠绵，伴侣突然推门而入。空气凝固了。</p><p style="color:var(--red)">伴侣提出离婚。</p><p class="fold-meta">玩家家里 · 白天偷情</p>',
+        log:'💔 白天偷情时伴侣突然回家',logType:'fail',btn:'……'
+      });
       return;
     }
   }
@@ -713,21 +1172,15 @@ function resolveAffairLocation(c,loc){
   if(c0)c0.sexSessions=(c0.sexSessions||0)+1;
   tryAffairEncounterPregnancy(c,loc);
   if(typeof tryContractStdFromStranger==='function')tryContractStdFromStranger(c.name);
-  const prof=typeof contactProfileLabel==='function'?contactProfileLabel(c):c.jobTitle;
-  addLog('💋 与 '+c.name+'（'+prof+'）幽会（'+affairLocLabel(loc)+'）','info');
-  if(game._overtimeSocialEndAction){
-    const act=game._overtimeSocialEndAction;
-    game._overtimeSocialEndAction=null;
-    if(typeof applyOvertimeSocialEnd==='function')applyOvertimeSocialEnd(act);
-  }else if(game.daily){
-    if(game.daily.phase==='allnight')renderDailyPanel();
-    else if(game.daily.phase==='morning')dailyAdvanceAfterSlotAction();
-    else if(game.daily.phase==='evening'){
-      game.daily.slotHoursUsed=typeof SLOT_HOURS_TOTAL!=='undefined'?SLOT_HOURS_TOTAL:8;
-      setTimeout(function(){if(typeof showEveningEndChoiceModal==='function')showEveningEndChoiceModal()},60);
-    }
-  }
-  renderSpendingPanel();renderDailyPanel();updateUI();
+  let html=buildAffairSuccessNarrative(c,loc,stressRelief);
+  if(costNote)html+='<p class="fold-meta">'+costNote+'</p>';
+  html+='<p class="fold-meta">与 <b>'+c.name+'</b>（'+prof+'）· '+affairLocLabel(loc)+'</p>';
+  concludeAffairEncounter(c,loc,{
+    html:html,
+    log:'💋 与 '+c.name+'（'+prof+'）幽会（'+affairLocLabel(loc)+'）',
+    logType:'info',
+    btn:'结束幽会'
+  });
 }
 function affairLocLabel(k){
   return {hotel:'酒店',luxury:'五星酒店',toilet:'厕所',outdoor:'户外',car:'车里',their_home:'对方家里',player_home:'家里'}[k]||k;
@@ -744,6 +1197,11 @@ function startContactAffair(contactId){
   if(ph!=='morning'&&ph!=='evening'&&ph!=='allnight'){
     addLog('请在白天、晚上或通宵时段联系','fail');return;
   }
+  ensureAffairSlotFlags();
+  if(game.daily&&game.daily.affairDoneThisSlot){addLog('本时段已经幽会过','fail');return;}
+  if(game.daily&&(game.daily.slotHoursUsed||0)>0&&game.daily.slotActivity!=='out'){
+    addLog('本时段已有其他安排，无法幽会','fail');return;
+  }
   triggerAffairEncounter(c.id,'通讯录');
 }
 function tickAffairRelationships(){
@@ -754,25 +1212,51 @@ function tickAffairRelationships(){
     tickAffairWifePregnancy(c);
     if(c.pregnancyMarryAgreed&&c.pregnancyMarryDeadlineWeek&&game.week>=c.pregnancyMarryDeadlineWeek&&c.affairStatus!=='married_affair'){
       addLog('💔 未在期限内与 '+c.name+' 结婚','fail');
-      applyPregnancyBlackmailRefuseFx(c,{rape:false});
-      cutContactForever(c);
+      queueAffairModal({
+        icon:'💔',title:'限期结婚逾期',
+        html:'<p>你未在期限内与 <b>'+c.name+'</b> 完婚，对方翻脸。</p>',
+        btn:'……',
+        onClose:function(){
+          applyPregnancyBlackmailRefuseFx(c,{rape:false});
+          cutContactForever(c);
+        }
+      });
       return;
     }
     if(c.affairStatus==='proposal_pending'&&c.marriageAgreedWeek){
       if(game.week%WEEKS_PER_MONTH===0){
         addLog('💍 '+c.name+' 催促你完婚（婚外情）','warn');
         c.marriageUrgeCount=(c.marriageUrgeCount||0)+1;
+        if(typeof autoLifeRunning==='undefined'||!autoLifeRunning){
+          queueAffairModal({
+            icon:'💍',title:c.name+' 催你完婚',
+            html:'<p><b>'+c.name+'</b> 又催你办婚礼了。逾期可能被勒索或被告密。</p><p class="fold-meta">婚礼费用 ¥'+AFFAIR_WEDDING_COST.toLocaleString()+'</p>',
+            buttons:[
+              {text:'稍后',handler:function(){}},
+              {text:'现在办婚礼',primary:true,handler:function(){promptAffairWedding(c.id)}}
+            ]
+          });
+        }
       }
       if(game.week-c.marriageAgreedWeek>=AFFAIR_WEDDING_DEADLINE_WEEKS){
         if(!collectFromPlayer(AFFAIR_BLACKMAIL_NO_WEDDING,c.name+'勒索')){
           partnerRequestsDivorce('💔 '+c.name+' 向伴侣告密。');
-        }else addLog('💸 '+c.name+' 因迟迟不结婚勒索 ¥10万','fail');
+        }else{
+          addLog('💸 '+c.name+' 因迟迟不结婚勒索 ¥10万','fail');
+          queueAffairModal({
+            icon:'💸',title:'迟迟不结婚 · 被勒索',
+            html:'<p><b>'+c.name+'</b> 因你拖延婚礼，勒索 ¥'+AFFAIR_BLACKMAIL_NO_WEDDING.toLocaleString()+' 封口。</p>',
+            btn:'认了'
+          });
+        }
         c.affairStatus='affair';
         c.marriageAgreedWeek=0;
       }
     }
-    if((c.affairStatus==='affair'||c.affairStatus==='fwb')&&c.affairCount>0&&affairDurationWeeks(c)>=AFFAIR_MIN_WEEKS_FOR_PROPOSAL){
-      if(!c.proposalShown&&Math.random()<0.06){
+    if((c.affairStatus==='affair'||c.affairStatus==='fwb')&&c.affairCount>0
+      &&affairRelationshipWeeks(c)>=AFFAIR_MIN_WEEKS_FOR_PROPOSAL
+      &&affairRecentlyActive(c)){
+      if(!c.proposalShown&&Math.random()<AFFAIR_PROPOSAL_WEEKLY_CHANCE){
         c.proposalShown=true;
         queueAffairMarriageProposal(c.id);
       }
@@ -788,57 +1272,90 @@ function queueAffairMarriageProposal(contactId){
     addLog('💍 '+c.name+' 提出结婚（自动生活结束后请处理）','warn');
     return;
   }
-  if(game.divorced&&affairDurationWeeks(c)<AFFAIR_MIN_WEEKS_FOR_PROPOSAL+26){
-    showConsumeModal({
+  if(game.divorced&&affairRelationshipWeeks(c)<AFFAIR_MIN_WEEKS_FOR_PROPOSAL+12){
+    queueAffairModal({
       icon:'💍',title:c.name+' 再次提出关系',
       html:'你已离婚。可选择秘密结婚（¥'+(AFFAIR_WEDDING_COST/10000)+'万）或做长期炮友（对方可能不同意）。',
       buttons:[
-        {text:'拒绝',fn:'rejectAffairMarriage(\''+contactId+'\')'},
-        {text:'长期炮友',fn:'agreeAffairFwb(\''+contactId+'\')'},
-        {text:'答应结婚',primary:true,fn:'agreeAffairMarriage(\''+contactId+'\')'}
+        {text:'拒绝',handler:function(){rejectAffairMarriage(contactId)}},
+        {text:'长期炮友',handler:function(){agreeAffairFwb(contactId)}},
+        {text:'答应结婚',primary:true,handler:function(){agreeAffairMarriage(contactId)}}
       ]
     });
     return;
   }
-  showConsumeModal({
+  queueAffairModal({
     icon:'💍',title:c.name+' 提出结婚',
     html:'你们已保持关系超过半年。<br>答应：需办婚礼 ¥'+(AFFAIR_WEDDING_COST/10000)+'万，对方能力/收入影响压力。<br>拒绝：对方可能告诉你的伴侣。',
     buttons:[
-      {text:'拒绝',fn:'rejectAffairMarriage(\''+contactId+'\')'},
-      {text:'答应',primary:true,fn:'agreeAffairMarriage(\''+contactId+'\')'}
+      {text:'拒绝',handler:function(){rejectAffairMarriage(contactId)}},
+      {text:'答应',primary:true,handler:function(){agreeAffairMarriage(contactId)}}
     ]
   });
 }
 function agreeAffairFwb(contactId){
-  closeConsumeModal();
+  if(typeof closeConsumeModal==='function')closeConsumeModal(true);
   const c=findContact(contactId);
   if(!c)return;
   if(Math.random()<0.38){
     addLog('💔 '+c.name+' 不愿只做炮友，关系结束','fail');
     c.affairStatus='ended';
+    queueAffairModal({
+      icon:'💔',title:'炮友提议被拒',
+      html:'<p><b>'+c.name+'</b> 不愿只做炮友，关系就此结束。</p>',
+      btn:'知道了'
+    });
+    updateUI();
     return;
   }
   c.affairStatus='fwb';
   addLog('🤝 与 '+c.name+' 成为长期炮友','info');
+  queueAffairModal({
+    icon:'🤝',title:'长期炮友',
+    html:'<p>你与 <b>'+c.name+'</b> 约定保持长期炮友关系。</p>',
+    btn:'知道了'
+  });
   updateUI();
 }
 function rejectAffairMarriage(contactId){
-  closeConsumeModal();
+  if(typeof closeConsumeModal==='function')closeConsumeModal(true);
   const c=findContact(contactId);
   if(!c)return;
   c.playerRefusedMarriage=true;
   if(game.married&&!game.divorced){
-    partnerRequestsDivorce('💔 '+c.name+' 向你的伴侣告密，提出离婚。');
-  }else addLog('💔 '+c.name+' 因被拒而离去','warn');
+    queueAffairModal({
+      icon:'🚨',title:'拒婚 · 被告密',
+      html:'<p>你拒绝了 <b>'+c.name+'</b> 的求婚，对方转头向你的伴侣告密。</p>',
+      btn:'……',
+      onClose:function(){
+        partnerRequestsDivorce('💔 '+c.name+' 向你的伴侣告密，提出离婚。');
+      }
+    });
+  }else{
+    addLog('💔 '+c.name+' 因被拒而离去','warn');
+    queueAffairModal({
+      icon:'💔',title:'求婚被拒',
+      html:'<p><b>'+c.name+'</b> 因被拒而愤然离去，关系结束。</p>',
+      btn:'知道了'
+    });
+  }
 }
 function agreeAffairMarriage(contactId){
-  closeConsumeModal();
+  if(typeof closeConsumeModal==='function')closeConsumeModal(true);
   const c=findContact(contactId);
   if(!c)return;
   c.affairStatus='proposal_pending';
   c.marriageAgreedWeek=game.week;
   c.marriageUrgeCount=0;
   addLog('💍 答应与 '+c.name+' 结婚，请尽快办婚礼（¥'+(AFFAIR_WEDDING_COST/10000)+'万，逾期可能被勒索）','info');
+  queueAffairModal({
+    icon:'💍',title:'答应结婚',
+    html:'<p>你答应与 <b>'+c.name+'</b> 结婚，请尽快办婚礼。</p><p class="fold-meta">费用 ¥'+AFFAIR_WEDDING_COST.toLocaleString()+' · 逾期可能被勒索</p>',
+    buttons:[
+      {text:'稍后',handler:function(){}},
+      {text:'现在办婚礼',primary:true,handler:function(){promptAffairWedding(contactId)}}
+    ]
+  });
 }
 function completeAffairWedding(contactId){
   const c=findContact(contactId);
@@ -848,13 +1365,16 @@ function completeAffairWedding(contactId){
   c.marriageAgreedWeek=0;
   c.pregnancyMarryAgreed=false;
   c.pendingPregnancyBlackmail=false;
+  let wedHtml='<p>你与 <b>'+c.name+'</b> 秘密成婚，婚外情状态开启。</p>';
   if(c.pregnantByPlayer||c.pregnancyMarryAgreed){
     if(Math.random()<AFFAIR_WEDDING_PREGNANCY_REVEAL){
       c.wifePregnantConfirmed=true;
       c.babyDueWeek=game.week+(typeof PREGNANCY_WEEKS!=='undefined'?PREGNANCY_WEEKS:40);
       addLog('💒 婚后发现 '+c.name+' 已怀孕！','success');
+      wedHtml+='<p style="color:var(--orange)">婚后才发现她真的怀孕了。</p>';
     }else{
       addLog('💒 与 '+c.name+' 成婚，她并未怀孕','info');
+      wedHtml+='<p class="fold-meta">婚后确认她并未怀孕。</p>';
     }
     c.pregnantByPlayer=false;
     c.pregnancyMarryDeadlineWeek=0;
@@ -862,18 +1382,29 @@ function completeAffairWedding(contactId){
   game.affairActive=true;
   const theirStats=(c.body||0)+(c.mind||0)+(c.spirit||0);
   const myStats=effStat('body')+effStat('mind')+effStat('spirit');
-  if(theirStats>myStats)addStress(-10,'情人更强 ');
-  else if(theirStats<myStats)addStress(10,'情人更弱 ');
+  let stressNote='';
+  if(theirStats>myStats){addStress(-10,'情人更强 ');stressNote='情人综合能力更强 · 压力 -10<br>';}
+  else if(theirStats<myStats){addStress(10,'情人更弱 ');stressNote='情人综合能力更弱 · 压力 +10<br>';}
   const myInc=getPlayerAnnualIncome(),theirInc=c.income||0;
-  if(theirInc>myInc)addStress(-10,'情人收入更高 ');
-  else if(theirInc<myInc)addStress(10,'情人收入更低 ');
+  if(theirInc>myInc){addStress(-10,'情人收入更高 ');stressNote+='情人收入更高 · 压力 -10<br>';}
+  else if(theirInc<myInc){addStress(10,'情人收入更低 ');stressNote+='情人收入更低 · 压力 +10<br>';}
   addLog('💒 与 '+c.name+' 秘密成婚 · 婚外情状态开启','stress');
+  if(stressNote)wedHtml+='<p class="fold-meta">'+stressNote+'</p>';
+  queueAffairModal({icon:'💒',title:'秘密婚礼',html:wedHtml,btn:'知道了'});
   updateUI();
 }
 function promptAffairWedding(contactId){
-  if(confirm('与 '+findContact(contactId).name+' 举办婚礼？费用 ¥'+AFFAIR_WEDDING_COST.toLocaleString())){
-    completeAffairWedding(contactId);
-  }
+  const c=findContact(contactId);
+  if(!c)return;
+  queueAffairModal({
+    icon:'💒',
+    title:'举办婚礼',
+    html:'<p>是否与 <b>'+c.name+'</b> 举办秘密婚礼？</p><p class="fold-meta">费用 ¥'+AFFAIR_WEDDING_COST.toLocaleString()+'</p>',
+    buttons:[
+      {text:'取消',handler:function(){}},
+      {text:'举办婚礼',primary:true,handler:function(){completeAffairWedding(contactId)}}
+    ]
+  });
 }
 function renderContactAffairBtn(c){
   if(!game.married||game.divorced||isPlayerImprisoned())return '';

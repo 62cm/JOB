@@ -28,6 +28,9 @@ function getAllnightStreak(){return game&&(game.allnightStreak||0)||0}
 function setAllnightStreak(n){if(game)game.allnightStreak=Math.max(0,n||0)}
 function getCompanionAllnightStreak(){return game&&(game.companionAllnightStreak||0)||0}
 function setCompanionAllnightStreak(n){if(game)game.companionAllnightStreak=Math.max(0,n||0)}
+function clearCompanionAllnightStreak(){
+  if(game&&(game.companionAllnightStreak||0)>0)setCompanionAllnightStreak(0);
+}
 function allnightNoSleepDeathRate(streak){
   if(streak>=5)return 1;
   if(streak<1)return 0;
@@ -58,14 +61,12 @@ function rollAllnightSuddenDeath(streak){
 }
 function renderAllnightStreakHint(){
   const s=getAllnightStreak();
-  if(!s)return '';
-  return '<p style="color:var(--orange);font-size:.72rem">已连续通宵未睡 '+s+' 天</p>';
+  return '<p style="color:var(--orange);font-size:.72rem">'+(s?'已连续通宵未睡 '+s+' 天':'未通宵')+'</p>';
 }
 function renderCompanionAllnightStreakHint(){
   const s=getCompanionAllnightStreak();
-  if(!s)return '';
   const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
-  return '<p style="color:var(--orange);font-size:.72rem">'+pn+'已连续通宵未睡 '+s+' 天</p>';
+  return '<p style="color:var(--orange);font-size:.72rem">'+pn+'：'+(s?'已连续通宵未睡 '+s+' 天':'未通宵')+'</p>';
 }
 function renderEmployedJobBar(){
   if(!game||!game.employed||!game.employment)return '';
@@ -75,18 +76,18 @@ function renderEmployedJobBar(){
   ensureMonthlyAbsenceMonth();
   const abs=game.monthlyAbsenceCount||0;
   const absHtml=abs>0?' · <span style="color:var(--red)">本月旷工 <b>'+abs+'</b>/'+MONTHLY_ABSENCE_LIMIT+'</span>':'';
+  const ownerImmune=typeof playerEmployerAcquired==='function'&&playerEmployerAcquired();
+  const resignBtn=ownerImmune
+    ?'<span class="fold-meta" style="margin-left:8px;color:var(--green)">已收购·不可辞职</span>'
+    :' <button type="button" class="btn btn-warn" style="font-size:.68rem;padding:2px 8px;margin-left:8px" onclick="confirmPlayerResign()">辞职</button>';
   return '<div class="daily-employ" style="font-size:.78rem;margin-bottom:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">'+
-    '💼 在职：<b>'+job.title+'</b> @ '+co.name+absHtml+
-    ' <button type="button" class="btn btn-warn" style="font-size:.68rem;padding:2px 8px;margin-left:8px" onclick="confirmPlayerResign()">辞职</button></div>';
+    '💼 在职：<b>'+job.title+'</b> @ '+co.name+absHtml+resignBtn+'</div>';
 }
 function renderAllnightStreakRow(){
   const ps=getAllnightStreak(),cs=getCompanionAllnightStreak();
-  if(!ps&&!cs)return '';
   const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
-  let t='';
-  if(ps)t+='你已连续通宵未睡 '+ps+' 天';
-  if(ps&&cs)t+=' · ';
-  if(cs)t+=pn+'已连续通宵未睡 '+cs+' 天';
+  let t='你：'+(ps?'已连续通宵未睡 '+ps+' 天':'未通宵');
+  if(game.married&&!game.divorced)t+=' · '+pn+'：'+(cs?'已连续通宵未睡 '+cs+' 天':'未通宵');
   return '<p style="color:var(--orange);font-size:.72rem;margin:0 0 6px">'+t+'</p>';
 }
 
@@ -97,7 +98,7 @@ function defaultDailyState(){
     morningWorkDone:false,eveningShiftDone:false,allnightShiftDone:false,eveningOtTried:false,phoneSwitchedThisSlot:false,
     allnightDay:false,noHomeReturnDay:false,partnerRecallResolved:false,
     partnerOutForFun:false,partnerPresenceRolled:false,partnerInviteOutChecked:false,partnerInviteOutResolved:false,playerCalledPartnerHome:false,
-    partnerAllnightActive:false,partnerForcedAsleep:false,partnerAllnightStayedOut:false,allnightEndModalShown:false,eveningEndModalShown:false,partnerCatchUpSleep:false,allnightArrivalPending:false};
+    partnerAllnightActive:false,partnerForcedAsleep:false,partnerAllnightStayedOut:false,allnightEndModalShown:false,eveningEndModalShown:false,partnerCatchUpSleep:false,companionMorningSkipLogged:false,allnightArrivalPending:false,villaPartyUsed:false};
 }
 function dailySlotHoursLeft(){
   const d=game&&game.daily;return SLOT_HOURS_TOTAL-((d&&d.slotHoursUsed)||0);
@@ -110,6 +111,7 @@ function resetDailySlotFlags(keepPartnerPresence){
   const d=ensureDailyState();if(!d)return;
   d.slotHoursUsed=0;d.slotSexUsed=false;d.slotMasturbateUsed=false;d.slotSnackUsed=false;
   d.slotActivity=null;d.inOvertime=false;d.phoneSwitchedThisSlot=false;
+  d.affairReservedThisSlot=false;d.affairDoneThisSlot=false;
   if(!keepPartnerPresence){
     d.partnerPresenceRolled=false;
     d.partnerOutForFun=false;
@@ -165,10 +167,13 @@ function dailyAdvanceAfterSlotAction(){
   }
   else if(ph==='evening'){
     const d=game.daily;
-    if(d)d.slotHoursUsed=SLOT_HOURS_TOTAL;
-    addLog('🌙 今晚 '+SLOT_HOURS_TOTAL+'h 已过，请选择睡觉或进入后半夜','warn');
+    if(d){
+      d.slotHoursUsed=SLOT_HOURS_TOTAL;
+      d.subMenu=null;
+      d.slotActivity=null;
+    }
+    addLog('🌙 今晚 '+SLOT_HOURS_TOTAL+'h 已过，请在日程面板选择睡觉或进入后半夜','warn');
     renderDailyPanel();updateUI();
-    setTimeout(function(){if(typeof showEveningEndChoiceModal==='function')showEveningEndChoiceModal()},60);
     return;
   }else if(ph==='allnight'){
     const d=game.daily;
@@ -248,12 +253,33 @@ function renderAllnightSleepRows(leftA,exhausted){
   }
   return h;
 }
+function eveningEndChoicePending(){
+  const d=game&&game.daily;
+  if(!d||d.phase!=='evening'||!dailySlotBlocked())return false;
+  if(d.inOvertime||d.slotActivity==='work'||d.slotActivity==='overtime')return false;
+  return true;
+}
+function renderEveningEndChoiceRows(){
+  if(!eveningEndChoicePending())return '';
+  const fromSlack=!!(game&&game._eveningEndAfterSlackSocial);
+  if(game)game._eveningEndAfterSlackSocial=false;
+  let h='<div class="evening-end-choice" style="margin:10px 0;padding:10px;border:1px solid var(--orange);border-radius:8px;background:rgba(240,136,62,.06)">';
+  h+='<p style="color:var(--orange);font-size:.85rem;margin:0 0 6px">'+(fromSlack?'🍻 联谊后回家 · ':'')+'今晚 8h 已用尽</p>';
+  h+='<p class="fold-meta" style="margin:0 0 8px">请在下方选择：睡觉进入次日白天，或不睡进入后半夜（金色时段 · 压力+10）</p>';
+  h+='<button class="btn btn-primary" onclick="confirmEveningEndChoice(\'sleep\')">😴 睡觉（次日白天）</button> ';
+  h+='<button class="btn btn-warn" onclick="confirmEveningEndChoice(\'allnight\')">🌙 不睡，进入后半夜（+8h · 压力+10）</button>';
+  h+='</div>';
+  return h;
+}
 function companionAllnightEndChoiceLabel(choice){
+  if(choice==='rested')return '😴 昨夜已入睡（白天正常起床）';
   return choice==='sleep'?'😴 第二天白天补觉':'☀ 通宵不睡';
 }
 function ensureCompanionEndChoicePreview(){
-  if(typeof isPartnerAllnightSleeping==='function'&&isPartnerAllnightSleeping())return 'sleep';
+  if(typeof isPartnerAllnightSleeping==='function'&&isPartnerAllnightSleeping())return 'rested';
   if(game._companionSleepChoice!=null)return game._companionSleepChoice;
+  if(game.daily&&game.daily.phase==='allnight'&&game.lastCompanionAllnightSleepChoice)
+    return game.lastCompanionAllnightSleepChoice;
   const c=rollCompanionSleepChoice();
   game._companionSleepChoice=c;
   return c;
@@ -264,7 +290,10 @@ function renderAllnightPartnerChoiceHint(){
   if(!game.married||game.divorced||game.longDistance)return '';
   const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
   if(typeof isPartnerAllnightSleeping==='function'&&isPartnerAllnightSleeping()){
-    return '<p style="color:var(--muted);font-size:.72rem;margin:6px 0 0">'+pn+'：😴 睡梦中（你选作息后自动随行）</p>';
+    return '<p style="color:var(--muted);font-size:.72rem;margin:6px 0 0">'+pn+'：😴 睡梦中（已休息 · 白天正常起床）</p>';
+  }
+  if(game.companionAllnightChoiceResolved&&game.lastCompanionAllnightSleepChoice){
+    return '<p style="color:var(--orange);font-size:.72rem;margin:6px 0 0">'+pn+' 的选择：<b>'+companionAllnightEndChoiceLabel(game.lastCompanionAllnightSleepChoice)+'</b></p>';
   }
   const c=ensureCompanionEndChoicePreview();
   const outNote=(d.partnerAllnightStayedOut||d.partnerOutForFun)?' · 在外面玩了一宿':'';
@@ -272,6 +301,9 @@ function renderAllnightPartnerChoiceHint(){
 }
 function resolvePartnerAllnightEndChoice(){
   if(!game.married||game.divorced||game.longDistance)return null;
+  if(game.companionAllnightChoiceResolved){
+    return game.lastCompanionAllnightSleepChoice||'nosleep';
+  }
   const compChoice=ensureCompanionEndChoicePreview();
   game._companionSleepChoice=null;
   resolveCompanionSleepChoice(compChoice);
@@ -287,7 +319,9 @@ function showAllnightExhaustedModal(){
   let partnerHtml='';
   if(hasPartner){
     if(typeof isPartnerAllnightSleeping==='function'&&isPartnerAllnightSleeping()){
-      partnerHtml='<p style="margin-top:8px">'+pn+'：<b>😴 睡梦中</b>（你选作息后自动随行）</p>';
+      partnerHtml='<p style="margin-top:8px">'+pn+'：<b>😴 睡梦中</b>（已休息 · 白天正常起床）</p>';
+    }else if(game.companionAllnightChoiceResolved&&game.lastCompanionAllnightSleepChoice){
+      partnerHtml='<p style="margin-top:8px">'+pn+' 的选择：<b>'+companionAllnightEndChoiceLabel(game.lastCompanionAllnightSleepChoice)+'</b></p>';
     }else{
       const compChoice=ensureCompanionEndChoicePreview();
       const outNote=(d.partnerAllnightStayedOut||d.partnerOutForFun)?' · 在外面玩了一宿':'';
@@ -333,12 +367,15 @@ function allnightQuickNap(){
   }
   if(!bumpDayAfterAllnight())return;
   setAllnightStreak(0);
+  clearCompanionAllnightStreak();
   d.allnightEndModalShown=false;
   d.partnerAllnightActive=false;
   d.partnerForcedAsleep=false;
   d.partnerAllnightStayedOut=false;
   d.phase='morning';
   d.workedToday=false;
+  activatePartnerCatchUpSleep('sleep');
+  if(typeof tickCompanionMorningCatchUp==='function')tickCompanionMorningCatchUp();
   d.subMenu=null;
   d.noHomeReturnDay=false;
   addStress(1,'赶紧睡 ');
@@ -350,13 +387,25 @@ function applyPartnerCatchUpSleepIfEligible(compChoice){
   const d=ensureDailyState();
   if(!d)return;
   d.partnerCatchUpSleep=false;
+  d.companionMorningSkipLogged=false;
   if(!game.married||game.divorced||game.longDistance)return;
-  if(compChoice!=='sleep')return;
-  if(d.partnerForcedAsleep)return;
-  if(!d.partnerAllnightActive)return;
+  if(compChoice==='rested')return;
+  if(compChoice!=='sleep'&&!game.pendingPartnerCatchUpSleep)return;
   if(d.partnerAllnightStayedOut)return;
-  if(typeof isPartnerOutForFun==='function'&&isPartnerOutForFun('allnight'))return;
+  d.partnerOutForFun=false;
   d.partnerCatchUpSleep=true;
+  d.partnerPresenceRolled=false;
+  d._partnerPresencePhase=null;
+  game.pendingPartnerCatchUpSleep=false;
+}
+function activatePartnerCatchUpSleep(compChoice){
+  const choice=compChoice||game.lastCompanionAllnightSleepChoice;
+  if(choice==='sleep'||game.pendingPartnerCatchUpSleep)applyPartnerCatchUpSleepIfEligible('sleep');
+}
+function companionNextDayIndex(){
+  const d=game&&game.daily;
+  const di=d?d.dayIndex:0;
+  return di>=6?0:di+1;
 }
 function maybePartnerRecall(onProceed,placeLabel){
   if(!game||!game.married||game.divorced||game.longDistance)return false;
@@ -426,7 +475,8 @@ function confirmPartnerRecall(goHome){
   }
 }
 function rollCompanionSleepChoice(){
-  if(typeof isCompanionWorkSlot==='function'&&isCompanionWorkSlot('morning')&&game.companion&&game.companion.employed){
+  const nextDay=companionNextDayIndex();
+  if(typeof isCompanionWorkSlotForDay==='function'&&isCompanionWorkSlotForDay('morning',nextDay)&&game.companion&&game.companion.employed){
     return Math.random()<0.42?'sleep':'nosleep';
   }
   return Math.random()<0.32?'nosleep':'sleep';
@@ -435,15 +485,26 @@ function resolveCompanionSleepChoice(choice){
   const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
   const d=game.daily;
   game.lastCompanionAllnightSleepChoice=choice;
-  if(choice==='sleep'){
-    if(typeof isCompanionWorkSlot==='function'&&isCompanionWorkSlot('morning')&&game.companion&&game.companion.employed){
-      game.companion.weekWorkSkipDays=(game.companion.weekWorkSkipDays||0)+1;
-      addLog('💼 '+pn+'睡过头，明天白天旷工（本周第'+game.companion.weekWorkSkipDays+'天）','warn');
-    }
+  game.companionAllnightChoiceResolved=true;
+  if(choice==='rested'){
+    game.pendingPartnerCatchUpSleep=false;
     setCompanionAllnightStreak(0);
+    if(d){
+      d.partnerForcedAsleep=false;
+      d.partnerCatchUpSleep=false;
+      d.companionMorningSkipLogged=false;
+    }
+    addLog('😴 '+pn+'昨夜已入睡，白天正常起床','info');
+    return;
+  }
+  if(choice==='sleep'){
+    setCompanionAllnightStreak(0);
+    game.pendingPartnerCatchUpSleep=true;
+    if(d&&d.phase==='morning')activatePartnerCatchUpSleep('sleep');
     addLog('😴 '+pn+'选择第二天白天补觉','info');
     return;
   }
+  game.pendingPartnerCatchUpSleep=false;
   const streak=getCompanionAllnightStreak()+1;
   setCompanionAllnightStreak(streak);
   addLog('☀ '+pn+'选择通宵不睡硬撑（连续 '+streak+' 天）','warn');
@@ -643,7 +704,6 @@ function finishOvertimeEveningFull(label){
   d.slotHoursUsed=SLOT_HOURS_TOTAL;
   addLog(label||('🚪 收工回家 · 今晚 '+SLOT_HOURS_TOTAL+'h 已用尽'),'info');
   renderDailyPanel();updateUI();autoSaveSlot();
-  setTimeout(function(){if(typeof showEveningEndChoiceModal==='function')showEveningEndChoiceModal()},80);
 }
 function finishOvertimeSlackSocial(){
   if(game)game._eveningEndAfterSlackSocial=true;
@@ -688,6 +748,7 @@ function confirmOvertimeAllnightArrival(choice){
   d.allnightEndModalShown=false;
   if(choice==='sleep'){
     setAllnightStreak(0);
+    clearCompanionAllnightStreak();
     d.allnightDay=false;
     d.partnerAllnightActive=false;
     d.partnerForcedAsleep=false;
@@ -734,26 +795,13 @@ function completeOvertimeEnd(){
   else finishOvertimeEveningPartial();
 }
 function showEveningEndChoiceModal(){
-  const d=game&&game.daily;
-  if(!d||d.phase!=='evening')return;
-  if(d.eveningEndModalShown)return;
-  d.eveningEndModalShown=true;
-  const fromSlackSocial=!!(game&&game._eveningEndAfterSlackSocial);
-  if(game)game._eveningEndAfterSlackSocial=false;
-  const html=fromSlackSocial
-    ? '摸鱼收工后联谊结束，今晚已过，<b>尚未进入后半夜</b>。<br><span class="fold-meta">睡觉，或不睡进入后半夜（金色时段）</span>'
-    : '今晚的 <b>8</b> 小时已过完。<br><span class="fold-meta">接下来怎么安排？</span>';
-  showConsumeModal({
-    icon:'🌙',title:fromSlackSocial?'联谊后回家':'夜深了',
-    html:html,
-    buttons:[
-      {text:'😴 睡觉（次日白天）',primary:true,fn:'confirmEveningEndChoice("sleep")'},
-      {text:'🌙 不睡，进入后半夜（+8h · 压力+10）',fn:'confirmEveningEndChoice("allnight")'}
-    ]
-  });
+  if(!eveningEndChoicePending())return;
+  if(typeof consumeModalOpen!=='undefined'&&consumeModalOpen)return;
+  if(typeof hasPendingEncounterModals==='function'&&hasPendingEncounterModals())return;
+  renderDailyPanel();
 }
 function confirmEveningEndChoice(choice){
-  closeConsumeModal();
+  if(typeof consumeModalOpen!=='undefined'&&consumeModalOpen)closeConsumeModal();
   const d=game.daily;
   if(d)d.eveningEndModalShown=false;
   if(choice==='sleep')finishDay('sleep');
@@ -838,19 +886,31 @@ function dailyLeisureScroll(fn,hours){
     addLog('经典诺基亚无法在家刷视频/游戏/聊骚/短剧','fail');
     return;
   }
+  const leisureModal=function(icon,title,html){
+    if(typeof showConsumeModal!=='function'){addLog(title+' · '+html.replace(/<[^>]+>/g,''),'info');return;}
+    showConsumeModal({icon:icon,title:title,html:html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
+  };
+  try{
   if(hours===SLOT_BATCH_HOURS){
     if(!dailyCanUseHours(SLOT_BATCH_HOURS))return;
     const html=dailyRunScrollSessions(fn,SLOT_BATCH_HOURS);
     dailyAddHours(SLOT_BATCH_HOURS,true);
-    if(html)showConsumeModal({icon:'📱',title:'连刷8小时',html:html+'<br><span style="color:var(--green)">时段已满，进入下一时段</span>',buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
+    leisureModal('📱','连刷8小时',(html||'活动已完成')+'<br><span style="color:var(--green)">时段已满，进入下一时段</span>');
     if(fn==='consumeFlirt'&&typeof rollPartnerCaughtAffair==='function')rollPartnerCaughtAffair('flirt');
+    if(fn!=='consumeFlirt'&&typeof recordScrollMediaHours==='function')recordScrollMediaHours(SLOT_BATCH_HOURS);
     return;
   }
   if(!dailyCanUseHours(1))return;
   const html=dailyRunScrollSessions(fn,1);
   dailyAddHours(1,false);
-  if(html)showConsumeModal({icon:'📱',title:'1小时',html:html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
+  leisureModal('📱','1小时',html||'活动已完成');
   if(fn==='consumeFlirt'&&typeof rollPartnerCaughtAffair==='function')rollPartnerCaughtAffair('flirt');
+  }catch(e){
+    console.error('dailyLeisureScroll',fn,e);
+    addLog('宅家休闲异常：'+(e.message||e),'fail');
+    leisureModal('⚠','活动异常','请 F12 查看控制台，或 Ctrl+F5 强刷后重试');
+  }
+  if(fn!=='consumeFlirt'&&typeof recordScrollMediaHours==='function')recordScrollMediaHours(1);
 }
 function snackEatModalHtml(title,playerR,partnerR){
   let html='<b>'+title+'</b><br>你：吃 <b>'+playerR.portions+'</b> 份';
@@ -1090,7 +1150,7 @@ function nokiaPhoneDescText(){
     '限制：无招聘APP（有电脑可电脑应聘）· 通勤仅地铁 · 不可宅家刷短视频/短剧/聊骚/手游<br>'+
     '暴露：宅家聊骚被抓概率+10% · 通讯录联系情人+26%（伴侣在家再+16%/+20%）<br>'+
     '查机：现金&gt;¥'+cash.toLocaleString()+'时，换机约18% · 每进入新时段约10% · 伴侣在家+8%<br>'+
-    '被查：未发现情人亲密度-1压力+2 · 发现情人亲-5压+5约45%离婚';
+    '被查：未发现情人仅压力+2 · 发现情人亲-5压+5约45%离婚';
 }
 function phoneDesc(key){
   const p=PHONE_SHOP[key];if(!p)return '';
@@ -1121,6 +1181,7 @@ function tickStocksOnce(){
     s.price=Math.max(ref*0.55,Math.min(ref*1.45,s.price*(1+ch)));
     s.history.push(s.price);if(s.history.length>60)s.history.shift();
   });
+  if(typeof tickPlayerCompanyStockWealth==='function')tickPlayerCompanyStockWealth();
 }
 function maybeTickStocksForDay(dayIndex){
   if(isTradingDay(dayIndex))tickStocksOnce();
@@ -1166,6 +1227,7 @@ function dailyBackToMain(){
   renderDailyPanel();
 }
 function shouldMarkWorkSkipNow(){
+  if(typeof playerEmployerOwnerImmune==='function'&&playerEmployerOwnerImmune())return false;
   const d=game.daily,ph=d.phase;
   if(!game.employed)return false;
   if(ph==='morning')return isScheduledWorkSlot('morning')&&!d.morningWorkDone;
@@ -1230,6 +1292,10 @@ function dailyPickHomeMorning(action){
   else if(action==='snack_single')dailyEatSnackSingle();
   else if(action==='snack_couple')dailyEatSnackCouple();
   else if(action==='procreate')dailyStartProcreate();
+  else if(action==='clean'&&typeof dailyCleanHome==='function')dailyCleanHome();
+  else if(action==='villa_tea'&&typeof dailyVillaTea==='function')dailyVillaTea();
+  else if(action==='villa_swim'&&typeof dailyVillaSwim==='function')dailyVillaSwim();
+  else if(action==='villa_party'&&typeof dailyVillaParty==='function')dailyVillaParty();
 }
 function dailyPickHomeEvening(action){
   if(action==='rest')dailyStayHomeEvening();
@@ -1250,6 +1316,10 @@ function dailyPickHomeEvening(action){
   else if(action==='snack_single')dailyEatSnackSingle();
   else if(action==='snack_couple')dailyEatSnackCouple();
   else if(action==='procreate')dailyStartProcreate();
+  else if(action==='clean'&&typeof dailyCleanHome==='function')dailyCleanHome();
+  else if(action==='villa_tea'&&typeof dailyVillaTea==='function')dailyVillaTea();
+  else if(action==='villa_swim'&&typeof dailyVillaSwim==='function')dailyVillaSwim();
+  else if(action==='villa_party'&&typeof dailyVillaParty==='function')dailyVillaParty();
 }
 function dailyPlayConsole(){
   if(!game.ownsConsole){addLog('请先购买游戏机（生活消费）','fail');return}
@@ -1258,6 +1328,7 @@ function dailyPlayConsole(){
   if(win){addStress(-1,'打游戏 ');addLog('🎮 打游戏大捷','success')}
   else{addStress(1,'打游戏 ');addLog('🎮 打游戏连跪','warn')}
   showConsumeModal({icon:'🎮',title:'游戏机 · 2小时',html:win?'大捷！压力 -1':'连跪… 压力 +1',buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
+  if(typeof recordScrollMediaHours==='function')recordScrollMediaHours(2);
   dailyAddHours(2,false);
 }
 function dailyUseComputer(){
@@ -1279,6 +1350,7 @@ function dailyUseComputer(){
     msg='捞到赌场优惠券一张';addLog('💻 '+msg,'success');
   }else{addStress(2,'玩电脑一无所获 ');msg='刷论坛毫无收获，压力+2';addLog('💻 '+msg,'warn')}
   showConsumeModal({icon:'💻',title:'电脑 · 1小时',html:msg,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
+  if(typeof onArtifactComputerUse==='function')onArtifactComputerUse();
   dailyAddHours(1,false);
 }
 function dailyStartProcreate(){
@@ -1289,6 +1361,7 @@ function dailyStayHomeEvening(){
   addStress(-1,'宅家休息 ');
   addTempStat('spirit',1,'🏠 晚上宅家休息');
   addLog('🏠 晚上宅家休息 · 压力-1','info');
+  if(typeof onArtifactHomeStay==='function')onArtifactHomeStay();
   dailyAddHours(1,false);
 }
 function isWeekendDay(dayIndex){return dayIndex>=5}
@@ -1361,6 +1434,24 @@ function defaultPlayerStats(){
 function defaultTempStats(){
   return{body:0,mind:0,spirit:0};
 }
+function isValidStatObj(s){
+  return !!(s&&typeof s==='object'&&!Array.isArray(s)&&('body' in s||'mind' in s||'spirit' in s));
+}
+function ensurePlayerStatState(){
+  if(!game)return;
+  if(!isValidStatObj(game.stats)){
+    game.stats=typeof rollRandomStats==='function'?rollRandomStats():{body:30,mind:30,spirit:30};
+  }else if(typeof isLegacyFlatStats==='function'&&isLegacyFlatStats(game.stats)){
+    game.stats=rollRandomStats();
+  }
+  if(!isValidStatObj(game.partnerStats)){
+    game.partnerStats=typeof rollRandomStats==='function'?rollRandomStats():{body:30,mind:30,spirit:30};
+  }else if(typeof isLegacyFlatStats==='function'&&isLegacyFlatStats(game.partnerStats)){
+    game.partnerStats=rollRandomStats();
+  }
+  if(!isValidStatObj(game.tempStats))game.tempStats=defaultTempStats();
+  if(!isValidStatObj(game.partnerTempStats))game.partnerTempStats=defaultTempStats();
+}
 function ensurePartnerStats(){
   if(!game)return null;
   if(!game.partnerStats||isLegacyFlatStats(game.partnerStats))game.partnerStats=rollRandomStats();
@@ -1384,6 +1475,7 @@ function ensureDailyState(){
   if(!game.tempStats)game.tempStats=defaultTempStats();
   if(!game.contacts)game.contacts=[];
   if(game.ownedCar==null)game.ownedCar=null;
+  ensureCarState();
   ensurePhoneState();
   if(!game.playerGender)game.playerGender='male';
   if(!game.partnerGender)game.partnerGender='female';
@@ -1391,6 +1483,7 @@ function ensureDailyState(){
 }
 function effStat(k){
   if(!game||!game.stats)return 0;
+  if(!game.tempStats)game.tempStats=defaultTempStats();
   const cm=typeof getPlayerCycleStatMod==='function'?getPlayerCycleStatMod():0;
   return Math.min(STAT_MAX,Math.max(0,(game.stats[k]||0)+(game.tempStats[k]||0)+cm));
 }
@@ -1412,11 +1505,51 @@ function fmtTempDelta(v){
   if(n>0)return '+'+n;
   return ''+n;
 }
+function cycleStatSwingLabel(){
+  return typeof CYCLE_STAT_SWING!=='undefined'?CYCLE_STAT_SWING:10;
+}
+function renderSubjectStatMods(who){
+  const isPlayer=who==='player';
+  const base=isPlayer?(game.stats||{}):(ensurePartnerStats()||{});
+  const ts=isPlayer
+    ?(game.tempStats||defaultTempStats())
+    :((typeof ensurePartnerTempStats==='function'?ensurePartnerTempStats():null)||game.partnerTempStats||defaultTempStats());
+  const cm=isPlayer
+    ?(typeof getPlayerCycleStatMod==='function'?getPlayerCycleStatMod():0)
+    :(typeof getPartnerCycleStatMod==='function'?getPartnerCycleStatMod():0);
+  const cs=typeof cyclePhaseForSubject==='function'?cyclePhaseForSubject(who):null;
+  const label=isPlayer?'你':(game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣'));
+  const modCls=(v)=>v>0?'pos':v<0?'neg':'zero';
+  const dimChip=(k)=>{
+    const b=base[k]||0,t=ts[k]||0,c=cs?cm:0;
+    const eff=Math.min(STAT_MAX,Math.max(0,b+t+c));
+    let brk='基础'+b+' · 临时<span class="stat-mod '+modCls(t)+'">'+fmtTempDelta(t)+'</span>';
+    if(cs&&c)brk+=' · 周期<span class="stat-mod '+modCls(c)+'">'+(c>0?'+':'')+c+'</span>';
+    return '<span class="stat-dim"><span class="stat-name">'+STAT_LABEL[k]+'</span> <span class="stat-val">'+eff+'</span> <span class="stat-brk">（'+brk+'）</span></span>';
+  };
+  let phaseNote='';
+  if(cs){
+    const col=typeof cyclePhaseColor==='function'?cyclePhaseColor(cs.phase):'var(--muted)';
+    const pl=typeof cyclePhaseLabel==='function'?cyclePhaseLabel(cs.phase):cs.phase;
+    phaseNote=' <span style="color:'+col+'">🩸 '+pl+' 第'+cs.day+'/'+cs.len+'天</span>';
+  }
+  return '<div class="daily-stat-person"><div class="daily-stat-person-hdr"><b>'+label+'</b>'+phaseNote+'</div>'+
+    '<div class="daily-stat-line">'+dimChip('body')+dimChip('mind')+dimChip('spirit')+'</div></div>';
+}
 function renderTempStatsHtml(){
-  const ts=game.tempStats||defaultTempStats();
-  const chip=(k,v)=>'<span>'+STAT_LABEL[k]+' <b style="color:'+(v>0?'var(--green)':v<0?'var(--red)':'var(--muted)')+'">'+fmtTempDelta(v)+'</b></span>';
-  return '<div class="daily-temp">临时状态（活动积累，每项±'+TEMP_STAT_RANGE+'，下周清零，入职计入有效属性） · '+
-    chip('body',ts.body)+' · '+chip('mind',ts.mind)+' · '+chip('spirit',ts.spirit)+'</div>';
+  try{
+    if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
+    const swing=cycleStatSwingLabel();
+    let h='<div class="daily-stat-panel" style="margin:6px 0;padding:8px 10px;border:1px dashed var(--border);border-radius:6px">';
+    h+='<div class="daily-stat-hint">基础值不变 · 活动临时每项±'+TEMP_STAT_RANGE+'（持久累积）· 女性生理周期另计±'+swing+' · 求职看有效值</div>';
+    h+=renderSubjectStatMods('player');
+    if(game.married&&!game.divorced)h+=renderSubjectStatMods('partner');
+    h+='</div>';
+    return h;
+  }catch(e){
+    console.error('renderTempStatsHtml',e);
+    return '<div class="daily-stat-panel" style="font-size:.72rem;color:var(--red);padding:6px">属性面板加载失败，请 F5 强刷</div>';
+  }
 }
 function jobStatRequirement(job){
   if(!job)return {body:0,mind:0,spirit:0};
@@ -1438,49 +1571,10 @@ function meetsJobStats(job,useTemp){
   const g=(k)=>useTemp?effStat(k):(game.stats[k]||0);
   return g('body')>=req.body&&g('mind')>=req.mind&&g('spirit')>=req.spirit;
 }
-function weeklyAutoStatPoints(){
-  if(!game||!game.stats)return;
-  const pts=3;
-  const edu=game.playerEducation||'本科';
-  let b=1,m=1,s=1;
-  if(edu==='博士'||edu==='硕士'){m=2;s=1}
-  else if(edu==='高中/中专'||edu==='大专'){b=2}
-  else{b=1;m=1;s=1}
-  game.stats.body=Math.min(STAT_MAX,game.stats.body+b);
-  game.stats.mind=Math.min(STAT_MAX,game.stats.mind+m);
-  game.stats.spirit=Math.min(STAT_MAX,game.stats.spirit+s);
-  addLog('📈 本周自动成长：肉体+'+b+' 心智+'+m+' 精神+'+s,'info');
-}
-function applyWeeklyStatGrowthSilent(){
-  if(!game||!game.stats)return;
-  const edu=game.playerEducation||'本科';
-  let b=1,m=1,s=1;
-  if(edu==='博士'||edu==='硕士'){m=2;s=1}
-  else if(edu==='高中/中专'||edu==='大专'){b=2}
-  game.stats.body=Math.min(STAT_MAX,game.stats.body+b);
-  game.stats.mind=Math.min(STAT_MAX,game.stats.mind+m);
-  game.stats.spirit=Math.min(STAT_MAX,game.stats.spirit+s);
-}
-function applyPartnerWeeklyStatGrowth(){
-  if(!game||!game.married||game.divorced)return;
-  const ps=ensurePartnerStats();
-  ps.body=Math.min(STAT_MAX,(ps.body||0)+1);
-  ps.mind=Math.min(STAT_MAX,(ps.mind||0)+1);
-  ps.spirit=Math.min(STAT_MAX,(ps.spirit||0)+1);
-}
 function resetWeeklyDaily(){
   if(!game)return;
   game.daily=defaultDailyState();
-  game.tempStats=defaultTempStats();
-  game.partnerTempStats=defaultTempStats();
-  if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning){
-    applyWeeklyStatGrowthSilent();
-    applyPartnerWeeklyStatGrowth();
-  }else{
-    weeklyAutoStatPoints();
-    applyPartnerWeeklyStatGrowth();
-    maybeTickStocksForDay(0);
-  }
+  if(typeof autoLifeRunning==='undefined'||!autoLifeRunning)maybeTickStocksForDay(0);
 }
 function gameMonthKey(){
   const w=typeof WEEKS_PER_MONTH!=='undefined'?WEEKS_PER_MONTH:4;
@@ -1488,6 +1582,74 @@ function gameMonthKey(){
 }
 function phoneSwitchBlockedThisMonth(){
   return game.phoneSwitchMonthKey!=null&&game.phoneSwitchMonthKey===gameMonthKey();
+}
+function carSwitchBlockedThisMonth(){
+  return game.carSwitchMonthKey!=null&&game.carSwitchMonthKey===gameMonthKey();
+}
+function ensureCarState(){
+  if(!game)return;
+  if(!game.ownedCars||!game.ownedCars.length)game.ownedCars=game.ownedCar?[game.ownedCar]:[];
+  if(game.ownedCar&&!game.ownedCars.includes(game.ownedCar))game.ownedCars.push(game.ownedCar);
+  if(!game.ownedCar&&game.ownedCars.length)game.ownedCar=game.ownedCars[0];
+  if(game.carPanelOpen==null)game.carPanelOpen=false;
+  if(game.carSwitchMonthKey==null)game.carSwitchMonthKey=null;
+}
+function allCarsOwned(){
+  ensureCarState();
+  return Object.keys(CAR_SHOP).every(k=>game.ownedCars.includes(k));
+}
+function applyCarPanelFold(){
+  if(!game)return;
+  const open=!!game.carPanelOpen;
+  const body=document.querySelector('#dailyPanel .car-fold-body');
+  const chev=document.querySelector('#dailyPanel .car-fold-chev');
+  const meta=document.querySelector('#dailyPanel .car-fold-cur');
+  if(body)body.style.display=open?'block':'none';
+  if(chev)chev.textContent=open?'▼':'▶';
+  if(meta)meta.style.display=open?'':'none';
+}
+function toggleCarPanel(){
+  if(!game)return;
+  game.carPanelOpen=!game.carPanelOpen;
+  applyCarPanelFold();
+}
+function switchCar(key){
+  ensureCarState();
+  const c=CAR_SHOP[key];
+  if(!c){addLog('未知车型','fail');return}
+  if(!game.ownedCars.includes(key)){addLog('尚未拥有 '+c.name+'，请先购买','fail');return}
+  if(carSwitchBlockedThisMonth()){addLog('本月已换过车（每月仅可换一次）','fail');return}
+  if(game.ownedCar===key){addLog('已是当前座驾','warn');return}
+  game.ownedCar=key;
+  game.carSwitchMonthKey=gameMonthKey();
+  addStress(-10,'换车 ');
+  addLog('🚗 切换至 '+c.name+' · 压力-10 · 本月已换车','info');
+  renderDailyPanel();
+}
+function renderCarPanel(){
+  ensureCarState();
+  const open=!!game.carPanelOpen;
+  const cur=game.ownedCar&&CAR_SHOP[game.ownedCar]?CAR_SHOP[game.ownedCar].name:'无';
+  const monthBlocked=carSwitchBlockedThisMonth();
+  let h='<div class="car-fold phone-fold"><div class="phone-fold-hdr" onclick="toggleCarPanel()"><b>购车 / 换车</b>';
+  h+='<span class="car-fold-cur phone-fold-cur fold-meta"'+(open?'':' style="display:none"')+'> · 当前 '+cur+'</span>';
+  h+='<span class="phone-fold-chev car-fold-chev" style="margin-left:auto;color:var(--muted)">'+(open?'▼':'▶')+'</span></div>';
+  h+='<div class="phone-fold-body car-fold-body"'+(open?'':' style="display:none"')+'>';
+  Object.keys(CAR_SHOP).forEach(k=>{
+    const c=CAR_SHOP[k],owned=game.ownedCars.includes(k),active=game.ownedCar===k;
+    h+='<div style="margin:4px 0">';
+    if(owned){
+      h+='<button class="btn btn-phone-shop" '+(active||monthBlocked?'disabled':'')+' onclick="switchCar(\''+k+'\')">'+(active?'✓ ':'')+c.name+'</button>';
+    }else{
+      h+='<button class="btn btn-phone-shop" onclick="buyCar(\''+k+'\')">购买 '+c.name+' ¥'+(c.price/10000)+'万</button>';
+    }
+    h+=' <span class="fold-meta">通勤可开车</span></div>';
+  });
+  h+='<p class="fold-meta">换车每次压力-10 · 每月仅可换一次</p>';
+  if(monthBlocked)h+='<p class="fold-meta" style="color:var(--orange)">本月已换过车</p>';
+  if(allCarsOwned())h+='<p class="fold-meta" style="color:var(--green)">三款车已全部购入</p>';
+  h+='</div></div>';
+  return h;
 }
 function ensurePhoneState(){
   if(!game)return;
@@ -1637,7 +1799,7 @@ function runCommute(mode){
 }
 function maybeMeetOnCommute(mode){
   const where=mode==='taxi'?'打车':mode==='car'?'驾车':'地铁';
-  const chance=mode==='taxi'?0.24:mode==='car'?0.15:0.11;
+  const chance=mode==='taxi'?0.32:mode==='car'?0.22:mode==='subway'?0.18:0.18;
   if(Math.random()<chance)meetRandomPerson(where);
   if(mode!=='car'&&Math.random()<0.04&&isManualJob(game.employment?game.market[game.employment.jobIdx]:null)){
     if(phoneCfg()&&Math.random()<0.5*phoneCfg().loseMult)loseCurrentPhone();
@@ -1651,10 +1813,20 @@ function cancelCommuteChoice(){
 function confirmCommute(mode){
   closeConsumeModal();
   const r=runCommute(mode);
-  maybeMeetOnCommute(mode);
-  const cb=game._commuteCallback;
-  game._commuteCallback=null;
-  if(typeof cb==='function')cb(r);
+  if(r&&r.mode==='开车'&&typeof onArtifactCarDrive==='function')onArtifactCarDrive();
+  if(r&&(r.mode==='地铁'||mode==='subway')&&typeof onArtifactSubwayRide==='function')onArtifactSubwayRide();
+  const finish=function(){
+    const cb=game._commuteCallback;
+    game._commuteCallback=null;
+    if(typeof cb==='function')cb(r);
+  };
+  const afterArt=function(){
+    maybeMeetOnCommute(mode);
+    if(typeof runAfterEncounterModals==='function')runAfterEncounterModals(finish);
+    else finish();
+  };
+  if(typeof runAfterEncounterModals==='function')runAfterEncounterModals(afterArt);
+  else afterArt();
 }
 function promptCommuteChoice(onDone){
   const hasCar=!!game.ownedCar;
@@ -1694,32 +1866,38 @@ function beginWorkShift(period,overtimeFlow){
   addLog('💼 '+label+'上班（'+DAY_NAMES[d.dayIndex]+'）','info');
   showWorkShiftModal(!!overtimeFlow);
 }
-function meetRandomPerson(where,baseChance){
-  if(Math.random()>=(baseChance!=null?dailyMeetChance(baseChance):dailyMeetChance(0.55)))return;
+function meetRandomPerson(where,baseChance,onAfter){
+  if(Math.random()>=(baseChance!=null?dailyMeetChance(baseChance):dailyMeetChance(0.65)))return false;
   const jobs=game.market.filter(j=>!isOverAgeLimit(j));
-  if(!jobs.length)return;
+  if(!jobs.length)return false;
   const job=jobs[Math.floor(Math.random()*jobs.length)];
   const co=pickCompany(job.idx,job.heatPct>=108?'high':job.heatPct>=102?'mid':'low');
   const income=Math.round(job.pay*(0.7+Math.random()*0.6));
+  const dup=game.contacts.find(c=>c.jobTitle===job.title&&c.company===co.name);
+  if(dup){
+    if(typeof showMeetPersonModal==='function')showMeetPersonModal(dup,where,true,onAfter);
+    else{
+      addLog('👋 在「'+where+'」又遇见 '+dup.name,'info');
+      if(typeof onAfter==='function')onAfter();
+    }
+    return true;
+  }
   const id='ct_'+game.week+'_'+game.contacts.length;
   const gender=Math.random()<0.5?'male':'female';
   const age=22+Math.floor(Math.random()*18);
   const displayName=typeof pickStrangerDisplayName==='function'?pickStrangerDisplayName(gender):'路人';
   const person={id,name:displayName,jobTitle:job.title,jobSlug:job.slug,category:job.category,
     company:co.name,companyTier:co.tier,companyScale:co.scale,income,metWeek:game.week,metWhere:where,gender,age};
-  if(game.contacts.some(c=>c.jobTitle===person.jobTitle&&c.company===person.company))return;
   if(typeof ensureContactAffairFields==='function')ensureContactAffairFields(person);
   if(typeof tagMeetContact==='function')tagMeetContact(person);
-  game.contacts.push(person);
-  const prof=typeof contactProfileLabel==='function'?contactProfileLabel(person):(person.jobTitle+' @'+person.company);
   person.talkCount=0;
-  const meetMsg='在「'+where+'」遇见了 '+person.name+'，互相打了个招呼。\n\n'+prof+'\n年收入约 ¥'+income.toLocaleString()+'\n\n已记入通讯录，日后可多联系熟悉。';
-  if(typeof queueStatusModal==='function'){
-    queueStatusModal('结识新朋友',meetMsg,'👋',{btn:'关闭',onClose:function(){
-      if(typeof maybeTellWorkplaceStory==='function')maybeTellWorkplaceStory(person,where);
-    }});
-  }else if(typeof maybeTellWorkplaceStory==='function')maybeTellWorkplaceStory(person,where);
-  addLog('👋 结识 '+person.name+'（'+where+'）','info');
+  game.contacts.push(person);
+  if(typeof showMeetPersonModal==='function')showMeetPersonModal(person,where,false,onAfter);
+  else{
+    addLog('👋 结识 '+person.name+'（'+where+'）','info');
+    if(typeof onAfter==='function')onAfter();
+  }
+  return true;
 }
 function addContactFromMeet(person){game.contacts.push(person)}
 function advanceDailyPhase(nextPhase){
@@ -1727,10 +1905,12 @@ function advanceDailyPhase(nextPhase){
   if(!d)return;
   if(typeof checkBffOutingMiss==='function')checkBffOutingMiss();
   if(nextPhase==='evening'){
+    if(d.partnerCatchUpSleep)clearCompanionAllnightStreak();
     d.partnerCatchUpSleep=false;
     d.eveningEndModalShown=false;
   }
   d.phase=nextPhase;
+  if(nextPhase==='morning'&&typeof tickCompanionMorningCatchUp==='function')tickCompanionMorningCatchUp();
   d.subMenu=null;
   resetPartnerRecallFlag();
   resetDailySlotFlags();
@@ -1746,6 +1926,8 @@ function finishDay(restType){
     resetDailySlotFlags(false);
     game.lastCompanionAllnightSleepChoice=null;
     game._companionSleepChoice=null;
+    game.companionAllnightChoiceResolved=false;
+    game.pendingPartnerCatchUpSleep=false;
     d.phase='allnight';
     d.allnightDay=true;
     d.partnerAllnightActive=false;
@@ -1758,6 +1940,7 @@ function finishDay(restType){
     return;
   }
   setAllnightStreak(0);
+  clearCompanionAllnightStreak();
   addLog('😴 休息恢复','info');
   advanceToNextDay();
 }
@@ -1767,8 +1950,10 @@ function bumpDayAfterAllnight(){
   if(typeof tickMenstrualDays==='function')tickMenstrualDays(1);
   resetPartnerRecallFlag();
   d.dayIndex++;
+  d.villaPartyUsed=false;
   d.allnightDay=false;
   d.partnerCatchUpSleep=false;
+  d.companionMorningSkipLogged=false;
   d.jobHuntedToday=false;
   d.jobHuntCount=0;
   d.jobHuntBySlot={};
@@ -1800,21 +1985,31 @@ function finishAllnightNoSleep(){
   }
   const compChoice=resolvePartnerAllnightEndChoice();
   if(!bumpDayAfterAllnight())return;
-  applyPartnerCatchUpSleepIfEligible(compChoice);
   d.phase='morning';
   d.workedToday=false;
+  d.partnerForcedAsleep=false;
+  d.partnerAllnightActive=false;
+  activatePartnerCatchUpSleep(compChoice);
+  if(typeof tickCompanionMorningCatchUp==='function')tickCompanionMorningCatchUp();
   addStress(6,'通宵不睡 ');
   const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
-  addLog('☀ 通宵不睡，硬撑进入白天（未补觉 · 连续通宵 '+streak+' 天）'+(d.partnerCatchUpSleep?' · '+pn+'在家补觉':''),'warn');
+  addLog('☀ 通宵不睡，硬撑进入白天（未补觉 · 连续通宵 '+streak+' 天）'+(d.partnerCatchUpSleep?' · '+pn+'在家补觉':(compChoice==='rested'?' · '+pn+'昨夜已入睡':'')) ,'warn');
   renderDailyPanel();updateUI();
 }
 function finishAllnightSleepThrough(){
   const d=ensureDailyState();
   if(!d||d.phase!=='allnight')return;
   d.allnightEndModalShown=false;
-  resolvePartnerAllnightEndChoice();
+  const compChoice=resolvePartnerAllnightEndChoice();
   if(!bumpDayAfterAllnight())return;
   setAllnightStreak(0);
+  d.partnerForcedAsleep=false;
+  d.partnerAllnightActive=false;
+  if(compChoice==='sleep')clearCompanionAllnightStreak();
+  if(compChoice==='rested')clearCompanionAllnightStreak();
+  if(compChoice==='sleep'&&game.companion&&game.companion.employed&&typeof isCompanionWorkSlotForDay==='function'&&isCompanionWorkSlotForDay('morning',d.dayIndex)){
+    if(typeof recordCompanionWorkSkip==='function')recordCompanionWorkSkip('睡过头旷工');
+  }
   d.partnerCatchUpSleep=false;
   d.phase='evening';
   d.workedToday=false;
@@ -1824,6 +2019,11 @@ function finishAllnightSleepThrough(){
 }
 function advanceToNextDay(){
   const d=ensureDailyState();
+  if(game){
+    game.lastCompanionAllnightSleepChoice=null;
+    game.pendingPartnerCatchUpSleep=false;
+    game.companionAllnightChoiceResolved=false;
+  }
   tickAllnightNoReturnIntimacy();
   if(typeof tickMenstrualDays==='function')tickMenstrualDays(1);
   resetPartnerRecallFlag();
@@ -1832,8 +2032,10 @@ function advanceToNextDay(){
   if(typeof checkBffOutingMiss==='function')checkBffOutingMiss();
   if(typeof resetContactSlotFlags==='function')resetContactSlotFlags();
   d.dayIndex++;
+  d.villaPartyUsed=false;
   d.phase='morning';
   d.workedToday=false;
+  if(typeof tickCompanionMorningCatchUp==='function')tickCompanionMorningCatchUp();
   d.jobHuntedToday=false;
   d.jobHuntCount=0;
   d.jobHuntBySlot={};
@@ -1880,6 +2082,37 @@ function dailyMorningWork(){
   };
   go();
 }
+function finishDayOutVisit(label,mult,onDone){
+  const q=typeof queueEventEncounter==='function'?queueEventEncounter:
+    (typeof queueEncounterModal==='function'?queueEncounterModal:null);
+  const advance=function(){
+    const d=game.daily;
+    if(d)d.slotActivity=null;
+    if(typeof onDone==='function')onDone();
+    else dailyAdvanceAfterSlotAction();
+  };
+  if(q){
+    q({
+      lane:'event',icon:'🚶',title:label+' · 外出结束',
+      html:'<p>你在 <b>'+label+'</b> 度过本时段。</p><p class="fold-meta">属性加成已结算 · 可进入下一时段</p>',
+      btn:'回家',onClose:advance
+    });
+    return;
+  }
+  advance();
+}
+function dailyOutActivityWatchdog(){
+  const d=game.daily;
+  if(!d||d.slotHoursUsed<SLOT_HOURS_TOTAL)return;
+  if(typeof hasPendingEncounterModals==='function'&&hasPendingEncounterModals())return;
+  if(typeof consumeModalOpen!=='undefined'&&consumeModalOpen)return;
+  if(d.slotActivity==='out'||d.subMenu==='out'||d.phase==='evening'||d.phase==='allnight'){
+    d.slotActivity=null;
+    d.subMenu=null;
+    addLog('外出流程已恢复','warn');
+    dailyAdvanceAfterSlotAction();
+  }
+}
 function dailyGoOut(place){
   if(!dailyUseMainActivity())return;
   game.daily.slotActivity='out';
@@ -1890,78 +2123,124 @@ function dailyGoOut(place){
   const gain=Math.round(p.n*mult);
   addTempStat(p.stat,gain,'🚶 外出'+p.label+(mult>1?'（通宵×'+mult+'）':''));
   if(typeof tryCompleteBffOuting==='function')tryCompleteBffOuting(place);
-  meetRandomPerson(p.label,0.55);
-  dailyAdvanceAfterSlotAction();
+  if(place==='park'&&typeof onArtifactParkVisit==='function')onArtifactParkVisit();
+  else if(place==='library'&&typeof onArtifactLibraryVisit==='function')onArtifactLibraryVisit();
+  else if(place==='cafe'&&typeof onArtifactCafeVisit==='function')onArtifactCafeVisit();
+  if(typeof runAfterEncounterModals==='function'){
+    runAfterEncounterModals(function(){meetRandomPerson(p.label,0.72)});
+    runAfterEncounterModals(function(){finishDayOutVisit(p.label,mult,dailyAdvanceAfterSlotAction)});
+  }else{
+    meetRandomPerson(p.label,0.72);
+    finishDayOutVisit(p.label,mult,dailyAdvanceAfterSlotAction);
+  }
+  setTimeout(dailyOutActivityWatchdog,10000);
 }
 function dailyStayHomeMorning(){
   if(!dailyCanUseHours(1))return;
   addStress(-1,'宅家休息 ');
   addTempStat('spirit',1,'🏠 白天宅家休息');
   addLog('🏠 白天宅家休息 · 压力-1','info');
+  if(typeof onArtifactHomeStay==='function')onArtifactHomeStay();
   dailyAddHours(1,false);
 }
 function buildEveningOutVisitModal(kind,mult,extra){
   const labels={club:'夜店',bar:'酒吧',store:'便利店'};
   const icons={club:'🪩',bar:'🍺',store:'🏪'};
-  let html=(labels[kind]||'外出')+' · 减压 ×'+mult;
-  if(extra)html+='<br>'+extra;
-  return{icon:icons[kind]||'🚶',title:'到了'+(labels[kind]||'目的地'),html};
+  let html='<p class="fold-meta">场所见闻 · 减压 ×'+mult+'</p>';
+  if(extra)html+='<p>'+extra+'</p>';
+  else html+='<p>平安度过这一晚。</p>';
+  return{icon:icons[kind]||'🚶',title:(labels[kind]||'外出')+' · 当晚',html};
 }
-function finishEveningOutVisit(kind,mult,extra){
-  const phase=game.daily&&game.daily.phase;
+function finishEveningOutVisit(kind,mult,extra,skipAdvance){
   const modal=buildEveningOutVisitModal(kind,mult,extra);
-  const afterRefuse=!!game._afterPartnerRecallRefuse;
-  const affairModalPending=!!pendingAffairContactId;
-  if(afterRefuse&&!affairModalPending){
-    showConsumeModal({
-      icon:modal.icon,title:modal.title,html:modal.html,
-      buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal();dailyAdvanceAfterSlotAction()'}]
-    });
+  const advance=function(){
+    const d=game.daily;
+    if(d)d.slotActivity=null;
+    if(!skipAdvance&&!pendingAffairContactId)dailyAdvanceAfterSlotAction();
+  };
+  const q=typeof queueEventEncounter==='function'?queueEventEncounter:
+    (typeof queueEncounterModal==='function'?queueEncounterModal:null);
+  if(q){
+    q({lane:'event',icon:modal.icon,title:modal.title,html:modal.html,btn:'知道了',onClose:advance});
     return;
   }
-  dailyAdvanceAfterSlotAction();
+  showConsumeModal({
+    icon:modal.icon,title:modal.title,html:modal.html,
+    buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal();dailyAdvanceAfterSlotAction()'}]
+  });
+}
+function eveningOutAffairStep(kind,mult,affairP,visitExtraRef,thenFn){
+  if(Math.random()<affairP){
+    if(typeof triggerAffairEncounter==='function'){
+      const who=typeof createAffairContact==='function'?createAffairContact(kind==='club'?'夜店':'酒吧'):null;
+      if(who){
+        game._eveningOutAffairPending=thenFn;
+        triggerAffairEncounter(who.id,(kind==='club'?'夜店':'酒吧')+'艳遇'+(mult>1?'×'+mult:''));
+        return;
+      }
+    }else{
+      addLog('🍸 艳遇一夜'+(mult>1?'（通宵×'+mult+'）':''),'info');
+      visitExtraRef.v=(visitExtraRef.v?visitExtraRef.v+'<br>':'')+'🍸 艳遇一夜';
+    }
+  }
+  if(typeof thenFn==='function')thenFn();
 }
 function dailyEveningOut(kind){
   const mult=dailyRewardMult();
   const phase=game.daily.phase;
   if(!dailyUseMainActivity())return;
   if(phase==='evening'||phase==='allnight')game.daily.noHomeReturnDay=true;
-  let visitExtra='';
+  game.daily.slotActivity='out';
+  setTimeout(dailyOutActivityWatchdog,10000);
+  const visitExtraRef={v:''};
   if(kind==='club'){
     if(typeof tryCompleteBffOuting==='function')tryCompleteBffOuting('club');
     if(!spendWithPhoneMult(500,'夜店')){dailyReleaseMainActivity();return}
     addStress(-2*mult,'夜店 ');
     const affairP=Math.min(0.55,0.25*mult);
-    if(Math.random()<affairP){
-      if(typeof triggerAffairEncounter==='function'){
-        const who=typeof createAffairContact==='function'?createAffairContact('夜店'):null;
-        if(who){
-          triggerAffairEncounter(who.id,'夜店艳遇'+(mult>1?'×'+mult:''));
-          if(!game._afterPartnerRecallRefuse)dailyAdvanceAfterSlotAction();
-          return;
-        }
-      }else{addLog('🍸 夜店艳遇一夜'+(mult>1?'（通宵×'+mult+'）':''),'info');visitExtra='🍸 艳遇一夜';}
-    }
-    if(Math.random()<Math.min(0.4,0.15*mult)){applyHangover(mult);visitExtra=(visitExtra?visitExtra+'<br>':'')+'🤢 宿醉（临时属性下降 · 亲密度-1）';}
-    else visitExtra=(visitExtra?visitExtra+'<br>':'')+'🪩 蹦了一夜，压力下降';
+    runAfterEncounterModals(function(){meetRandomPerson('夜店',0.42)});
+    runAfterEncounterModals(function(){
+      eveningOutAffairStep('club',mult,affairP,visitExtraRef,function(){
+        runAfterEncounterModals(function(){
+          if(Math.random()<Math.min(0.4,0.15*mult)){
+            applyHangover(mult);
+            visitExtraRef.v=(visitExtraRef.v?visitExtraRef.v+'<br>':'')+'🤢 宿醉（临时属性下降 · 亲密度-1）';
+          }else visitExtraRef.v=(visitExtraRef.v?visitExtraRef.v+'<br>':'')+'🪩 蹦了一夜，压力下降';
+          runAfterEncounterModals(function(){finishEveningOutVisit('club',mult,visitExtraRef.v)});
+        });
+      });
+    });
+    return;
   }else if(kind==='bar'){
     if(typeof tryCompleteBffOuting==='function')tryCompleteBffOuting('bar');
     if(!spendWithPhoneMult(200,'酒吧')){dailyReleaseMainActivity();return}
     addStress(-1*mult,'酒吧 ');
-    if(Math.random()<Math.min(0.45,0.2*mult)){applyHangover(mult);visitExtra='🤢 喝大了，宿醉';}
-    else visitExtra='🍺 喝了几杯，放松一下';
+    runAfterEncounterModals(function(){meetRandomPerson('酒吧',0.38)});
+    runAfterEncounterModals(function(){
+      if(Math.random()<Math.min(0.45,0.2*mult)){applyHangover(mult);visitExtraRef.v='🤢 喝大了，宿醉';}
+      else visitExtraRef.v='🍺 喝了几杯，放松一下';
+      runAfterEncounterModals(function(){finishEveningOutVisit('bar',mult,visitExtraRef.v)});
+    });
   }else if(kind==='store'){
+    if(typeof onArtifactStoreVisit==='function')onArtifactStoreVisit();
     if(typeof tryCompleteBffOuting==='function')tryCompleteBffOuting('store');
     if(!spendWithPhoneMult(50,'便利店')){dailyReleaseMainActivity();return}
     addStress(-1*mult,'便利店 ');
-    meetRandomPerson('便利店',0.12);
-    if(Math.random()<0.08*mult){
-      game.referralOpportunity=generateReferralOpportunity();
-      addLog('🤝 便利店偶遇熟人，获得内推线索！','success');
-      visitExtra='🤝 偶遇熟人，获得内推线索';
-    }else visitExtra='🏪 买了点东西，歇了会儿';
+    runAfterEncounterModals(function(){meetRandomPerson('便利店',0.30)});
+    runAfterEncounterModals(function(){
+      if(Math.random()<0.08*mult){
+        game.referralOpportunity=generateReferralOpportunity();
+        visitExtraRef.v='🤝 偶遇熟人，获得内推线索';
+        const qEv=typeof queueEventEncounter==='function'?queueEventEncounter:queueEncounterModal;
+        if(qEv)qEv({
+          lane:'event',icon:'🤝',title:'偶遇事件 · 内推',
+          html:'<p>在便利店碰见老熟人，对方手头有岗位愿意帮你<b>内推</b>。</p><p class="fold-meta">本周可留意内推机会。</p>',
+          onClose:function(){addLog('🤝 便利店偶遇熟人，获得内推线索！','success')}
+        });
+      }else visitExtraRef.v='🏪 买了点东西，歇了会儿';
+      runAfterEncounterModals(function(){finishEveningOutVisit('store',mult,visitExtraRef.v)});
+    });
   }
-  finishEveningOutVisit(kind,mult,visitExtra);
 }
 function applyHangover(mult){
   mult=mult||1;
@@ -1995,18 +2274,25 @@ function acceptCompanySocial(){
   if(fromOt&&lastAction==='grind')addLog('✨ 拼命加班联谊 · 后半夜金色时段','info');
   else if(fromOt&&lastAction==='slack')addLog('🐟 摸鱼收工后联谊 · 今晚最后 2h','info');
   if(Math.random()<0.35)applyHangover();
+  if(typeof runAfterEncounterModals==='function')runAfterEncounterModals(function(){meetRandomPerson('公司联谊',0.55)});
+  else meetRandomPerson('公司联谊',0.55);
+  const finishSocial=function(){
+    if(fromOt)applyOvertimeSocialEnd(lastAction);
+    else{d.inOvertime=false;d.slotActivity=null;dailyAdvanceAfterSlotAction()}
+  };
   if(Math.random()<0.22){
     if(typeof triggerAffairEncounter==='function'){
       const who=typeof createAffairContact==='function'?createAffairContact('联谊'):null;
       if(who){
         if(fromOt)game._overtimeSocialEndAction=lastAction;
+        game._affairAfterClose=finishSocial;
         triggerAffairEncounter(who.id,'公司联谊');
         return;
       }
     }
   }
-  if(fromOt)applyOvertimeSocialEnd(lastAction);
-  else{d.inOvertime=false;d.slotActivity=null;dailyAdvanceAfterSlotAction()}
+  if(typeof runAfterEncounterModals==='function')runAfterEncounterModals(finishSocial);
+  else finishSocial();
 }
 function declineCompanySocial(){
   closeConsumeModal(true);
@@ -2062,48 +2348,608 @@ function dailyEveningWorkEvent(){
   if(d.slotHoursUsed>0){addLog('本时段已在安排其他事','fail');return}
   startWeekdayEveningOvertime();
 }
+function getGameCalendarYear(){
+  const w=game.week||0;
+  if(typeof getDateStr==='function'){
+    const m=String(getDateStr(w)).match(/(\d{4})/);
+    if(m)return parseInt(m[1],10);
+  }
+  return 2024+Math.floor(w/52);
+}
+const SUPER_DREAM_MIN_AMOUNT=10000000;
+const SUPER_DREAM_IDS=['mansion','island','movie','concert','yacht','jet','gala','fashion'];
+function isGiftWishSuperDream(r){
+  if(!r)return false;
+  if(r.kind==='superDream'||r.superDream)return true;
+  if(r.dreamId&&SUPER_DREAM_IDS.indexOf(r.dreamId)>=0)return true;
+  return (r.amount||0)>=SUPER_DREAM_MIN_AMOUNT;
+}
+function normalizeGiftWishEntry(r){
+  if(!r)return r;
+  if(isGiftWishSuperDream(r)){r.kind='superDream';r.superDream=true}
+  else if(!r.kind)r.kind='daily';
+  return r;
+}
+function ensureSuperDreamGiftHistory(){
+  if(!game)return;
+  if(!Array.isArray(game.superDreamGiftHistory))game.superDreamGiftHistory=[];
+}
+function compactGiftWishHistoryForSave(arr,max){
+  if(!Array.isArray(arr))return arr;
+  max=max||80;
+  if(arr.length<=max)return arr.map(normalizeGiftWishEntry);
+  const supers=arr.filter(isGiftWishSuperDream).map(normalizeGiftWishEntry);
+  const daily=arr.filter(function(r){return !isGiftWishSuperDream(r)}).map(normalizeGiftWishEntry);
+  const keepDaily=Math.max(0,max-supers.length);
+  return supers.concat(daily.slice(-keepDaily));
+}
+function giftWishRowKey(r){
+  return (r.week||0)+'|'+(r.label||'')+'|'+(r.amount||0)+'|'+(r.status||'');
+}
+function giftWishCalendarYear(r){
+  if(!r)return 0;
+  if(r.calendarYear!=null)return r.calendarYear;
+  if(r.date){
+    const m=String(r.date).match(/(\d{4})/);
+    if(m)return parseInt(m[1],10);
+  }
+  const w=r.week;
+  if(w!=null&&typeof getDateStr==='function'){
+    const m=String(getDateStr(w)).match(/(\d{4})/);
+    if(m)return parseInt(m[1],10);
+  }
+  return 2024+Math.floor((w||game.week||0)/52);
+}
+function giftWishDedupeKey(r){
+  if(!r)return '';
+  normalizeGiftWishEntry(r);
+  if(isGiftWishSuperDream(r)){
+    return 'super|'+giftWishCalendarYear(r)+'|'+(r.label||'')+'|'+(r.amount||0)+'|'+(r.status||'');
+  }
+  return 'row|'+giftWishRowKey(r);
+}
+function dedupeGiftWishList(arr){
+  const best={};
+  (arr||[]).forEach(function(r){
+    if(!r)return;
+    const k=giftWishDedupeKey(r);
+    if(!k)return;
+    const prev=best[k];
+    if(!prev||(r.week||0)>(prev.week||0))best[k]=r;
+  });
+  return Object.keys(best).map(function(k){return best[k]}).sort(function(a,b){return (a.week||0)-(b.week||0)});
+}
+function recoverSuperDreamsFromLogs(){
+  if(!game||!Array.isArray(game.log))return [];
+  const out=[];
+  game.log.forEach(function(entry){
+    const text=typeof entry==='string'?entry:(entry&&entry.msg)||'';
+    const date=entry&&entry.date?entry.date:'';
+    if(!text)return;
+    let m=text.match(/💎\s*年度超级梦想[「『]([^」』]+)[」』]\s*¥([\d,]+)/);
+    if(m){
+      const y=date?((String(date).match(/(\d{4})/)||[])[1]):null;
+      out.push(normalizeGiftWishEntry({date:date,calendarYear:y?parseInt(y,10):null,label:m[1],amount:parseInt(m[2].replace(/,/g,''),10)||0,status:'fulfilled',desc:''}));
+      return;
+    }
+    m=text.match(/🎁\s*囊中羞涩，无法满足[「『]([^」』]+)[」』]\s*¥([\d,]+)/);
+    if(m){
+      const amt=parseInt(m[2].replace(/,/g,''),10)||0;
+      if(amt>=SUPER_DREAM_MIN_AMOUNT){
+        const y=date?((String(date).match(/(\d{4})/)||[])[1]):null;
+        out.push(normalizeGiftWishEntry({date:date,calendarYear:y?parseInt(y,10):null,label:m[1],amount:amt,status:'broke',desc:''}));
+      }
+      return;
+    }
+    if(text.indexOf('💎 拒绝年度超级梦想')>=0){
+      const y=date?((String(date).match(/(\d{4})/)||[])[1]):null;
+      out.push(normalizeGiftWishEntry({date:date,calendarYear:y?parseInt(y,10):null,label:'年度超级梦想',amount:0,status:'refused',desc:'当年拒绝购买'}));
+    }
+  });
+  return out;
+}
+function mergeGiftWishRows(wishes,opts){
+  opts=opts||{};
+  const rows=[];
+  const seen={};
+  function add(r){
+    if(!r)return;
+    normalizeGiftWishEntry(r);
+    const k=giftWishDedupeKey(r);
+    if(seen[k])return;
+    seen[k]=true;
+    rows.push(r);
+  }
+  (wishes||[]).forEach(add);
+  if(!opts.archived){
+    ensureSuperDreamGiftHistory();
+    (game.superDreamGiftHistory||[]).forEach(add);
+  }
+  rows.sort(function(a,b){return (a.week||0)-(b.week||0)});
+  return rows;
+}
+function giftWishExistsAnywhere(k){
+  if(game.giftWishHistory&&game.giftWishHistory.some(function(w){return giftWishDedupeKey(w)===k}))return true;
+  if(game.superDreamGiftHistory&&game.superDreamGiftHistory.some(function(w){return giftWishDedupeKey(w)===k}))return true;
+  if(game.archivedPartnerWishLists&&game.archivedPartnerWishLists.some(function(a){
+    return (a.wishes||[]).some(function(w){return giftWishDedupeKey(w)===k});
+  }))return true;
+  return false;
+}
+function getGiftWishCount(){
+  if(!game)return 0;
+  if(typeof mergeGiftWishRows==='function')return mergeGiftWishRows(game.giftWishHistory||[]).length;
+  return (game.giftWishHistory||[]).length;
+}
+function repairGiftWishHistories(){
+  if(!game)return;
+  ensureGiftWishHistory();
+  ensureSuperDreamGiftHistory();
+  ensureArchivedPartnerWishLists();
+  game.giftWishHistory.forEach(normalizeGiftWishEntry);
+  game.archivedPartnerWishLists.forEach(function(arc){
+    if(!arc.wishes)arc.wishes=[];
+    arc.wishes.forEach(normalizeGiftWishEntry);
+  });
+  recoverSuperDreamsFromLogs().forEach(function(r){
+    const k=giftWishDedupeKey(r);
+    if(giftWishExistsAnywhere(k))return;
+    if(game.married&&!game.divorced){
+      game.superDreamGiftHistory.push(Object.assign({},r));
+      game.giftWishHistory.push(Object.assign({},r));
+    }else if(game.archivedPartnerWishLists.length){
+      const arc=game.archivedPartnerWishLists[game.archivedPartnerWishLists.length-1];
+      if(!arc.wishes)arc.wishes=[];
+      arc.wishes.push(Object.assign({},r));
+    }
+  });
+  game.giftWishHistory=dedupeGiftWishList(game.giftWishHistory);
+  game.superDreamGiftHistory=dedupeGiftWishList(game.superDreamGiftHistory);
+  if(game.archivedPartnerWishLists){
+    game.archivedPartnerWishLists.forEach(function(arc){
+      if(arc.wishes)arc.wishes=dedupeGiftWishList(arc.wishes);
+    });
+  }
+  if(game.giftWishHistory.length>120)game.giftWishHistory=compactGiftWishHistoryForSave(game.giftWishHistory,120);
+}
+function ensureGiftWishHistory(){
+  if(!game)return;
+  if(!Array.isArray(game.giftWishHistory))game.giftWishHistory=[];
+  if(game.giftWishHistory.length>120)game.giftWishHistory=compactGiftWishHistoryForSave(game.giftWishHistory,120);
+}
+function ensureArchivedPartnerWishLists(){
+  if(!game)return;
+  if(!Array.isArray(game.archivedPartnerWishLists))game.archivedPartnerWishLists=[];
+}
+function archiveGiftWishHistoryOnDivorce(partnerNameOverride){
+  if(!game)return;
+  ensureGiftWishHistory();
+  ensureArchivedPartnerWishLists();
+  const wishes=game.giftWishHistory||[];
+  if(!wishes.length)return;
+  const partnerName=partnerNameOverride||game.partnerDisplayName||game.exPartnerName||(game.partnerGender==='male'?'前夫':'前妻');
+  const last=game.archivedPartnerWishLists[game.archivedPartnerWishLists.length-1];
+  if(last&&last.partnerName===partnerName&&last.divorcedWeek===(game.week||0)&&last.wishes.length===wishes.length)return;
+  game.archivedPartnerWishLists.push({
+    partnerName,
+    divorcedWeek:game.week||0,
+    divorcedDate:getGiftWishDateStr(),
+    wishes:mergeGiftWishRows(wishes)
+  });
+  game.giftWishHistory=[];
+  game.superDreamGiftHistory=[];
+}
+function migrateGiftWishArchives(){
+  if(!game||!game.divorced)return;
+  ensureArchivedPartnerWishLists();
+  if(!game.giftWishHistory||!game.giftWishHistory.length)return;
+  const partnerName=game.exPartnerName||game.partnerDisplayName||(game.partnerGender==='male'?'前夫':'前妻');
+  archiveGiftWishHistoryOnDivorce(partnerName);
+}
+function getGiftWishDateStr(){
+  if(typeof getDateStr==='function')return getDateStr(game.week||0);
+  return '第'+(game.week||0)+'周';
+}
+function recordGiftWish(offer,status){
+  if(!game||!offer)return;
+  ensureGiftWishHistory();
+  ensureSuperDreamGiftHistory();
+  const fulfilled=status==='fulfilled';
+  const entry=normalizeGiftWishEntry({
+    date:getGiftWishDateStr(),
+    week:game.week||0,
+    label:offer.label||'未命名礼物',
+    desc:offer.desc||'',
+    amount:offer.amount,
+    fulfilled:fulfilled,
+    status:status,
+    kind:offer.superDream?'superDream':'daily',
+    superDream:!!offer.superDream,
+    giftId:offer.giftId||offer.dreamId||null,
+    dreamId:offer.dreamId||null,
+    calendarYear:offer.calendarYear||(offer.superDream&&typeof getGameCalendarYear==='function'?getGameCalendarYear():null)
+  });
+  game.giftWishHistory.push(entry);
+  if(isGiftWishSuperDream(entry)){
+    const sk=giftWishDedupeKey(entry);
+    if(!game.superDreamGiftHistory.some(function(w){return giftWishDedupeKey(w)===sk}))
+      game.superDreamGiftHistory.push(Object.assign({},entry));
+    if(offer.superDream&&typeof getGameCalendarYear==='function')
+      game.superDreamGiftYear=getGameCalendarYear();
+  }
+}
+function giftWishKindLabel(r){
+  if(isGiftWishSuperDream(r))return '<span class="fold-meta" style="color:var(--accent)">年度梦想</span>';
+  return '<span class="fold-meta">日常愿望</span>';
+}
+function giftWishStatusLabel(st){
+  if(st==='fulfilled')return '<span class="wish-ok">已实现</span>';
+  if(st==='broke')return '<span class="wish-broke">缺钱未送</span>';
+  return '<span class="wish-no">未实现</span>';
+}
+function renderGiftWishBlock(){
+  if(!game)return '';
+  let html='';
+  if(game.married&&!game.divorced){
+    ensureGiftWishHistory();
+    const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+    const n=mergeGiftWishRows(game.giftWishHistory).length;
+    html+='<div class="daily-wish"><b>'+pn+' · 愿望单</b>（'+n+'条） '+
+      '<button class="btn btn-allnight-plain" style="font-size:.7rem;padding:2px 8px" onclick="openGiftWishModal()">打开</button></div>';
+  }
+  ensureArchivedPartnerWishLists();
+  game.archivedPartnerWishLists.forEach(function(arc,i){
+    const n=mergeGiftWishRows(arc.wishes||[],{archived:true}).length;
+    html+='<div class="daily-wish"><b>'+arc.partnerName+' · 历史愿望单</b>（'+n+'条） '+
+      '<button class="btn btn-allnight-plain" style="font-size:.7rem;padding:2px 8px" onclick="openGiftWishModal('+i+')">打开</button></div>';
+  });
+  return html;
+}
+function openGiftWishModal(archiveIndex){
+  const el=document.getElementById('giftWishOverlay');
+  const body=document.getElementById('giftWishModalBody');
+  const h2=el&&el.querySelector('h2');
+  if(!el||!body)return;
+  let rows=[], title='📜 历史愿望单', emptyHint='还没有记录。约会时伴侣讨礼物会记在这里。';
+  if(archiveIndex!=null&&archiveIndex>=0){
+    ensureArchivedPartnerWishLists();
+    const arc=game.archivedPartnerWishLists[archiveIndex];
+    if(!arc)return;
+    rows=mergeGiftWishRows(arc.wishes||[],{archived:true}).slice().reverse();
+    title='📜 '+arc.partnerName+' · 历史愿望单';
+    emptyHint='这段婚姻没有留下愿望记录。';
+  }else{
+    ensureGiftWishHistory();
+    rows=mergeGiftWishRows(game.giftWishHistory).slice().reverse();
+    const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+    title='📜 '+pn+' · 愿望单';
+  }
+  if(h2)h2.textContent=title;
+  if(!rows.length){
+    body.innerHTML='<p class="fold-meta" style="text-align:center;padding:16px 0">'+emptyHint+'</p>';
+  }else{
+    let h='<table class="wish-table"><thead><tr><th class="wish-col-date">日期</th><th class="wish-col-kind">类型</th><th class="wish-col-gift">礼物名目</th><th class="wish-col-amt">价位</th><th class="wish-col-status">实现</th></tr></thead><tbody>';
+    rows.forEach(function(r){
+      const desc=r.desc?'<span class="wish-desc">'+r.desc+'</span>':'';
+      h+='<tr><td class="wish-col-date">'+r.date+'</td><td class="wish-col-kind">'+giftWishKindLabel(r)+'</td><td class="wish-col-gift"><b>'+(r.label||'—')+'</b>'+desc+
+        '</td><td class="wish-col-amt">¥'+(r.amount||0).toLocaleString()+'</td><td class="wish-col-status">'+giftWishStatusLabel(r.status)+'</td></tr>';
+    });
+    h+='</tbody></table>';
+    body.innerHTML=h;
+  }
+  el.classList.remove('hidden');
+}
+function closeGiftWishModal(){
+  const el=document.getElementById('giftWishOverlay');
+  if(el)el.classList.add('hidden');
+}
+function superDreamFlavor(id,amount){
+  if(id==='mansion'){
+    if(amount<150000000)return{label:'滨江顶层复式豪宅',desc:'想在江景大平层安家，客厅要能俯瞰整座城的灯火。'};
+    if(amount<500000000)return{label:'半山独栋传世豪宅',desc:'要一座带泳池、酒窖和私家花园的半山庄园，能请一整个家族来过周末。'};
+    return{label:'庄园公馆群落',desc:'买下庄园用地与主楼群，配管家团队与私密园林——真正的门楣传世。'};
+  }
+  if(id==='island'){
+    if(amount<200000000)return{label:'东南亚私人小岛度假权',desc:'想要一座能直飞抵达的小岛，沙滩、木屋和快艇，每年去住几个月。'};
+    if(amount<800000000)return{label:'加勒比海岛产权',desc:'买下整座小岛产权，自己定规矩，邀请亲友来开派对。'};
+    return{label:'专属群岛开发权',desc:'不只一座岛——一整片群岛的规划权，名字可以刻在地图上。'};
+  }
+  if(id==='movie'){
+    if(amount<120000000)return{label:'文艺片客串 · 明星搭戏',desc:'想投资一部文艺片并客串，请两位当红演员陪她/他演对手戏，在银幕里活一次别人的人生。'};
+    if(amount<400000000)return{label:'院线电影联合出品',desc:'要做一部院线片的联合出品人，和一线影帝影后同框，首映礼走红毯。'};
+    return{label:'年度大片领衔出品',desc:'砸重金做年度大片：国际班底、顶级明星、全球宣发——名字出现在片头出品方。'};
+  }
+  if(id==='concert'){
+    if(amount<80000000)return{label:'万人体育馆个人演唱会',desc:'想办一场属于自己的演唱会，万人场馆、顶级音响，全场只喊她/他的名字。'};
+    if(amount<280000000)return{label:'巡城三场演唱会',desc:'连办三场巡演，每场不同城市，舞美、乐队、嘉宾阵容都要顶配。'};
+    return{label:'全球巡演首发站',desc:'从国内顶级场馆起步，舞美团队按全球巡演标准打造，将来可以接着巡世界。'};
+  }
+  if(id==='yacht'){
+    if(amount<100000000)return{label:'超级游艇泊位与船体',desc:'想要一艘能远洋的游艇，停在专属泊位，周末出海吹风。'};
+    return{label:'定制旗舰游艇',desc:'按她/他的喜好定制船体与内饰，船员编制齐全，随时可以环球航行。'};
+  }
+  if(id==='jet'){
+    if(amount<200000000)return{label:'私人飞机包机年卡',desc:'一年内随时包机出行，不用排队登机，想去哪就去哪。'};
+    return{label:'私人飞机整机与机组',desc:'买下一架公务机并养机组，全球航线说走就走。'};
+  }
+  if(id==='gala'){
+    if(amount<60000000)return{label:'慈善晚宴冠名',desc:'以她/他名义办一场慈善晚宴，明星站台、媒体曝光，既体面又有意义。'};
+    return{label:'年度慈善基金会启动',desc:'成立以自己名字命名的基金会，首场晚宴邀请商界与文娱名流。'};
+  }
+  if(id==='fashion'){
+    if(amount<80000000)return{label:'轻奢品牌联名系列',desc:'和知名品牌推出联名款，从设计到发布会都要参与。'};
+    return{label:'高定时装周专场',desc:'在巴黎或米兰办一场个人高定专场，顶级裁缝与造型团队全程服务。'};
+  }
+  return{label:'超级梦想',desc:'一个配得上你们此刻身价的愿望。'};
+}
+function tryPickSuperDreamGiftOffer(){
+  const c=game.cash||0;
+  if(c<10000000)return null;
+  const y=getGameCalendarYear();
+  if(game.superDreamGiftYear===y)return null;
+  const dreams=[
+    {id:'mansion',weight:1.3,lo:80000000,hi:1500000000,intimacy:16},
+    {id:'island',weight:1.2,lo:120000000,hi:1800000000,intimacy:18},
+    {id:'movie',weight:1.2,lo:40000000,hi:1200000000,intimacy:15},
+    {id:'concert',weight:1.2,lo:30000000,hi:800000000,intimacy:14},
+    {id:'yacht',weight:0.75,lo:50000000,hi:600000000,intimacy:13},
+    {id:'jet',weight:0.65,lo:100000000,hi:1200000000,intimacy:15},
+    {id:'gala',weight:0.55,lo:20000000,hi:350000000,intimacy:12},
+    {id:'fashion',weight:0.55,lo:25000000,hi:400000000,intimacy:13}
+  ];
+  const pool=dreams.filter(function(d){return c>=d.lo*0.85});
+  if(!pool.length)return null;
+  const total=pool.reduce(function(s,d){return s+d.weight},0);
+  let r=Math.random()*total;
+  let pick=pool[0];
+  for(let i=0;i<pool.length;i++){
+    r-=pool[i].weight;
+    if(r<=0){pick=pool[i];break;}
+  }
+  const hi=Math.min(pick.hi,Math.round(c*0.92));
+  const lo=Math.min(pick.lo,hi);
+  const amount=Math.round(lo+Math.random()*Math.max(hi-lo,1));
+  const flavor=superDreamFlavor(pick.id,amount);
+  return{
+    amount:amount,label:flavor.label,desc:flavor.desc,dreamId:pick.id,
+    intimacy:pick.intimacy,superDream:true,refuseIntimacy:-5,calendarYear:y
+  };
+}
+const DATE_GIFT_CATALOG=[
+  {giftId:'rose11',amount:520,need:2000,weight:14,intimacy:3,label:'十一月玫瑰花束',desc:'红玫瑰配满天星，经典约会场面。'},
+  {giftId:'dessert_box',amount:520,need:2000,weight:12,intimacy:3,label:'网红甜品盒',desc:'慕斯、马卡龙、草莓塔装一大盒。'},
+  {giftId:'hair_clip',amount:520,need:2000,weight:10,intimacy:3,label:'珍珠发夹套装',desc:'她上次逛街多看了两眼的那款。'},
+  {giftId:'scented_candle',amount:520,need:2000,weight:8,intimacy:3,label:'香薰蜡烛礼盒',desc:'居家氛围感，味道选了她提过的。'},
+  {giftId:'godiva',amount:1314,need:6000,weight:12,intimacy:4,label:'进口巧克力礼盒',desc:'心形铁盒装，刻了约会日期。'},
+  {giftId:'starbucks_set',amount:1314,need:6000,weight:10,intimacy:4,label:'星巴克限定杯套装',desc:'城市限定杯+联名保温瓶。'},
+  {giftId:'photo_album',amount:1314,need:6000,weight:9,intimacy:4,label:'定制相册本',desc:'把你们约会照片洗出来装订成册。'},
+  {giftId:'skincare_mini',amount:1314,need:6000,weight:8,intimacy:4,label:'大牌护肤小样套装',desc:'精华、面霜、面膜旅行装组合。'},
+  {giftId:'silver_ring',amount:5200,need:18000,weight:11,intimacy:5,label:'925银开口戒指',desc:'简约款，内侧可刻字。'},
+  {giftId:'perfume30',amount:5200,need:18000,weight:10,intimacy:5,label:'沙龙香水30ml',desc:'专柜试香后她最中意的那支。'},
+  {giftId:'kindle',amount:5200,need:18000,weight:8,intimacy:5,label:'电子书阅读器',desc:'通勤路上看她总用手机看书。'},
+  {giftId:'earbuds',amount:5200,need:18000,weight:7,intimacy:5,label:'降噪耳机',desc:'地铁里她总把音量开很大。'},
+  {giftId:'bracelet',amount:8800,need:40000,weight:10,intimacy:5,label:'轻奢品牌手链',desc:'玫瑰金链身，带一颗小吊坠。'},
+  {giftId:'bag_small',amount:8800,need:40000,weight:9,intimacy:5,label:'小众设计师小包',desc:'不是大牌，但款式很对她胃口。'},
+  {giftId:'spa_card',amount:8800,need:40000,weight:8,intimacy:5,label:'双人SPA体验卡',desc:'按摩+泡浴，下次约会一起去。'},
+  {giftId:'watch_fashion',amount:20000,need:90000,weight:9,intimacy:6,label:'时尚腕表',desc:'表盘小巧，日常通勤也能戴。'},
+  {giftId:'coat',amount:20000,need:90000,weight:8,intimacy:6,label:'羊绒大衣',desc:'她念叨了一整个冬天的款式。'},
+  {giftId:'ipad',amount:20000,need:90000,weight:7,intimacy:6,label:'平板电脑',desc:'追剧、记账、看剧都更方便。'},
+  {giftId:'jewelry_set',amount:38888,need:220000,weight:7,intimacy:6,label:'项链耳钉套装',desc:'成套首饰，晚宴场合拿得出手。'},
+  {giftId:'weekend_hotel',amount:38888,need:220000,weight:6,intimacy:6,label:'五星酒店周末房券',desc:'江景房两晚，含双人早餐。'},
+  {giftId:'camera',amount:38888,need:220000,weight:5,intimacy:6,label:'微单相机',desc:'她说想认真记录生活。'},
+  {giftId:'diamond_pendant',amount:66666,need:550000,weight:6,intimacy:7,label:'钻石吊坠项链',desc:'30分主石，白金链，可以天天戴。'},
+  {giftId:'luxury_bag',amount:66666,need:550000,weight:5,intimacy:7,label:'经典款名牌手袋',desc:'保值款，她背出去会很有面子。'},
+  {giftId:'home_projector',amount:66666,need:550000,weight:4,intimacy:7,label:'激光家庭影院',desc:'把客厅变成私人影院。'},
+  {giftId:'watch_luxury',amount:88888,need:1200000,weight:5,intimacy:7,label:'瑞士机械腕表',desc:'自动机芯，礼盒证书齐全。'},
+  {giftId:'jade_bangle',amount:88888,need:1200000,weight:4,intimacy:7,label:'和田玉手镯',desc:'长辈看了也会点头的成色。'},
+  {giftId:'piano_digital',amount:88888,need:1200000,weight:3,intimacy:7,label:'三角电钢琴',desc:'她小时候学过琴，一直想买一架。'},
+  {giftId:'ring_diamond',amount:128000,need:3500000,weight:4,intimacy:8,label:'1克拉钻戒',desc:'虽然不是求婚，但诚意拉满。'},
+  {giftId:'car_down',amount:128000,need:3500000,weight:3,intimacy:8,label:'代步车首付款',desc:'让她通勤不用挤地铁。'},
+  {giftId:'art_piece',amount:128000,need:3500000,weight:3,intimacy:8,label:'青年画家原作',desc:'挂在家里玄关，来客都会问。'},
+  {giftId:'birkin_entry',amount:200000,need:9000000,weight:3,intimacy:8,label:'爱马仕入门款包',desc:'配货排了很久才拿到。'},
+  {giftId:'renovation',amount:200000,need:9000000,weight:2.5,intimacy:8,label:'衣帽间改造基金',desc:'把她想要的步入式衣帽间装起来。'},
+  {giftId:'trip_europe',amount:200000,need:9000000,weight:2,intimacy:8,label:'欧洲双人游基金',desc:'机票酒店全包，十天自由行。'},
+  {giftId:'jewelry_high',amount:388000,need:25000000,weight:2,intimacy:9,label:'高定珠宝套装',desc:'晚宴级项链耳环，镶嵌宝石。'},
+  {giftId:'car_gift',amount:388000,need:25000000,weight:1.8,intimacy:9,label:'豪华品牌轿车',desc:'直接提车，写她名字。'},
+  {giftId:'apartment_down',amount:388000,need:25000000,weight:1.5,intimacy:9,label:'公寓首付礼金',desc:'在她喜欢的地段付一笔首付。'},
+  {giftId:'watch_collect',amount:520000,need:60000000,weight:1.2,intimacy:10,label:'收藏级名表',desc:'限量编号，升值和面子都有。'},
+  {giftId:'diamond_set',amount:520000,need:60000000,weight:1,intimacy:10,label:'成套钻石首饰',desc:'项链、耳环、手链一整套。'},
+  {giftId:'shop_share',amount:520000,need:60000000,weight:0.8,intimacy:10,label:'商铺产权份额',desc:'核心商圈小面积铺面，收租养老。'},
+  {giftId:'painting_master',amount:880000,need:150000000,weight:0.8,intimacy:11,label:'名家书画真迹',desc:'拍卖行成交，可验真可保险。'},
+  {giftId:'yacht_share',amount:880000,need:150000000,weight:0.6,intimacy:11,label:'游艇份额',desc:'周末出海，船员随叫随到。'},
+  {giftId:'fund_gift',amount:880000,need:150000000,weight:0.5,intimacy:11,label:'私募理财份额',desc:'以她名义认购，稳健增值。'},
+  {giftId:'villa_down',amount:1280000,need:400000000,weight:0.4,intimacy:12,label:'别墅定金',desc:'郊区别墅，带花园和车库。'},
+  {giftId:'art_auction',amount:1280000,need:400000000,weight:0.35,intimacy:12,label:'拍卖行顶级藏品',desc:'当代艺术家代表作，有证书。'},
+  {giftId:'brand_franchise',amount:1280000,need:400000000,weight:0.3,intimacy:12,label:'品牌加盟权',desc:'她一直想开一家自己的店。'}
+];
+function pickWeightedGift(pool){
+  const total=pool.reduce(function(s,t){return s+t.weight},0);
+  let r=Math.random()*total;
+  for(let i=0;i<pool.length;i++){
+    r-=pool[i].weight;
+    if(r<=0)return pool[i];
+  }
+  return pool[0];
+}
+function pickDateGiftOffer(){
+  const superOffer=tryPickSuperDreamGiftOffer();
+  if(superOffer)return superOffer;
+  const c=game.cash||0;
+  let pool=DATE_GIFT_CATALOG.filter(function(t){return t.need<=c*1.15});
+  if(!pool.length)pool=DATE_GIFT_CATALOG.filter(function(t){return t.amount===520});
+  const g=pickWeightedGift(pool);
+  return{
+    amount:g.amount,label:g.label,desc:g.desc,giftId:g.giftId,
+    intimacy:g.intimacy,refuseIntimacy:-2,superDream:false
+  };
+}
+function datePhaseLabel(){
+  const ph=game.daily&&game.daily.phase;
+  return (typeof PHASE_LABELS!=='undefined'&&ph)?PHASE_LABELS[ph]:(ph||'本时段');
+}
+function showDateFlowModal(opts){
+  const wrap=function(fn,close){
+    return function(){
+      if(close!==false&&typeof closeConsumeModal==='function')closeConsumeModal();
+      if(typeof fn==='function')fn();
+    };
+  };
+  if(typeof showConsumeModalHandlers==='function'){
+    const btns=(opts.buttons&&opts.buttons.length)?opts.buttons.map(function(b){
+      return{text:b.text,primary:!!b.primary,handler:wrap(b.handler)};
+    }):[{text:opts.btn||'知道了',primary:true,handler:wrap(opts.onClose)}];
+    showConsumeModalHandlers({icon:opts.icon||'💑',title:opts.title||'',html:opts.html||'',buttons:btns});
+    return;
+  }
+  const q=typeof queueEventEncounter==='function'?queueEventEncounter:queueEncounterModal;
+  q(opts);
+}
+function promptDateGiftModal(onDone){
+  onDone=onDone||function(){};
+  if(!game.married||game.divorced)return onDone();
+  if(game.playerGender!=='male'||game.partnerGender!=='female')return onDone();
+  if(Math.random()>=0.45)return onDone();
+  const offer=pickDateGiftOffer();
+  const gift=offer.amount;
+  const refuseDelta=offer.refuseIntimacy!=null?offer.refuseIntimacy:-2;
+  const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+  let html,title,icon;
+  if(offer.superDream){
+    icon='💎';
+    title='约会 · '+getGameCalendarYear()+' 年度超级梦想';
+    html='<p>约会后 '+pn+' 认真地说：「这是我今年最大的心愿……」</p>'+
+      '<p><b>'+offer.label+'</b> · 约 <b>¥'+gift.toLocaleString()+'</b></p>'+
+      (offer.desc?'<p class="fold-meta" style="margin-top:6px">'+offer.desc+'</p>':'')+
+      '<p class="fold-meta" style="color:var(--accent)">每年仅一次机会 · '+getGameCalendarYear()+' 年已触发</p>'+
+      '<p class="fold-meta">你手头现金约 ¥'+(game.cash||0).toLocaleString()+'</p>'+
+      '<p class="fold-meta">买：亲密度+'+offer.intimacy+' · 不买：亲密度'+refuseDelta+' · 缺钱：亲密度-1</p>';
+  }else{
+    icon='🎁';
+    title='约会 · '+pn+' 想要礼物';
+    html='<p>约会结束后，'+pn+' 小声问：「今天能不能送我一份礼物？」</p>'+
+      '<p>想要：<b>'+offer.label+'</b> · 约 <b>¥'+gift.toLocaleString()+'</b></p>'+
+      (offer.desc?'<p class="fold-meta" style="margin-top:6px">'+offer.desc+'</p>':'')+
+      '<p class="fold-meta">你手头现金约 ¥'+(game.cash||0).toLocaleString()+' · 日常礼物按价位分档，名目随机</p>'+
+      '<p class="fold-meta">买：亲密度+'+offer.intimacy+' · 不买：亲密度'+refuseDelta+' · 缺钱：亲密度-1</p>';
+  }
+  showDateFlowModal({
+    icon:icon,title:title,html:html,
+    buttons:[
+      {text:'买礼物 ¥'+gift.toLocaleString(),primary:true,handler:function(){
+        if(game.cash>=gift){
+          game.cash-=gift;
+          adjustSpouseIntimacy(offer.intimacy);
+          recordGiftWish(offer,'fulfilled');
+          addLog((offer.superDream?'💎 年度超级梦想':'🎁 约会礼物')+'「'+offer.label+'」¥'+gift.toLocaleString()+' · 亲密度+'+offer.intimacy,'info');
+          if(typeof renderSpendingPanel==='function')renderSpendingPanel();
+          if(typeof updateUI==='function')updateUI();
+        }else{
+          adjustSpouseIntimacy(-1);
+          recordGiftWish(offer,'broke');
+          addLog((offer.superDream?'💎 年度超级梦想':'🎁 约会礼物')+'囊中羞涩，无法满足「'+offer.label+'」¥'+gift.toLocaleString()+' · 亲密度-1','warn');
+        }
+        onDone();
+      }},
+      {text:'不买',handler:function(){
+        adjustSpouseIntimacy(refuseDelta);
+        recordGiftWish(offer,'refused');
+        addLog((offer.superDream?'💎 拒绝年度超级梦想':'🎁 拒绝买礼物')+' · 亲密度'+refuseDelta,'warn');
+        onDone();
+      }}
+    ]
+  });
+}
+function promptDateSoftRiceModal(onDone){
+  onDone=onDone||function(){};
+  if(!game.married||game.divorced)return onDone();
+  if(game.playerGender!=='female'||game.partnerGender!=='male')return onDone();
+  if(Math.random()>=0.35)return onDone();
+  const ask=1000+Math.floor(Math.random()*10001);
+  const pn=game.partnerDisplayName||'伴侣';
+  showDateFlowModal({
+    icon:'🍚',title:'约会 · 吃软饭',
+    html:'<p>'+pn+' 试探地问：能不能由你每月负担 <b>¥'+ask.toLocaleString()+'</b>？</p>',
+    buttons:[
+      {text:'同意 ¥'+ask.toLocaleString()+'/月',primary:true,handler:function(){
+        game.partnerSoftRice=ask;
+        addLog('同意伴侣吃软饭 ¥'+ask+'/月','info');
+        onDone();
+      }},
+      {text:'拒绝',handler:function(){
+        adjustSpouseIntimacy(-1);
+        addLog('拒绝伴侣吃软饭要求 · 亲密度-1','warn');
+        onDone();
+      }}
+    ]
+  });
+}
+function showDateNightResultModal(onDone){
+  const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+  const cost=typeof DATE_COST!=='undefined'?DATE_COST:500;
+  const phaseLbl=datePhaseLabel();
+  showDateFlowModal({
+    icon:'💑',title:'约会 · '+phaseLbl,
+    html:'<p>与 <b>'+pn+'</b> 度过了愉快的时光。</p><p class="fold-meta">花费 ¥'+cost+' · 压力-5 · 亲密度+1</p>',
+    btn:'继续',onClose:onDone
+  });
+}
 function dailyDateEvening(){
   if(!dailyUseMainActivity())return;
-  const ph=game.daily&&game.daily.phase;
-  if(typeof isPartnerOutForFun==='function'&&isPartnerOutForFun(ph)){
-    game.daily.partnerOutForFun=false;
-    addLog('💑 在外面碰头约会','info');
+  const d=game.daily;
+  const ph=d&&d.phase;
+  const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+  const phaseLbl=datePhaseLabel();
+  if(d){
+    d.slotActivity='date';
+    d.partnerOutForFun=false;
+    d.partnerPresenceRolled=true;
+    d._partnerPresencePhase=ph;
   }
-  const ok=game.longDistance?buyOnlineDateDaily():buyDateNightDaily();
-  if(!ok){dailyReleaseMainActivity();return}
-  if(game.daily)game.daily.noHomeReturnDay=false;
-  if(phoneCfg().photoDate&&!game.longDistance&&Math.random()<0.4)adjustSpouseIntimacy(1);
-  handleGenderDateExtras();
-  dailyAdvanceAfterSlotAction();
-}
-function handleGenderDateExtras(){
-  if(!game.married||game.divorced)return;
-  const pg=game.playerGender,sg=game.partnerGender;
-  if(pg==='male'&&sg==='female'&&Math.random()<0.45){
-    const gift=[520,1314,5200,8800,20000][Math.floor(Math.random()*5)];
-    if(game.cash>=gift){
-      game.cash-=gift;
-      adjustSpouseIntimacy(5);
-      addLog('🎁 约会礼物 ¥'+gift+' · 亲密度+5','info');
-    }else{adjustSpouseIntimacy(-1);addLog('🎁 无法满足礼物要求 · 亲密度-1','warn')}
+  const finishDate=function(){
+    if(game.daily){
+      game.daily.noHomeReturnDay=false;
+      game.daily.slotActivity='date';
+    }
+    if(phoneCfg().photoDate&&!game.longDistance&&Math.random()<0.4)adjustSpouseIntimacy(1);
+    showDateNightResultModal(function(){
+      promptDateGiftModal(function(){
+        promptDateSoftRiceModal(function(){
+          if(game.daily)game.daily.slotActivity=null;
+          dailyAdvanceAfterSlotAction();
+        });
+      });
+    });
+  };
+  if(game.longDistance){
+    if(!buyOnlineDateDaily()){dailyReleaseMainActivity();return}
+    showDateFlowModal({icon:'📱',title:'线上约会 · '+phaseLbl,html:'<p>与 '+pn+' 视频聊天。</p><p class="fold-meta">压力-2 · 亲密度随机 ±1</p>',btn:'挂断',onClose:finishDate});
+    return;
   }
-  if(pg==='female'&&sg==='male'&&Math.random()<0.35){
-    const ask=1000+Math.floor(Math.random()*10001);
-    if(confirm('伴侣要求吃软饭 ¥'+ask+'/月负担，是否同意？')){
-      game.partnerSoftRice=ask;
-      addLog('同意伴侣吃软饭 ¥'+ask+'/月','info');
-    }else adjustSpouseIntimacy(-1);
+  const cost=typeof DATE_COST!=='undefined'?DATE_COST:500;
+  if(game.cash<cost){
+    addLog('现金不足，无法约会','fail');
+    dailyReleaseMainActivity();
+    return;
   }
+  showDateFlowModal({
+    icon:'💑',title:'出门约会 · '+phaseLbl,
+    html:'<p>和 <b>'+pn+'</b> 现在出门约会？</p><p class="fold-meta">占满本时段 · 花费 ¥'+cost+' · 压力-5 · 亲密度+1</p>',
+    buttons:[
+      {text:'去约会 ¥'+cost,primary:true,handler:function(){
+        if(!buyDateNightDaily()){dailyReleaseMainActivity();return;}
+        finishDate();
+      }},
+      {text:'算了',handler:function(){dailyReleaseMainActivity()}}
+    ]
+  });
 }
 
 function renderDailyOutMenu(phase){
   let h='<p class="fold-meta">选择外出地点</p>';
   if(phase==='morning'){
     const wk=game.daily&&isWeekendDay(game.daily.dayIndex);
-    if(wk&&game.married&&!game.divorced){
-      h+='<p class="fold-meta">周末白天 · 伴侣可能在外面玩</p>';
-      h+='<button class="btn" onclick="dailyPickOutMorning(\'date\')">💑 约会</button>';
-    }
+    if(wk&&game.married&&!game.divorced)h+='<p class="fold-meta">周末白天 · 伴侣可能在外面玩</p>';
+    if(game.married&&!game.divorced)h+='<button class="btn" onclick="dailyPickOutMorning(\'date\')">💑 约会</button>';
     h+='<button class="btn" onclick="dailyPickOutMorning(\'park\')">🌳 公园（临时肉体+1）</button>';
     h+='<button class="btn" onclick="dailyPickOutMorning(\'cafe\')">☕ 咖啡店（临时精神+1）</button>';
     h+='<button class="btn" onclick="dailyPickOutMorning(\'library\')">📚 图书馆（临时心智+1）</button>';
@@ -2115,6 +2961,7 @@ function renderDailyOutMenu(phase){
       h+='<button class="btn" onclick="dailyPickOutEvening(\'club\')">'+allnightBtnLabel('🪩 夜店 ¥500（减压×2）')+'</button>';
       h+='<button class="btn" onclick="dailyPickOutEvening(\'bar\')">'+allnightBtnLabel('🍺 酒吧 ¥200（减压×2）')+'</button>';
       h+='<button class="btn" onclick="dailyPickOutEvening(\'store\')">'+allnightBtnLabel('🏪 便利店 ¥50（减压×2）')+'</button>';
+      if(game.married&&!game.divorced)h+='<button class="btn" onclick="dailyPickOutEvening(\'date\')">'+allnightBtnLabel('💑 约会')+'</button>';
     }
   }else{
     if(game.married&&!game.divorced)h+='<button class="btn" onclick="dailyPickOutEvening(\'date\')">💑 约会</button>';
@@ -2146,6 +2993,9 @@ function renderDailyHomeLeisureBtns(prefix){
   h+='<p class="fold-meta">游戏机2h · 电脑1h · 进食1h/次（每时段限吃1次 · 每10压力+1份 · 隔天反弹份数×2）</p>';
   h+='<button class="btn" '+(dis||!game.ownsConsole?'disabled':'')+' onclick="dailyPick'+prefix+'(\'console\')">'+lbl('🎮 游戏机(2h)')+'</button> ';
   h+='<button class="btn" '+(dis||!game.ownsComputer?'disabled':'')+' onclick="dailyPick'+prefix+'(\'computer\')">'+lbl('💻 电脑(1h)')+'</button> ';
+  if(typeof artState==='function'&&artState().broomOwned){
+    h+='<button class="btn" '+(dis?'disabled':'')+' onclick="dailyPick'+prefix+'(\'clean\')">'+lbl('🧹 打扫卫生(1h)')+'</button> ';
+  }
   if(stock>=needP){
     h+='<button class="btn" '+(dis||ate?'disabled':'')+' onclick="dailyPick'+prefix+'(\'snack\')">'+lbl('🍿 零食(囤'+stock+'·自己吃'+needP+'份)(1h)')+'</button> ';
   }else{
@@ -2197,6 +3047,7 @@ function renderDailyHomeMenu(phase){
       h+='<button class="btn" '+(fertBusy?'disabled':'')+' onclick="dailyPickHomeMorning(\'procreate\')">'+lbl+'</button>';
     }
     h+=renderDailyHomeLeisureBtns('HomeMorning');
+    if(typeof renderVillaHomeExtras==='function')h+=renderVillaHomeExtras('HomeMorning');
   }else if(phase==='allnight'){
     const leftN=dailySlotHoursLeft();
     if(leftN<=0){
@@ -2224,6 +3075,7 @@ function renderDailyHomeMenu(phase){
       h+='<button class="btn" '+(fertBusy?'disabled':'')+' onclick="dailyPickHomeEvening(\'procreate\')">'+allnightBtnLabel(fertLbl)+'</button>';
     }
     h+=renderDailyHomeLeisureBtns('HomeEvening');
+    if(typeof renderVillaHomeExtras==='function')h+=renderVillaHomeExtras('HomeEvening');
   }else{
     h+='<button class="btn" onclick="dailyPickHomeEvening(\'rest\')">🛋 休息1h（-1压力·临时精神+1）</button>';
     if(game.married&&!game.divorced){
@@ -2244,6 +3096,7 @@ function renderDailyHomeMenu(phase){
       h+='<button class="btn" '+(fertBusy?'disabled':'')+' onclick="dailyPickHomeEvening(\'procreate\')">'+lbl+'</button>';
     }
     h+=renderDailyHomeLeisureBtns('HomeEvening');
+    if(typeof renderVillaHomeExtras==='function')h+=renderVillaHomeExtras('HomeEvening');
   }
   h+='<button class="btn" onclick="dailyBackToMain()">← 返回</button>';
   return h;
@@ -2327,6 +3180,10 @@ function renderDailyMainActions(phase,d,sched){
     return h;
   }
   if(phase==='evening'){
+    if(eveningEndChoicePending()){
+      h+=renderEveningEndChoiceRows();
+      return h;
+    }
     const wk=isWeekendDay(d.dayIndex);
     if(d.slotHoursUsed===0){
       if(game.employed&&isScheduledWorkSlot('evening')){
@@ -2357,10 +3214,12 @@ function renderDailyMainActions(phase,d,sched){
 }
 function buyCar(key){
   const c=CAR_SHOP[key];if(!c||!game)return;
-  if(game.ownedCar===key){addLog('已拥有'+c.name,'warn');return}
+  ensureCarState();
+  if(game.ownedCars.includes(key)){addLog('已拥有'+c.name+'，无法重复购买','warn');return}
   if(!spendCash(c.price,'购买'+c.name))return;
-  game.ownedCar=key;
-  addLog('🚗 购入'+c.name+' ¥'+c.price.toLocaleString(),'success');
+  game.ownedCars.push(key);
+  if(!game.ownedCar)game.ownedCar=key;
+  addLog('🚗 购入'+c.name+' ¥'+c.price.toLocaleString()+(game.ownedCar===key?' · 已设为当前座驾':''),'success');
   renderDailyPanel();renderSpendingPanel();
 }
 function buyPhone(key){
@@ -2376,12 +3235,18 @@ function buyPhone(key){
 function renderDailyPanel(){
   const el=document.getElementById('dailyPanel');
   if(!el||!game)return;
-  if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning){
+  if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
+  if(typeof isAutoLifeSimulating==='function'&&isAutoLifeSimulating()){
     el.innerHTML='<p style="color:var(--yellow);font-size:.85rem">⏩ 自动生活进行中，日程已暂停…</p>';
     return;
   }
   if(typeof isPlayerImprisoned==='function'&&isPlayerImprisoned()){
-    el.innerHTML='<p style="color:var(--red);font-size:.85rem">🔒 监禁中（剩 '+(game.imprisonedUntilWeek-game.week)+' 周）· 无法安排日程</p>';
+    const left=Math.max(0,(game.imprisonedUntilWeek||0)-game.week);
+    el.innerHTML='<div class="daily-panel-body">'+
+      '<p style="color:var(--red);font-size:.85rem">🔒 监禁中（剩 '+left+' 周）· 无法安排日程</p>'+
+      '<p class="fold-meta">服刑期间无法上班、外出、偷情或使用通讯录。</p>'+
+      '<button class="btn btn-success" onclick="nextWeek()">服刑快进一周 →</button> '+
+      '<span class="fold-meta">或使用下方「自动生活」批量快进</span></div>';
     return;
   }
   const ov=document.getElementById('autoLifeOverlay');
@@ -2405,17 +3270,18 @@ function renderDailyPanel(){
     if(typeof ensurePartnerPresence==='function')ensurePartnerPresence(phase);
     const loc=typeof getSpouseLocationLabel==='function'?getSpouseLocationLabel(phase):'';
     const pStreak=getCompanionAllnightStreak();
+    const catchUp=!!(d.partnerCatchUpSleep&&phase==='morning');
+    const skipDays=typeof getCompanionMonthlyAbsenceCount==='function'?getCompanionMonthlyAbsenceCount():(game.companion&&game.companion.monthlyAbsenceCount)||0;
     html+='<div class="daily-partner">'+partnerAvatarHtml(game.partnerGender)+'<div><b>'+pn+'</b><div class="fold-meta">📍 '+loc+'</div>'+
-      (pStreak?'<div class="fold-meta" style="color:var(--orange)">已连续通宵未睡 '+pStreak+' 天</div>':'')+
+      (catchUp?'<div class="fold-meta" style="color:var(--blue)">😴 在家补觉'+(skipDays?(' · 本月旷工 '+skipDays+'/'+MONTHLY_ABSENCE_LIMIT):'')+'</div>':'')+
+      '<div class="fold-meta" style="color:var(--orange)">通宵：'+(pStreak?'已连续未睡 '+pStreak+' 天':'未通宵')+'</div>'+
+      (!catchUp&&skipDays?'<div class="fold-meta" style="color:var(--yellow)">本月旷工 '+skipDays+'/'+MONTHLY_ABSENCE_LIMIT+' 天</div>':'')+
       '</div></div>';
   }
   const left=dailySlotHoursLeft();
   html+='<p style="font-size:.72rem;color:var(--muted)">本时段剩 '+left+'h · 刷APP '+JOB_APP_BROWSE_H+'h/次 · 猎头/内推 '+JOB_HEADHUNTER_H+'h · 与宅家共用</p>';
-  const bs=game.stats||{};
   html+='<div class="daily-stats">'+
-    '<span>你·肉体 <b>'+effStat('body')+'</b> <span class="fold-meta">基础'+(bs.body||0)+'</span> · 心智 <b>'+effStat('mind')+'</b> <span class="fold-meta">基础'+(bs.mind||0)+'</span> · 精神 <b>'+effStat('spirit')+'</b> <span class="fold-meta">基础'+(bs.spirit||0)+'</span> <span class="fold-meta">(永久合计'+statTotal(bs)+')</span></span>'+
-    (game.married&&!game.divorced?'<br><span>'+pn+'·肉体 <b>'+partnerEffStat('body')+'</b> 心智 <b>'+partnerEffStat('mind')+'</b> 精神 <b>'+partnerEffStat('spirit')+'</b> <span class="fold-meta">(合计'+statTotal(game.partnerStats)+')</span></span>':'')+
-    '<br><span>亲密度 <b>'+(game.spouseIntimacy!=null?game.spouseIntimacy:'—')+'</b></span></div>';
+    '<span>亲密度 <b>'+(game.spouseIntimacy!=null?game.spouseIntimacy:'—')+'</b></span></div>';
   html+=renderTempStatsHtml();
   html+='<div class="daily-week">'+DAY_NAMES.map((n,i)=>'<span class="daily-dot'+(i<d.dayIndex?' done':i===day&&d.dayIndex<7?' cur':'')+'">'+n+'</span>').join('')+'</div>';
   if(d.dayIndex>=7){
@@ -2427,22 +3293,36 @@ function renderDailyPanel(){
   }
   html+=renderPartnerInviteOutHint();
   html+='<div class="daily-actions">';
+  if(eveningEndChoicePending()){
+    html+=renderEveningEndChoiceRows();
+    html+='</div>';
+    if(typeof renderPropertyPanel==='function')html+=renderPropertyPanel();
+    html+=renderCarPanel();
+    html+=renderPhonePanel();
+    html+='<div class="daily-side-tools">';
+    if(typeof renderContactsBlock==='function')html+=renderContactsBlock();
+    if(typeof renderGiftWishBlock==='function')html+=renderGiftWishBlock();
+    html+='</div>';
+    html+='</div>';
+    el.innerHTML=html;
+    schedulePartnerInviteOutCheck();
+    return;
+  }
   const sub=d.subMenu||null;
   if(sub==='job')html+=renderDailyJobMenu(phase);
   else if(sub==='out')html+=renderDailyOutMenu(phase);
   else if(sub==='home')html+=renderDailyHomeMenu(phase);
   else html+=renderDailyMainActions(phase,d,sched);
   html+='</div>';
-  html+='<div class="daily-shop"><b>购车</b> ';
-  Object.keys(CAR_SHOP).forEach(k=>{const c=CAR_SHOP[k];html+='<button class="btn btn-allnight-plain" onclick="buyCar(\''+k+'\')">'+c.name+' ¥'+(c.price/10000)+'万</button> ';});
-  html+=(game.ownedCar?' <span class="fold-meta">已购 '+CAR_SHOP[game.ownedCar].name+'</span>':'')+'</div>';
+  if(typeof renderPropertyPanel==='function')html+=renderPropertyPanel();
+  html+=renderCarPanel();
   html+=renderPhonePanel();
+  html+='<div class="daily-side-tools">';
   if(typeof renderContactsBlock==='function')html+=renderContactsBlock();
+  if(typeof renderGiftWishBlock==='function')html+=renderGiftWishBlock();
+  html+='</div>';
   html+='</div>';
   el.innerHTML=html;
-  if(phase==='evening'&&dailySlotBlocked()&&!d.eveningEndModalShown&&!d.inOvertime&&d.slotActivity!=='work'&&d.slotActivity!=='overtime'){
-    setTimeout(function(){if(typeof showEveningEndChoiceModal==='function')showEveningEndChoiceModal()},80);
-  }
   if(phase==='allnight'&&d.allnightArrivalPending){
     setTimeout(function(){if(typeof showOvertimeAllnightArrivalModal==='function')showOvertimeAllnightArrivalModal()},80);
   }
@@ -2452,14 +3332,25 @@ function renderDailyPanel(){
   schedulePartnerInviteOutCheck();
 }
 function migrateDailyState(){
+  if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
   if(game){
+    if(game.superDreamGiftYear==null)game.superDreamGiftYear=null;
+    ensureGiftWishHistory();
+    ensureArchivedPartnerWishLists();
+    if(typeof migrateGiftWishArchives==='function')migrateGiftWishArchives();
+    if(typeof repairGiftWishHistories==='function')repairGiftWishHistories();
     if(!game.ownedPhones||!game.ownedPhones.length){
       game.ownedPhones=game.phone?[game.phone]:['xiaomi'];
       if(!game.ownedPhones.includes('xiaomi'))game.ownedPhones.unshift('xiaomi');
     }
     if(game.phonePanelOpen==null)game.phonePanelOpen=false;
     if(game.nokiaBonusActive==null)game.nokiaBonusActive=false;
+    ensureCarState();
     ensurePhoneState();
+  }
+  if(game){
+    if(game.pendingPartnerCatchUpSleep==null)game.pendingPartnerCatchUpSleep=false;
+    if(game.companionAllnightChoiceResolved==null)game.companionAllnightChoiceResolved=false;
   }
   const d=ensureDailyState();
   if(d){
@@ -2484,8 +3375,10 @@ function migrateDailyState(){
     if(d.partnerAllnightStayedOut==null)d.partnerAllnightStayedOut=false;
     if(d.allnightEndModalShown==null)d.allnightEndModalShown=false;
     if(d.partnerCatchUpSleep==null)d.partnerCatchUpSleep=false;
+    if(d.companionMorningSkipLogged==null)d.companionMorningSkipLogged=false;
     if(d.eveningEndModalShown==null)d.eveningEndModalShown=false;
     if(d.allnightArrivalPending==null)d.allnightArrivalPending=false;
+    if(d.villaPartyUsed==null)d.villaPartyUsed=false;
     if(game.monthlyAbsenceMonthKey==null){
       game.monthlyAbsenceMonthKey=game.overtimeRefuseMonthKey!=null?game.overtimeRefuseMonthKey:getMonthlyAbsenceMonthKey();
       game.monthlyAbsenceCount=game.overtimeRefuseCount!=null?game.overtimeRefuseCount:0;
@@ -2497,8 +3390,12 @@ function migrateDailyState(){
     }
   }
   if(game.partnerNeglectPoints==null)game.partnerNeglectPoints=0;
-  if(game.companion&&game.companion.weekWorkSkipDays==null)game.companion.weekWorkSkipDays=0;
+  if(!game.partnerTempStats)game.partnerTempStats=defaultTempStats();
   if(game.companion){
+    if(game.companion.monthlyAbsenceCount==null)game.companion.monthlyAbsenceCount=0;
+    if(game.companion.monthlyAbsenceMonthKey==null&&typeof getMonthlyAbsenceMonthKey==='function')
+      game.companion.monthlyAbsenceMonthKey=getMonthlyAbsenceMonthKey();
+    if(typeof ensureCompanionMonthlyAbsenceMonth==='function')ensureCompanionMonthlyAbsenceMonth();
     if(!game.companion.stats||game.companion.stats===game.stats||isLegacyFlatStats(game.companion.stats))
       game.companion.stats=rollRandomStats();
     game.companion.playerGender=game.playerGender;

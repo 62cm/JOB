@@ -1,13 +1,13 @@
 /* 职场八卦 / 行业传说 — 外出遇人有几率开讲 */
 const WORKPLACE_STORY_CHANCE = {
-  default: 0.38,
-  commute: 0.22,
-  bar: 0.55,
-  club: 0.58,
-  park: 0.32,
-  cafe: 0.42,
-  library: 0.18,
-  store: 0.28
+  default: 0.58,
+  commute: 0.40,
+  bar: 0.68,
+  club: 0.72,
+  park: 0.50,
+  cafe: 0.58,
+  library: 0.35,
+  store: 0.45
 };
 
 function wsHash(s) {
@@ -77,6 +77,7 @@ function workplaceStoryChance(where) {
   if (w.includes('咖啡') || w === 'cafe') return WORKPLACE_STORY_CHANCE.cafe;
   if (w.includes('图书馆') || w === 'library') return WORKPLACE_STORY_CHANCE.library;
   if (w.includes('便利店') || w === 'store') return WORKPLACE_STORY_CHANCE.store;
+  if (w.includes('联谊')) return WORKPLACE_STORY_CHANCE.bar;
   if (w.includes('地铁')) return WORKPLACE_STORY_CHANCE.commute * 0.95;
   if (w.includes('打车')) return WORKPLACE_STORY_CHANCE.commute * 1.08;
   if (w.includes('驾车')) return WORKPLACE_STORY_CHANCE.commute * 0.85;
@@ -90,20 +91,99 @@ function workplaceStoryModalTitle(type) {
   return '职场轶事';
 }
 
-function maybeTellWorkplaceStory(person, where) {
-  if (!person || Math.random() >= workplaceStoryChance(where)) return null;
-  const story = pickWorkplaceStoryForPerson(person);
-  if (!story || !story.text) return null;
-  const title = workplaceStoryModalTitle(story.type);
-  const msg = person.name + '跟你聊了几句：\n\n「' + story.text + '」';
+function workplaceStoryPlaceLabel(where) {
+  if (!where) return '';
+  const w = String(where);
+  if (w.includes('夜店') || w === 'club') return '夜店';
+  if (w.includes('酒吧') || w === 'bar') return '酒吧';
+  if (w.includes('公园') || w === 'park') return '公园';
+  if (w.includes('咖啡') || w === 'cafe') return '咖啡店';
+  if (w.includes('图书馆') || w === 'library') return '图书馆';
+  if (w.includes('便利店') || w === 'store') return '便利店';
+  if (w.includes('联谊')) return '联谊';
+  if (w.includes('地铁')) return '地铁';
+  if (w.includes('打车')) return '打车';
+  if (w.includes('驾车')) return '驾车';
+  return w;
+}
+
+function finishWorkplaceStoryModal(person, title, onAfter) {
+  addLog('💬 ' + person.name + '讲了段' + title, 'info');
+  if (Math.random() < 0.12 && typeof addStress === 'function') addStress(-1, '听八卦 ');
+  if (typeof onAfter === 'function') onAfter();
+}
+
+function queueWorkplaceStoryModal(person, where, story, onAfter) {
+  const storyTitle = workplaceStoryModalTitle(story.type);
+  const place = workplaceStoryPlaceLabel(where);
+  const modalTitle = (place ? place + ' · ' : '') + storyTitle;
+  const prof = typeof contactProfileLabel === 'function' ? contactProfileLabel(person) : (person.jobTitle || '');
+  const html =
+    '<p>在「<b>' + (place || where || '外面') + '</b>」，<b>' + person.name + '</b>' +
+    (prof ? '（' + prof + '）' : '') + ' 跟你聊了几句：</p>' +
+    '<p style="margin-top:10px;line-height:1.65;font-size:.9rem">「' + story.text + '」</p>';
+  const payload = {
+    lane: 'person',
+    icon: '💬',
+    title: modalTitle,
+    html: html,
+    btn: '哈哈',
+    logMsg: '💬 ' + person.name + '讲了段' + storyTitle,
+    onClose: function () {
+      finishWorkplaceStoryModal(person, storyTitle, onAfter);
+    }
+  };
+  if (typeof queuePersonEncounter === 'function') {
+    queuePersonEncounter(payload);
+    return true;
+  }
+  if (typeof queueEncounterModal === 'function') {
+    queueEncounterModal(payload);
+    return true;
+  }
+  if (typeof queueEventEncounter === 'function') {
+    queueEventEncounter(payload);
+    return true;
+  }
+  if (typeof showConsumeModalHandlers === 'function') {
+    showConsumeModalHandlers({
+      icon: '💬',
+      title: modalTitle,
+      html: html,
+      buttons: [{
+        text: '哈哈',
+        primary: true,
+        handler: function () {
+          if (typeof closeConsumeModal === 'function') closeConsumeModal(true);
+          finishWorkplaceStoryModal(person, storyTitle, onAfter);
+        }
+      }]
+    });
+    return true;
+  }
   if (typeof queueStatusModal === 'function') {
-    queueStatusModal(title, msg, '💬', {
-      btn: '关闭',
+    queueStatusModal(modalTitle, person.name + '跟你聊了几句：\n\n「' + story.text + '」', '💬', {
+      btn: '哈哈',
       onClose: function () {
-        if (Math.random() < 0.12 && typeof addStress === 'function') addStress(-1, '听八卦 ');
+        finishWorkplaceStoryModal(person, storyTitle, onAfter);
       }
     });
+    return true;
   }
-  addLog('💬 ' + person.name + '讲了段' + title, 'info');
+  finishWorkplaceStoryModal(person, storyTitle, onAfter);
+  return false;
+}
+
+function maybeTellWorkplaceStory(person, where, onAfter) {
+  if (!person || Math.random() >= workplaceStoryChance(where)) {
+    if (typeof onAfter === 'function') onAfter();
+    return null;
+  }
+  const story = pickWorkplaceStoryForPerson(person);
+  if (!story || !story.text) {
+    if (typeof onAfter === 'function') onAfter();
+    return null;
+  }
+  queueWorkplaceStoryModal(person, where, story, onAfter);
   return story;
 }
