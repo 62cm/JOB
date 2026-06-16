@@ -1,5 +1,10 @@
 /* 通讯录 — 由 build.js 注入 */
-const CORE_CONTACT_IDS={parents:'core_parents',bff:'core_bff',spouse:'core_spouse',exSpouse:'core_ex_spouse'};
+const CORE_CONTACT_IDS={parents:'core_parents',father:'core_father',mother:'core_mother',bff:'core_bff',spouse:'core_spouse',exSpouse:'core_ex_spouse'};
+function isParentContact(c){
+  if(!c)return false;
+  if(c.kind==='parents'||c.kind==='father'||c.kind==='mother')return true;
+  return c.id===CORE_CONTACT_IDS.parents||c.id===CORE_CONTACT_IDS.father||c.id===CORE_CONTACT_IDS.mother;
+}
 const BFF_OUT_PLACES={
   park:{key:'park',label:'公园'},
   cafe:{key:'cafe',label:'咖啡店'},
@@ -9,6 +14,184 @@ const BFF_OUT_PLACES={
   store:{key:'store',label:'便利店'}
 };
 const CONTACT_NO_ANSWER_CHANCE=0.22;
+const CONTACT_FAMILIAR_ACQUAINT=60;
+const CONTACT_FAMILIAR_FRIEND=80;
+const CONTACT_FAMILIAR_BEST=90;
+const CONTACT_ATTRACTION_INTIMATE=70;
+const CONTACT_ATTRACTION_CONFESS=75;
+const CONTACT_CONFESS_WEEKLY_CHANCE=0.12;
+function deriveCoupleOrientation(pg,sg){
+  return pg===sg?'homosexual':'heterosexual';
+}
+function initPlayerOrientation(){
+  if(!game)return;
+  if(!game.playerOrientation)game.playerOrientation='bisexual';
+  if(!game.coupleOrientation&&game.playerGender&&game.partnerGender)
+    game.coupleOrientation=deriveCoupleOrientation(game.playerGender,game.partnerGender);
+}
+function orientationLabel(o){
+  return {bisexual:'双性恋',homosexual:'同性恋',heterosexual:'异性恋',unknown:'未知'}[o]||'未知';
+}
+function rollContactOrientation(gender,rng){
+  const r=rng||Math.random;
+  const roll=r();
+  if(roll<0.38)return gender==='female'?'heterosexual':'homosexual';
+  if(roll<0.76)return gender==='male'?'heterosexual':'homosexual';
+  return 'unknown';
+}
+function orientationAttractedTo(ori,personGender,targetGender){
+  if(!personGender||!targetGender)return false;
+  if(!ori||ori==='unknown')return true;
+  if(ori==='bisexual')return true;
+  if(ori==='homosexual')return personGender===targetGender;
+  if(ori==='heterosexual')return personGender!==targetGender;
+  return false;
+}
+function mutualOrientationMatch(c){
+  if(!game||!c||!c.gender)return false;
+  const pg=game.playerGender||'male';
+  return orientationAttractedTo(game.playerOrientation||'bisexual',pg,c.gender)
+    &&orientationAttractedTo(c.orientation||'unknown',c.gender,pg);
+}
+function ensureContactSocialFields(c){
+  if(!c)return null;
+  if(c.familiarity==null)c.familiarity=c.kind==='bff'?88:(c.kind==='spouse'?95:25+Math.floor(Math.random()*20));
+  if(c.attraction==null)c.attraction=30+Math.floor(Math.random()*45);
+  if(!c.orientation&&c.kind!=='parents'&&c.kind!=='spouse')c.orientation=rollContactOrientation(c.gender||'male');
+  if(c.kind==='spouse')c.orientation=game.coupleOrientation||deriveCoupleOrientation(game.playerGender,game.partnerGender);
+  return c;
+}
+function bumpContactFamiliarity(c,delta){
+  if(!c||isCoreContact(c)&&c.kind==='parents')return;
+  ensureContactSocialFields(c);
+  c.familiarity=Math.max(0,Math.min(100,(c.familiarity||0)+delta));
+}
+function bumpContactAttraction(c,delta){
+  if(!c)return;
+  ensureContactSocialFields(c);
+  c.attraction=Math.max(0,Math.min(100,(c.attraction||0)+delta));
+}
+function contactFamiliarityTier(c){
+  const f=c&&(c.familiarity!=null?c.familiarity:0);
+  if(f>=CONTACT_FAMILIAR_BEST)return 'best';
+  if(f>=CONTACT_FAMILIAR_FRIEND)return 'friend';
+  if(f>=CONTACT_FAMILIAR_ACQUAINT)return 'acquaint';
+  return 'stranger';
+}
+function contactFamiliarityTierLabel(c){
+  const t=contactFamiliarityTier(c);
+  return {stranger:'陌生人',acquaint:'朋友',friend:'好友',best:'挚友'}[t]||'陌生人';
+}
+function contactIsFriend(c){
+  return contactFamiliarityTier(c)!=='stranger';
+}
+function canDevelopIntimateByAttraction(c){
+  if(!c||c.unreachable||isParentContact(c))return false;
+  ensureContactSocialFields(c);
+  return (c.attraction||0)>=CONTACT_ATTRACTION_INTIMATE&&mutualOrientationMatch(c);
+}
+function canDevelopIntimateRelation(c){
+  if(!c||c.unreachable||isParentContact(c))return false;
+  ensureContactSocialFields(c);
+  if(canDevelopIntimateByAttraction(c))return true;
+  if(!mutualOrientationMatch(c))return false;
+  return contactIsFriend(c);
+}
+function inviteableContacts(){
+  initCoreContacts();
+  return (game.contacts||[]).filter(function(c){
+    if(!c||c.unreachable||isParentContact(c))return false;
+    if(c.kind==='bff'||c.kind==='spouse')return true;
+    ensureContactSocialFields(c);
+    return contactFamiliarityTier(c)==='friend'||contactFamiliarityTier(c)==='best';
+  });
+}
+function pickInviteContactsModal(title,maxPick,onConfirm){
+  const list=inviteableContacts();
+  if(!list.length){
+    addLog('通讯录里还没有可邀请的好友（熟悉度≥80）','fail');
+    return;
+  }
+  maxPick=Math.max(1,maxPick||1);
+  if(typeof showConsumeModalHandlers!=='function'){
+    const names=list.slice(0,maxPick).map(function(c){return c.name}).join('、');
+    onConfirm(list.slice(0,Math.min(maxPick,list.length)));
+    return;
+  }
+  let picked={};
+  function renderPick(){
+    let html='<p class="fold-meta">最多选 '+maxPick+' 人 · 已选 '+Object.keys(picked).length+'</p><div style="max-height:220px;overflow:auto">';
+    list.forEach(function(c){
+      const on=!!picked[c.id];
+      html+='<button type="button" class="btn" style="display:block;width:100%;margin:4px 0;font-size:.72rem;'+(on?'border-color:var(--green)':'')+'" onclick="toggleVillaInvitePick(\''+escContactId(c.id)+'\')">'+
+        (on?'✓ ':'')+contactDisplayName(c)+' · 熟悉'+(c.familiarity|0)+' · 吸引'+(c.attraction|0)+'</button>';
+    });
+    html+='</div>';
+    showConsumeModalHandlers({
+      icon:'📇',title:title,html:html,
+      buttons:[
+        {text:'取消',handler:function(){if(typeof closeConsumeModal==='function')closeConsumeModal(true);}},
+        {text:'确认邀请',primary:true,handler:function(){
+          const sel=list.filter(function(c){return picked[c.id]});
+          if(!sel.length){addLog('请至少选一位','fail');return;}
+          if(typeof closeConsumeModal==='function')closeConsumeModal(true);
+          onConfirm(sel.slice(0,maxPick));
+        }}
+      ]
+    });
+  }
+  game._villaInvitePick=picked;
+  game._villaInviteRender=renderPick;
+  renderPick();
+}
+function toggleVillaInvitePick(id){
+  if(!game._villaInvitePick)game._villaInvitePick={};
+  if(game._villaInvitePick[id])delete game._villaInvitePick[id];
+  else game._villaInvitePick[id]=true;
+  if(typeof game._villaInviteRender==='function')game._villaInviteRender();
+}
+function respondContactConfession(contactId,accept){
+  const c=findContact(contactId);
+  if(!c||!c.pendingConfession)return;
+  if(isParentContact(c)){c.pendingConfession=false;addLog('无法与父母确立恋爱关系','fail');return}
+  c.pendingConfession=false;
+  if(accept){
+    c.affairStatus=c.affairStatus==='none'?'affair':c.affairStatus;
+    if(!c.firstAffairWeek)c.firstAffairWeek=game.week;
+    bumpContactFamiliarity(c,5);
+    bumpContactAttraction(c,3);
+    addLog('💞 接受 '+c.name+' 的表白 · 确立亲密关系','success');
+    if(game.married&&!game.divorced)game.affairActive=true;
+  }else{
+    const loss=Math.round(5+(c.attraction||0)/8);
+    bumpContactFamiliarity(c,-loss);
+    addLog('💔 拒绝 '+c.name+' 的表白 · 熟悉度 -'+loss,'warn');
+  }
+  if(typeof updateUI==='function')updateUI();
+}
+function tickContactConfessions(){
+  if(!game||!game.contacts||game.gameOver)return;
+  if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning)return;
+  initPlayerOrientation();
+  game.contacts.forEach(function(c){
+    if(isCoreContact(c)||c.unreachable||c.pendingConfession||isParentContact(c))return;
+    ensureContactSocialFields(c);
+    if(contactHasAffairRecord(c))return;
+    if((c.attraction||0)<CONTACT_ATTRACTION_CONFESS||!mutualOrientationMatch(c))return;
+    if(Math.random()>=CONTACT_CONFESS_WEEKLY_CHANCE)return;
+    c.pendingConfession=true;
+    queuePersonEncounter({
+      lane:'person',icon:'💌',title:c.name+' 的表白',
+      html:'<p><b>'+c.name+'</b> 向你表白：「我想和你更进一步…」</p>'+
+        '<p class="fold-meta">熟悉度 '+(c.familiarity|0)+' · 吸引力 '+(c.attraction|0)+' · '+orientationLabel(c.orientation)+'</p>'+
+        '<p class="fold-meta">接受：确立亲密关系 · 拒绝：熟悉度下降（吸引力越高掉得越多）</p>',
+      buttons:[
+        {text:'拒绝',handler:function(){respondContactConfession(c.id,false)}},
+        {text:'接受',primary:true,handler:function(){respondContactConfession(c.id,true)}}
+      ]
+    });
+  });
+}
 /* 偶遇弹窗三通道：artifact 神人 > person 认识的人 > event 场所/轶事/结果 */
 const encounterLanes={artifact:[],person:[],event:[]};
 let encounterModalBusy=false;
@@ -61,6 +244,15 @@ function contactMetLabel(c){
     const wk0=c.metWeek;
     const date0=(typeof getDateStr==='function'&&wk0!=null)?getDateStr(wk0):'';
     return date0?('结识 · '+date0+' · '+(c.metWhere||'曾经婚姻')):(c.metWhere||'曾经婚姻');
+  }
+  if(c.kind==='child'){
+    const ch=typeof findChildRecord==='function'?findChildRecord(c.id):null;
+    const bd=ch&&typeof getChildBirthDateStr==='function'?getChildBirthDateStr(ch):'';
+    const age=ch&&typeof formatChildAge==='function'?formatChildAge(ch):'';
+    if(bd&&age)return '生于 · '+bd+' · 现年 '+age;
+    if(bd)return '生于 · '+bd;
+    if(age)return '现年 '+age;
+    return c.metWhere||'家庭';
   }
   const where=c.metWhere||'';
   let wk=c.metWeek;
@@ -244,6 +436,7 @@ function syncExSpouseContact(){
   game.exPartnerName=name;
 }
 function syncParentsContact(){
+  if(typeof syncSplitParentsContacts==='function'){syncSplitParentsContacts();return}
   if(!game)return;
   if(!game.contacts)game.contacts=[];
   if(game.parentsInheritanceSettled){
@@ -254,6 +447,7 @@ function syncParentsContact(){
 }
 function initCoreContacts(){
   if(!game)return;
+  initPlayerOrientation();
   if(!game.contacts)game.contacts=[];
   if(!game.partnerDisplayName)game.partnerDisplayName=pickPartnerDisplayName(game.partnerGender||'female');
   if(!game.bffName)game.bffName=pickBffName(game.playerGender||'male');
@@ -281,13 +475,22 @@ function isPartnerOutAndAbout(phase){
 }
 function contactKindLabel(c){
   if(!c)return '';
+  if(c.dead)return '已离世';
   if(c.kind==='parents')return '父母';
+  if(c.kind==='father')return '父亲';
+  if(c.kind==='mother')return '母亲';
+  if(c.kind==='child')return '子女';
+  if(c.kind==='grandparent'||c.kind==='spouse_grandparent')return c.role||'祖辈';
+  if(c.kind==='great_grandparent'||c.kind==='spouse_great_grandparent')return c.role||'曾祖辈';
+  if(c.kind==='spouse_parent')return c.role||'姻亲';
   if(c.kind==='spouse')return '伴侣';
   if(c.kind==='ex_spouse')return c.role||(c.gender==='male'?'前夫':'前妻');
   if(c.kind==='bff')return c.role||'基友/闺蜜';
-  if((c.affairCount||0)>0||c.affairStatus==='affair'||c.affairStatus==='fwb')return '出轨';
+  if(c.pendingConfession)return '表白中';
+  if((c.affairCount||0)>0||c.affairStatus==='affair'||c.affairStatus==='fwb')return '亲密关系';
   if(c.affairStatus==='married_affair')return '秘密成婚';
-  return '熟人';
+  ensureContactSocialFields(c);
+  return contactFamiliarityTierLabel(c);
 }
 function contactGenderLabel(c){
   if(!c||!c.gender||c.kind==='parents')return '';
@@ -317,7 +520,10 @@ function sortedContacts(){return sortedContactsForModal()}
 function escContactId(id){return String(id||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
 function isCoreContact(c){
   if(!c)return true;
+  if(typeof isFamilyCoreContact==='function'&&isFamilyCoreContact(c))return true;
   if(c.id===CORE_CONTACT_IDS.parents||c.kind==='parents')return true;
+  if(c.id===CORE_CONTACT_IDS.father||c.kind==='father')return true;
+  if(c.id===CORE_CONTACT_IDS.mother||c.kind==='mother')return true;
   if(c.id===CORE_CONTACT_IDS.bff||c.kind==='bff')return true;
   if(c.id===CORE_CONTACT_IDS.spouse||c.kind==='spouse')return true;
   if(c.id===CORE_CONTACT_IDS.exSpouse||c.kind==='ex_spouse')return true;
@@ -330,14 +536,14 @@ function deleteContactFromModal(id){
   const name=typeof contactDisplayName==='function'?contactDisplayName(c):c.name;
   const hadAffair=typeof contactHasAffairRecord==='function'&&contactHasAffairRecord(c);
   let msg='确定从通讯录删除「'+name+'」？\n删除后压力 +10';
-  if(hadAffair)msg='确定删除「'+name+'」的联系方式？\n其出轨/幽会记录将一并销毁。\n删除后压力 +10';
+  if(hadAffair)msg='确定删除「'+name+'」的联系方式？\n其亲密关系/幽会记录将一并销毁。\n删除后压力 +10';
   if(!confirm(msg))return;
   game.contacts=game.contacts.filter(x=>x.id!==id);
   if(game.contactLoans)game.contactLoans=game.contactLoans.filter(l=>l.contactId!==id);
   if(hadAffair&&typeof purgeAffairEvidenceForContact==='function')purgeAffairEvidenceForContact(id);
   if(hadAffair&&typeof syncPlayerAffairStateFromContacts==='function')syncPlayerAffairStateFromContacts();
   if(typeof addStress==='function')addStress(10,'删联系人 ');
-  addLog(hadAffair?'🗑 已删除 '+name+' 的联系方式，相关出轨记录已销毁 · 压力+10':'🗑 已从通讯录删除 '+name+' · 压力+10','warn');
+  addLog(hadAffair?'🗑 已删除 '+name+' 的联系方式，相关亲密关系记录已销毁 · 压力+10':'🗑 已从通讯录删除 '+name+' · 压力+10','warn');
   if(typeof updateUI==='function')updateUI();
   if(typeof renderDailyPanel==='function')renderDailyPanel();
   renderContactsModal();
@@ -352,19 +558,93 @@ function openContactsModal(){
   el.classList.remove('hidden');
 }
 function closeContactsModal(){
+  if(game)game.contactPicker=null;
   const el=document.getElementById('contactsOverlay');
   if(el)el.classList.add('hidden');
+}
+function isContactPickerActive(){
+  return !!(game&&game.contactPicker&&typeof game.contactPicker.onPick==='function');
+}
+function openContactPicker(opts){
+  opts=opts||{};
+  if(typeof hasUsablePhone==='function'&&!hasUsablePhone()){addLog('暂无可用手机，无法使用通讯录','fail');return false}
+  if(typeof isPlayerImprisoned==='function'&&isPlayerImprisoned()){addLog('监禁中无法使用通讯录','fail');return false}
+  game.contactPicker={
+    title:opts.title||'选择联系人',
+    hint:opts.hint||'点击「选择」确认',
+    filter:opts.filter||null,
+    onPick:opts.onPick
+  };
+  if(opts.closeConsumeModal!==false&&typeof closeConsumeModal==='function')closeConsumeModal(true);
+  openContactsModal();
+  return true;
+}
+function cancelContactPicker(){
+  if(game)game.contactPicker=null;
+  closeContactsModal();
+}
+function pickContactFromPicker(id){
+  const pk=game&&game.contactPicker;
+  if(!pk)return;
+  const c=(game.contacts||[]).find(function(x){return x.id===id});
+  if(!c)return;
+  if(pk.filter&&!pk.filter(c)){
+    addLog('此人不符合选择条件','fail');
+    return;
+  }
+  const handler=pk.onPick;
+  if(game)game.contactPicker=null;
+  closeContactsModal();
+  if(handler)handler(c);
+}
+function renderContactPickerRow(c){
+  const pk=game.contactPicker;
+  const ok=!pk.filter||pk.filter(c);
+  const lbl=contactKindLabel(c);
+  const gen=contactGenderLabel(c);
+  const eid=escContactId(c.id);
+  const dn=typeof contactDisplayName==='function'?contactDisplayName(c):c.name;
+  let h='<div class="contact-row contact-pick-row'+(ok?'':' contact-pick-disabled')+'">'+
+    '<div class="contact-row-hdr"><b>'+dn+'</b>'+
+    (gen?'<span class="contact-gender">'+gen+'</span>':'')+
+    '<span class="fold-meta">'+lbl+'</span>'+
+  (!isCoreContact(c)?'<span class="fold-meta"> · 熟悉'+(c.familiarity|0)+'</span>':'')+
+    '</div>'+
+    '<div class="contact-actions-row">'+
+    '<button class="btn btn-primary" style="font-size:.72rem;padding:3px 10px" '+(ok?'':'disabled')+' onclick="pickContactFromPicker(\''+eid+'\')">✓ 选择</button>'+
+    (!ok?'<span class="fold-meta">不符合条件</span>':'')+
+    '</div></div>';
+  return h;
+}
+function isContactGroupFolded(key){
+  if(!game)return false;
+  game.contactGroupFoldState=game.contactGroupFoldState||{};
+  if(game.contactGroupFoldState[key]==null)return false;
+  return !!game.contactGroupFoldState[key];
+}
+function toggleContactGroupFold(key){
+  if(!game)return;
+  game.contactGroupFoldState=game.contactGroupFoldState||{};
+  game.contactGroupFoldState[key]=!isContactGroupFolded(key);
+  renderContactsModal();
 }
 function renderContactsModal(){
   const body=document.getElementById('contactsModalBody');
   const ti=document.getElementById('contactsModalTitle');
   if(!body||!game)return;
   initCoreContacts();
+  if(typeof syncFriendsCircle==='function')syncFriendsCircle();
   const list=sortedContactsForModal();
   const ph=game.daily&&game.daily.phase;
-  if(ti)ti.textContent='📇 通讯录 · '+list.length+' 人';
-  let h='<p class="fold-meta" style="margin:0 0 8px">星标置顶 · 按姓名音序 · 每时段每人可联系一次 · 当前 '+PHASE_LABELS[ph||'morning']+'</p>'+
-    '<p class="fold-meta" style="margin:0 0 8px;color:var(--accent)">各行「结识 · 日期 · 地点」为认识时间；旧存档无记录时由联系人编号推算</p>';
+  const picking=isContactPickerActive();
+  if(ti)ti.textContent=picking?('📇 '+(game.contactPicker.title||'选择联系人')):('📇 通讯录 · '+list.length+' 人');
+  let h='';
+  if(picking){
+    h+='<p class="fold-meta" style="margin:0 0 8px">'+(game.contactPicker.hint||'点击「选择」确认')+'</p>';
+    h+='<button type="button" class="btn" style="font-size:.72rem;margin-bottom:8px" onclick="cancelContactPicker()">取消</button>';
+  }else{
+    h+='<p class="fold-meta" style="margin:0 0 8px">按圈层分组 · 点击组名折叠/展开 · 星标置顶 · 熟悉度≥60或「关注」入朋友圈 · 当前 '+PHASE_LABELS[ph||'morning']+'</p>';
+  }
   if(game.bffOutingPlan&&!game.bffOutingPlan.completed){
     const p=game.bffOutingPlan;
     h+='<p style="color:var(--yellow);font-size:.72rem;margin:0 0 8px">📅 约了 '+DAY_NAMES[p.dayIndex]+' '+PHASE_LABELS[p.phase]+' → '+p.label+'</p>';
@@ -373,30 +653,20 @@ function renderContactsModal(){
     h+='<p style="color:var(--muted)">暂无联系人</p>';
     body.innerHTML=h;return;
   }
-  list.forEach(c=>{
-    const chk=canCallContact(c);
-    const lbl=contactKindLabel(c);
-    const gen=contactGenderLabel(c);
-    const eid=escContactId(c.id);
-    const extra=c.jobTitle?(c.jobTitle+' @'+c.company):'';
-    const metLbl=contactMetLabel(c);
-    const st=(c.affairCount>0?' · 亲热'+(c.affairCount||0)+'次':'')+(c.affairStatus==='fwb'?' · 炮友':'');
-    h+='<div class="contact-row'+(c.starred?' starred':'')+'">'+
-      '<div class="contact-row-hdr">'+
-      '<button type="button" class="contact-star'+(c.starred?'':' off')+'" title="'+(c.starred?'取消星标':'星标置顶')+'" onclick="toggleContactStar(\''+eid+'\')">'+(c.starred?'★':'☆')+'</button>'+
-      '<b>'+contactDisplayName(c)+'</b>'+
-      (gen?'<span class="contact-gender">'+gen+'</span>':'')+
-      '<span class="fold-meta">'+lbl+'</span>'+
-      (extra?'<span class="fold-meta">'+extra+st+'</span>':(st?'<span class="fold-meta">'+st+'</span>':''))+
-      '</div>'+
-      (metLbl?'<div class="fold-meta" style="margin:2px 0 4px 22px;color:var(--accent)">'+metLbl+'</div>':'')+
-      '<div class="contact-actions-row">'+
-      '<button class="btn" style="font-size:.72rem;padding:3px 8px" '+(chk.ok?'':'disabled')+' onclick="callContactFromModal(\''+eid+'\')">📞 联系</button>'+
-      '<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="promptContactRemark(\''+eid+'\')">✏️ 备注</button>'+
-      (c.affairStatus==='proposal_pending'?'<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="promptAffairWedding(\''+eid+'\')">办婚礼</button>':'')+
-      (chk.ok?'':'<span class="fold-meta">'+chk.reason+'</span>')+
-      (!isCoreContact(c)?'<button type="button" class="btn contact-del-btn" onclick="deleteContactFromModal(\''+eid+'\')">🗑 删除</button>':'')+
-      '</div></div>';
+  const groups=typeof groupContactsForModal==='function'?groupContactsForModal(list):[{key:'all',label:'全部',contacts:list}];
+  groups.forEach(function(g){
+    const folded=isContactGroupFolded(g.key);
+    h+='<div class="contact-group-fold">';
+    h+='<div class="phone-fold-hdr contact-group-hdr" onclick="toggleContactGroupFold(\''+g.key+'\')">';
+    h+='<span class="phone-fold-chev contact-group-chev" style="color:var(--muted)">'+(folded?'▶':'▼')+'</span>';
+    h+='<b style="font-size:.85rem">'+g.label+'</b> <span class="fold-meta">'+g.contacts.length+' 人</span>';
+    h+='</div>';
+    if(!folded){
+      h+='<div class="contact-group-body">';
+      g.contacts.forEach(function(c){h+=renderContactModalRow(c,ph);});
+      h+='</div>';
+    }
+    h+='</div>';
   });
   body.innerHTML=h;
 }
@@ -405,6 +675,48 @@ function toggleContactStar(id){
   if(!c)return;
   c.starred=!c.starred;
   renderContactsModal();
+}
+function toggleContactFollow(id){
+  const c=game.contacts&&game.contacts.find(x=>x.id===id);
+  if(!c||isCoreContact(c))return;
+  c.followed=!c.followed;
+  if(typeof syncFriendsCircle==='function')syncFriendsCircle();
+  renderContactsModal();
+  addLog((c.followed?'⭐ 已关注 ':'取消关注 ')+(typeof contactDisplayName==='function'?contactDisplayName(c):c.name)+(c.followed?'，已加入朋友圈':''),'info');
+}
+function renderContactModalRow(c,ph){
+  if(isContactPickerActive())return renderContactPickerRow(c);
+  const chk=canCallContact(c);
+  const lbl=contactKindLabel(c);
+  const gen=contactGenderLabel(c);
+  const eid=escContactId(c.id);
+  const extra=c.jobTitle?(c.jobTitle+' @'+c.company):'';
+  const metLbl=contactMetLabel(c);
+  const st=(c.affairCount>0?' · 亲密'+(c.affairCount||0)+'次':'')+(c.affairStatus==='fwb'?' · 炮友':'');
+  const soc=(!isCoreContact(c)?' · 熟悉'+(c.familiarity|0)+' · 吸引'+(c.attraction|0):'');
+  const src=(c.friendCircleSource&&typeof contactQualifiesForFriendsCircle==='function'&&contactQualifiesForFriendsCircle(c))?' · 来自'+c.friendCircleSource:'';
+  let h='<div class="contact-row'+(c.starred?' starred':'')+'">'+
+    '<div class="contact-row-hdr">'+
+    '<button type="button" class="contact-star'+(c.starred?'':' off')+'" title="'+(c.starred?'取消星标':'星标置顶')+'" onclick="toggleContactStar(\''+eid+'\')">'+(c.starred?'★':'☆')+'</button>'+
+    '<b>'+contactDisplayName(c)+'</b>'+
+    (gen?'<span class="contact-gender">'+gen+'</span>':'')+
+    '<span class="fold-meta">'+lbl+'</span>'+
+    (extra?'<span class="fold-meta">'+extra+st+soc+src+'</span>':(st||soc||src?'<span class="fold-meta">'+st+soc+src+'</span>':''))+
+    '</div>'+
+    (metLbl?'<div class="fold-meta" style="margin:2px 0 4px 22px;color:var(--accent)">'+metLbl+'</div>':'')+
+    '<div class="contact-actions-row">'+
+    '<button class="btn" style="font-size:.72rem;padding:3px 8px" '+(chk.ok?'':'disabled')+' onclick="callContactFromModal(\''+eid+'\')">📞 联系</button>'+
+    '<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="openNetworkPerson(\''+eid+'\')">🌐 详情</button> '+
+    '<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="promptContactRemark(\''+eid+'\')">✏️ 备注</button> '+
+    (!isCoreContact(c)?'<button class="btn" style="font-size:.72rem;padding:3px 8px'+(c.followed?';background:var(--accent);color:var(--bg)':'')+'" onclick="toggleContactFollow(\''+eid+'\')">'+(c.followed?'已关注':'关注')+'</button> ':'')+
+    (c.pendingConfession?'<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="respondContactConfession(\''+eid+'\',true)">接受表白</button> '+
+    '<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="respondContactConfession(\''+eid+'\',false)">拒绝</button> ':'')+
+    (canDevelopIntimateRelation(c)&&!contactHasAffairRecord(c)?'<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="startContactAffair(\''+eid+'\')">💞 亲密关系</button> ':'')+
+    (c.affairStatus==='proposal_pending'?'<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="promptAffairWedding(\''+eid+'\')">办婚礼</button> ':'')+
+    (chk.ok?'':'<span class="fold-meta">'+chk.reason+'</span>')+
+    (!isCoreContact(c)?'<button type="button" class="btn contact-del-btn" onclick="deleteContactFromModal(\''+eid+'\')">🗑 删除</button>':'')+
+    '</div></div>';
+  return h;
 }
 function promptContactRemark(id){
   const c=game.contacts&&game.contacts.find(x=>x.id===id);
@@ -436,11 +748,12 @@ function canCallSpouse(){
 }
 function canCallContact(c){
   if(!c||!game||game.gameOver)return {ok:false,reason:'无法联系'};
+  if(c.dead)return {ok:false,reason:'对方已离世'};
   if(wasContactCalled(c.id))return {ok:false,reason:'本时段已联系过'};
   if(wasContactNoAnswer(c.id))return {ok:false,reason:'对方未接，本时段不能再拨'};
   const ph=game.daily&&game.daily.phase;
-  if(c.kind==='parents'){
-    if(game.parentsInheritanceSettled)return {ok:false,reason:'父母已离世，无法联系'};
+  if(c.kind==='parents'||c.kind==='father'||c.kind==='mother'){
+    if(typeof areParentsAlive==='function'?!areParentsAlive():game.parentsInheritanceSettled)return {ok:false,reason:'父母已离世，无法联系'};
     if(ph!=='morning'&&ph!=='evening')return {ok:false,reason:'爸妈仅白天/晚上可联系'};
   }
   if(c.kind==='spouse'||c.id===CORE_CONTACT_IDS.spouse){
@@ -456,7 +769,7 @@ function callContact(id){
   const chk=canCallContact(c);
   if(!chk.ok){addLog(chk.reason,'fail');return}
   markContactCalled(c.id);
-  if(c.kind==='parents')callParents(c);
+  if(c.kind==='parents'||c.kind==='father'||c.kind==='mother')callParents(c);
   else if(c.kind==='spouse')callSpouse(c);
   else if(c.kind==='ex_spouse')callExSpouse(c);
   else if(c.kind==='bff')callBff(c);
@@ -730,6 +1043,7 @@ function isNewAcquaintance(c){
 }
 function callAcquaintance(c){
   c.talkCount=(c.talkCount||0)+1;
+  bumpContactFamiliarity(c,2);
   if(isNewAcquaintance(c)){
     const prof=typeof contactProfileLabel==='function'?contactProfileLabel(c):(c.jobTitle||'');
     addLog('📞 和 '+c.name+' 初次深聊 · 交换联系方式','info');
@@ -889,6 +1203,8 @@ function showMeetPersonModal(person,where,isRepeat,onAfter){
     logMsg:'👋 '+(isRepeat?'又遇见':'结识')+' '+person.name+'（'+where+'）',
     onClose:function(){
       addLog('👋 '+(isRepeat?'又遇见':'结识')+' '+person.name+'（'+where+'）','info');
+      if(!isRepeat&&typeof bumpContactFamiliarity==='function')bumpContactFamiliarity(person,3);
+      else if(isRepeat&&typeof bumpContactFamiliarity==='function')bumpContactFamiliarity(person,1);
       if(typeof maybeTellWorkplaceStory==='function')maybeTellWorkplaceStory(person,where,onAfter);
       else if(typeof onAfter==='function')onAfter();
     }
@@ -932,6 +1248,8 @@ function tagMeetContact(person){
   person.kind='acquaintance';
   if(person.talkCount==null)person.talkCount=0;
   if(person.gender==null)person.gender=Math.random()<0.5?'male':'female';
+  ensureContactSocialFields(person);
+  if(typeof initPlayerOrientation==='function')initPlayerOrientation();
   return person;
 }
 function tagAffairContactGender(c){
@@ -956,6 +1274,7 @@ function renderContactsBlock(){
 }
 function migrateContactsSystem(){
   if(!game)return;
+  initPlayerOrientation();
   if(!game.contacts)game.contacts=[];
   if(!game.contactLoans)game.contactLoans=[];
   if(!game.partnerDisplayName&&game.married&&!game.divorced)game.partnerDisplayName=pickPartnerDisplayName(game.partnerGender||'female');
@@ -969,6 +1288,7 @@ function migrateContactsSystem(){
       if(parsed!=null)c.metWeek=parsed;
     }
     if(c.metWeek==null&&(c.kind==='acquaintance'||c.kind==='affair')&&c.id&&String(c.id).indexOf('ct_')===0)c.metWeek=0;
+    if(c.followed==null)c.followed=false;
     if(c.id===CORE_CONTACT_IDS.spouse||c.kind==='spouse')return;
     if(c.id===CORE_CONTACT_IDS.exSpouse||c.kind==='ex_spouse')return;
     if(c.id===CORE_CONTACT_IDS.parents||c.kind==='parents')return;
@@ -976,9 +1296,11 @@ function migrateContactsSystem(){
     if((c.affairCount||0)>0||c.affairStatus==='affair'||c.affairStatus==='fwb')tagAffairContactGender(c);
     else if(!c.kind)tagMeetContact(c);
     if(c.talkCount==null)c.talkCount=0;
+    ensureContactSocialFields(c);
   });
   initCoreContacts();
   if(typeof syncParentsContact==='function')syncParentsContact();
+  if(typeof syncFamilyCircle==='function')syncFamilyCircle();
   if(game.divorced)syncExSpouseContact();
   else if(game.married)restoreSpouseContactAfterReconcile();
 }

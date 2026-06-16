@@ -162,6 +162,7 @@ function dailyAdvanceAfterSlotAction(){
   const ph=game.daily&&game.daily.phase;
   if(ph==='morning'){
     if(shouldMarkWorkSkipNow())markWorkSkipForPhase();
+    if(typeof tickCompanyStrategyDaily==='function')tickCompanyStrategyDaily();
     advanceDailyPhase('evening');
     return;
   }
@@ -839,10 +840,26 @@ function showWorkShiftModal(useOvertimeFlow){
   const job=game.employed&&game.employment?game.market[game.employment.jobIdx]:null;
   const co=game.employment&&game.employment.company;
   if(!job){dailyAdvanceAfterSlotAction();return}
+  let html='<b>'+job.title+'</b>'+(co?' @ '+co.name:'')+'<br><span class="fold-meta">处理手头工作，忙完点下班</span>';
+  if(typeof idealWorkShiftHtml==='function')html+=idealWorkShiftHtml();
+  const buttons=[{text:'下班',primary:true,fn:'finishWorkShift()'}];
+  if(typeof idealWorkShiftButtons==='function'){
+    const extra=idealWorkShiftButtons();
+    if(extra&&extra.length)extra.forEach(function(b){buttons.unshift(b);});
+  }
+  if(typeof workplaceGossipShiftButtons==='function'){
+    const wg=workplaceGossipShiftButtons();
+    if(wg&&wg.length)wg.forEach(function(b){buttons.unshift(b);});
+  }
+  if(typeof scamWorkShiftButtons==='function'){
+    const sg=scamWorkShiftButtons();
+    if(sg&&sg.length)sg.forEach(function(b){buttons.unshift(b);});
+  }
+  if(typeof scamWorkShiftHtml==='function')html+=scamWorkShiftHtml();
   showConsumeModal({
     icon:'💼',title:'上班中',
-    html:'<b>'+job.title+'</b>'+(co?' @ '+co.name:'')+'<br><span class="fold-meta">处理手头工作，忙完点下班</span>',
-    buttons:[{text:'下班',primary:true,fn:'finishWorkShift()'}]
+    html:html,
+    buttons:buttons
   });
 }
 function dailyRunScrollSessions(fn,hours){
@@ -1177,10 +1194,26 @@ function tickStocksOnce(){
   game.stocks.forEach(s=>{
     s.prevPrice=s.price;
     const ref=s.refPrice||s.price;
-    const ch=(Math.random()-.48+wolfDrift)*0.035;
-    s.price=Math.max(ref*0.55,Math.min(ref*1.45,s.price*(1+ch)));
+    if(!s.refPrice||s.refPrice<=0)s.refPrice=ref;
+    const floor=ref*0.55;
+    const ceil=ref*1.45;
+    const span=Math.max(ceil-floor,ref*0.08,0.01);
+    const fluxMod=typeof fluxStockDriftModifier==='function'?fluxStockDriftModifier(s):0;
+    const pos=Math.max(0,Math.min(1,(s.price-floor)/span));
+    const reversion=(0.5-pos)*0.02;
+    let ch=(Math.random()-.48+wolfDrift+fluxMod+reversion)*0.058;
+    let next=s.price*(1+ch);
+    if(next<=floor){
+      next=floor+(floor*0.006+ref*0.0015)*(0.35+Math.random()*0.9);
+    }else if(next>=ceil){
+      next=ceil-(ceil*0.006+ref*0.0015)*(0.35+Math.random()*0.9);
+    }
+    next=Math.max(floor,Math.min(ceil,next));
+    if(Math.abs(next-s.price)<ref*0.00025)next=s.price*(1+(Math.random()>.5?1:-1)*ref*0.0009);
+    s.price=next;
     s.history.push(s.price);if(s.history.length>60)s.history.shift();
   });
+  if(typeof syncFluxStocksFromMarket==='function')syncFluxStocksFromMarket();
   if(typeof tickPlayerCompanyStockWealth==='function')tickPlayerCompanyStockWealth();
 }
 function maybeTickStocksForDay(dayIndex){
@@ -1295,6 +1328,9 @@ function dailyPickHomeMorning(action){
   else if(action==='clean'&&typeof dailyCleanHome==='function')dailyCleanHome();
   else if(action==='villa_tea'&&typeof dailyVillaTea==='function')dailyVillaTea();
   else if(action==='villa_swim'&&typeof dailyVillaSwim==='function')dailyVillaSwim();
+  else if(action==='villa_library'&&typeof dailyVillaLibrary==='function')dailyVillaLibrary();
+  else if(action==='villa_meditate'&&typeof dailyVillaMeditate==='function')dailyVillaMeditate();
+  else if(action==='villa_cinema'&&typeof dailyVillaCinema==='function')dailyVillaCinema();
   else if(action==='villa_party'&&typeof dailyVillaParty==='function')dailyVillaParty();
 }
 function dailyPickHomeEvening(action){
@@ -1319,6 +1355,9 @@ function dailyPickHomeEvening(action){
   else if(action==='clean'&&typeof dailyCleanHome==='function')dailyCleanHome();
   else if(action==='villa_tea'&&typeof dailyVillaTea==='function')dailyVillaTea();
   else if(action==='villa_swim'&&typeof dailyVillaSwim==='function')dailyVillaSwim();
+  else if(action==='villa_library'&&typeof dailyVillaLibrary==='function')dailyVillaLibrary();
+  else if(action==='villa_meditate'&&typeof dailyVillaMeditate==='function')dailyVillaMeditate();
+  else if(action==='villa_cinema'&&typeof dailyVillaCinema==='function')dailyVillaCinema();
   else if(action==='villa_party'&&typeof dailyVillaParty==='function')dailyVillaParty();
 }
 function dailyPlayConsole(){
@@ -2053,7 +2092,8 @@ function finishWeeklyDaily(){
   const d=game.daily;
   if(game.employed){
     if(d.workedDays>0)processEmployedWeek();
-    if(d.workSkipDays>=5){
+    const ownerImmune=typeof playerEmployerOwnerImmune==='function'&&playerEmployerOwnerImmune();
+    if(!ownerImmune&&d.workSkipDays>=5){
       game.employed=false;
       if(game.employment)recordCareerHistory(game.employment);
       game.employment=null;
@@ -2122,6 +2162,7 @@ function dailyGoOut(place){
   const p=map[place];if(!p)return;
   const gain=Math.round(p.n*mult);
   addTempStat(p.stat,gain,'🚶 外出'+p.label+(mult>1?'（通宵×'+mult+'）':''));
+  if(typeof applyOutdoorCompanions==='function')applyOutdoorCompanions(p.label);
   if(typeof tryCompleteBffOuting==='function')tryCompleteBffOuting(place);
   if(place==='park'&&typeof onArtifactParkVisit==='function')onArtifactParkVisit();
   else if(place==='library'&&typeof onArtifactLibraryVisit==='function')onArtifactLibraryVisit();
@@ -2191,6 +2232,8 @@ function dailyEveningOut(kind){
   if(!dailyUseMainActivity())return;
   if(phase==='evening'||phase==='allnight')game.daily.noHomeReturnDay=true;
   game.daily.slotActivity='out';
+  const outLbl=(typeof OUT_PLACE_LABELS!=='undefined'&&OUT_PLACE_LABELS[kind])||kind;
+  if(typeof applyOutdoorCompanions==='function')applyOutdoorCompanions(outLbl);
   setTimeout(dailyOutActivityWatchdog,10000);
   const visitExtraRef={v:''};
   if(kind==='club'){
@@ -2945,7 +2988,10 @@ function dailyDateEvening(){
 }
 
 function renderDailyOutMenu(phase){
-  let h='<p class="fold-meta">选择外出地点</p>';
+  let h='';
+  if(typeof renderOutdoorCompanionPicker==='function')h+=renderOutdoorCompanionPicker();
+  if(typeof hobbyProjectsSummaryHtml==='function')h+=hobbyProjectsSummaryHtml();
+  h+='<p class="fold-meta">选择外出地点</p>';
   if(phase==='morning'){
     const wk=game.daily&&isWeekendDay(game.daily.dayIndex);
     if(wk&&game.married&&!game.divorced)h+='<p class="fold-meta">周末白天 · 伴侣可能在外面玩</p>';
@@ -3236,9 +3282,18 @@ function renderDailyPanel(){
   const el=document.getElementById('dailyPanel');
   if(!el||!game)return;
   if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
+  if(typeof ensureAutoLifeNotStuck==='function')ensureAutoLifeNotStuck();
   if(typeof isAutoLifeSimulating==='function'&&isAutoLifeSimulating()){
     el.innerHTML='<p style="color:var(--yellow);font-size:.85rem">⏩ 自动生活进行中，日程已暂停…</p>';
     return;
+  }
+  const ov=document.getElementById('autoLifeOverlay');
+  if(ov&&!ov.classList.contains('hidden')){
+    const acts=document.getElementById('autoLifeActions');
+    if(acts&&acts.querySelector('button')){
+      el.innerHTML='<p style="color:var(--muted);font-size:.85rem">请阅读自动生活汇报后点击「关闭汇报」</p>';
+      return;
+    }
   }
   if(typeof isPlayerImprisoned==='function'&&isPlayerImprisoned()){
     const left=Math.max(0,(game.imprisonedUntilWeek||0)-game.week);
@@ -3247,11 +3302,6 @@ function renderDailyPanel(){
       '<p class="fold-meta">服刑期间无法上班、外出、偷情或使用通讯录。</p>'+
       '<button class="btn btn-success" onclick="nextWeek()">服刑快进一周 →</button> '+
       '<span class="fold-meta">或使用下方「自动生活」批量快进</span></div>';
-    return;
-  }
-  const ov=document.getElementById('autoLifeOverlay');
-  if(ov&&!ov.classList.contains('hidden')){
-    el.innerHTML='<p style="color:var(--muted);font-size:.85rem">请阅读自动生活汇报后点击「关闭汇报」</p>';
     return;
   }
   const d=ensureDailyState();
@@ -3287,6 +3337,7 @@ function renderDailyPanel(){
   if(d.dayIndex>=7){
     html+='<p class="daily-done">✅ 本周七天日程已满</p>';
     html+='<button class="btn btn-success" onclick="nextWeek()">进入下周 →</button> ';
+    html+='<button class="btn btn-success" onclick="nextMonth()">下一个月 →</button> ';
     html+='<span class="fold-meta">或使用下方「自动生活」快进</span>';
     html+='</div>';
     el.innerHTML=html;return;
@@ -3296,17 +3347,16 @@ function renderDailyPanel(){
   if(eveningEndChoicePending()){
     html+=renderEveningEndChoiceRows();
     html+='</div>';
-    if(typeof renderPropertyPanel==='function')html+=renderPropertyPanel();
-    html+=renderCarPanel();
-    html+=renderPhonePanel();
-    html+='<div class="daily-side-tools">';
-    if(typeof renderContactsBlock==='function')html+=renderContactsBlock();
-    if(typeof renderGiftWishBlock==='function')html+=renderGiftWishBlock();
-    html+='</div>';
-    html+='</div>';
-    el.innerHTML=html;
-    schedulePartnerInviteOutCheck();
-    return;
+  html+=renderCarPanel();
+  html+=renderPhonePanel();
+  html+='<div class="daily-side-tools">';
+  if(typeof renderContactsBlock==='function')html+=renderContactsBlock();
+  if(typeof renderGiftWishBlock==='function')html+=renderGiftWishBlock();
+  html+='</div>';
+  html+='</div>';
+  el.innerHTML=html;
+  schedulePartnerInviteOutCheck();
+  return;
   }
   const sub=d.subMenu||null;
   if(sub==='job')html+=renderDailyJobMenu(phase);

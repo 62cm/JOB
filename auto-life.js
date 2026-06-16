@@ -1,14 +1,13 @@
 /* 自动生活 — 由 build.js 注入 */
 const AUTO_LIFE_PERIODS={
   week:{label:'一周',weeks:1},
-  month:{label:'一个月',weeks:4},
-  quarter:{label:'一个季度',weeks:12},
-  year:{label:'一年',weeks:52}
+  month:{label:'一个月',weeks:4}
 };
 let autoLifeRunning=false;
 let _autoLifeJob=null;
 let _autoLifeGen=0;
 let _autoLifeTimer=null;
+let _autoLifeReportPending=false;
 const AUTO_LIFE_CHUNK_WEEKS=8;
 const AUTO_LIFE_CHUNK_DELAY_MS=16;
 
@@ -74,18 +73,27 @@ function showAutoLifeReport(report){
   if(body)body.innerHTML=html;
   if(acts)acts.innerHTML='<button class="btn btn-primary" type="button" onclick="closeAutoLifeReport()">关闭汇报</button>';
   if(el)el.classList.remove('hidden');
+  _autoLifeReportPending=true;
 }
 function closeAutoLifeReport(){
   const el=document.getElementById('autoLifeOverlay');
   if(el)el.classList.add('hidden');
+  _autoLifeReportPending=false;
   resetAutoLifeState();
+  if(typeof consumeModalOpen!=='undefined'&&consumeModalOpen){
+    const co=document.getElementById('consumeOverlay');
+    if(!co||co.classList.contains('hidden'))consumeModalOpen=false;
+  }
   if(game&&game._pendingEndGame&&typeof showEndGameModal==='function'){
     const pe=game._pendingEndGame;
     delete game._pendingEndGame;
     showEndGameModal(pe.ending);
   }
-  renderDailyPanel();
-  updateUI();
+  if(typeof syncTimeSkipUI==='function')syncTimeSkipUI();
+  else{
+    renderDailyPanel();
+    updateUI();
+  }
 }
 function autoLifePushEvent(report,msg){
   if(!report||!msg)return;
@@ -107,9 +115,22 @@ function ensureAutoLifeNotStuck(){
   if(autoLifeRunning&&_autoLifeJob&&_autoLifeTimer==null&&!game.gameOver){
     scheduleAutoLifeChunk(_autoLifeJob.gen);
   }
+  if(typeof consumeModalOpen!=='undefined'&&consumeModalOpen){
+    const co=document.getElementById('consumeOverlay');
+    if(!co||co.classList.contains('hidden'))consumeModalOpen=false;
+  }
   const ov=document.getElementById('autoLifeOverlay');
-  if(ov&&!ov.classList.contains('hidden')&&!autoLifeRunning&&!_autoLifeJob){
+  if(!ov)return;
+  const acts=document.getElementById('autoLifeActions');
+  const hasCloseBtn=acts&&acts.querySelector('button');
+  if(ov.classList.contains('hidden')){
+    if(_autoLifeReportPending&&!hasCloseBtn)_autoLifeReportPending=false;
+    return;
+  }
+  if(_autoLifeReportPending||hasCloseBtn)return;
+  if(!autoLifeRunning&&!_autoLifeJob){
     ov.classList.add('hidden');
+    actionDone=false;
   }
 }
 function autoLifeSubmitApplication(report){
@@ -189,12 +210,16 @@ function simulateAutoLifeWeek(report){
   if(typeof isPlayerImprisoned==='function'&&isPlayerImprisoned()){
     const left=typeof imprisonmentWeeksLeft==='function'?imprisonmentWeeksLeft():
       Math.max(0,(game.imprisonedUntilWeek||0)-game.week);
-    autoLifePushEvent(report,'🔒 监禁中（剩 '+left+' 周），本周无法在狱外活动');
+    if(!report._imprisonLogged){
+      autoLifePushEvent(report,'🔒 监禁中，自动生活仅快进刑期（剩 '+left+' 周）');
+      report._imprisonLogged=true;
+    }
     report.cashChange=(report.cashChange||0)+(game.cash-cash0);
     report.incomeChange=(report.incomeChange||0)+(game.money-money0);
     report.stressChange=(report.stressChange||0)+(game.familyStress-stress0);
     return;
   }
+  report._imprisonLogged=false;
   autoLifeSocialWeek(report);
   if(game.employed){
     const canWork=typeof canPlayerWorkWeek==='function'?canPlayerWorkWeek():true;
@@ -236,6 +261,9 @@ function updateAutoLifeProgress(){
       '<p style="font-size:.78rem;color:var(--yellow);text-align:center;margin-top:12px">不可打断 · 请稍候</p>';
   }
   if(typeof updateHeaderStats==='function')updateHeaderStats();
+  if(typeof renderDailyPanel==='function')renderDailyPanel();
+  if(typeof renderInbox==='function')renderInbox();
+  if(typeof renderOffers==='function')renderOffers();
   const tip=document.getElementById('actionTip');
   if(tip&&game)tip.innerHTML='<strong style="color:var(--yellow)">自动生活中…</strong> · '+getDateStr(game.week)+' · '+done+'/'+total+' 周';
 }
@@ -262,7 +290,6 @@ function autoLifeSimulateOneWeek(report){
     else autoLifePushEvent(report,'⚠ 第 '+(weekBefore+1)+' 周无法推进');
     return false;
   }
-  if(typeof tickCompanionWeek==='function')tickCompanionWeek();
   report.weeksAdvanced=(report.weeksAdvanced||0)+1;
   const imprLeft=typeof imprisonmentWeeksLeft==='function'?imprisonmentWeeksLeft():0;
   if(imprLeft>0)autoLifePushEvent(report,'⏭ 服刑快进至 '+getDateStr(game.week)+'（剩 '+imprLeft+' 周）');
@@ -285,8 +312,10 @@ function finishAutoLifeJob(err,job){
   autoLifeRunning=false;
   actionDone=false;
   if(err){
+    _autoLifeReportPending=false;
     const ov=document.getElementById('autoLifeOverlay');
     if(ov)ov.classList.add('hidden');
+    if(typeof consumeModalOpen!=='undefined')consumeModalOpen=false;
     addLog('自动生活中断：'+(err.message||err),'fail');
     updateUI();
     return;
@@ -300,7 +329,9 @@ function finishAutoLifeJob(err,job){
   }
   addLog('⏩ 自动生活结束：'+st.cfg.label+' · 推进 '+st.report.weeksAdvanced+' 周','info');
   autoSaveSlot();
+  if(typeof syncTimeSkipUI==='function')syncTimeSkipUI();
   showAutoLifeReport(st.report);
+  if(typeof drainPendingOpeningLayoffStory==='function')setTimeout(function(){drainPendingOpeningLayoffStory()},120);
   if(typeof requestAnimationFrame==='function')requestAnimationFrame(function(){updateUI()});
   else updateUI();
 }

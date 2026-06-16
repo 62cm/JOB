@@ -2,6 +2,8 @@
 const WORKPLACE_STORY_CHANCE = {
   default: 0.58,
   commute: 0.40,
+  work: 0.55,
+  pantry: 0.62,
   bar: 0.68,
   club: 0.72,
   park: 0.50,
@@ -82,6 +84,8 @@ function workplaceStoryChance(where) {
   if (w.includes('打车')) return WORKPLACE_STORY_CHANCE.commute * 1.08;
   if (w.includes('驾车')) return WORKPLACE_STORY_CHANCE.commute * 0.85;
   if (w.includes('通勤') || w === 'commute') return WORKPLACE_STORY_CHANCE.commute;
+  if (w.includes('工位') || w === 'work') return WORKPLACE_STORY_CHANCE.work;
+  if (w.includes('茶水') || w === 'pantry') return WORKPLACE_STORY_CHANCE.pantry;
   return WORKPLACE_STORY_CHANCE.default;
 }
 

@@ -236,6 +236,18 @@ function tickAffairWifePregnancy(c){
   if(game.week<c.babyDueWeek)return;
   c.wifePregnantConfirmed=false;
   c.babyDueWeek=0;
+  if(typeof registerAffairChild==='function'){
+    const ch=registerAffairChild(c);
+    game.hasChildren=true;
+    addLog('👶 与 '+c.name+' 的孩子降生'+(ch&&ch.name?' · '+ch.name:''),'success');
+    if(typeof addLog==='function')addLog('月生活费上升','info');
+    queueAffairModal({
+      icon:'👶',title:'私生子降生',
+      html:'<p>你与 <b>'+c.name+'</b> 的孩子出生了'+(ch&&ch.name?'（<b>'+ch.name+'</b>）':'')+'，抚养费与生活开支随之上升。</p>',
+      btn:'知道了'
+    });
+    return;
+  }
   if(!game.hasChildren){
     game.hasChildren=true;
     game.childRaisingMonthsLeft=typeof CHILD_RAISING_MONTHS!=='undefined'?CHILD_RAISING_MONTHS:216;
@@ -347,6 +359,7 @@ function recordCompanionWorkSkip(reason){
 function fireCompanionForWorkAbsence(){
   const c=game&&game.companion;
   if(!c||!c.employed)return;
+  if(typeof companionEmployerOwnerImmune==='function'&&companionEmployerOwnerImmune())return;
   if(typeof runAsCompanion==='function'){
     runAsCompanion(()=>{if(typeof recordCareerHistory==='function')recordCareerHistory(game.employment)});
   }
@@ -724,6 +737,7 @@ function ensureContactAffairFields(c){
   if(c.lastAffairWeek==null)c.lastAffairWeek=0;
   if(c.affairCount==null)c.affairCount=0;
   if(c.unreachable==null)c.unreachable=false;
+  if(typeof ensureContactSocialFields==='function')ensureContactSocialFields(c);
   return c;
 }
 function findContact(id){
@@ -740,7 +754,8 @@ function createAffairContact(where,existing,opts){
   const income=Math.round(job.pay*(0.7+Math.random()*0.6));
   if(!game.contacts)game.contacts=[];
   const id='ct_'+game.week+'_'+game.contacts.length+'_'+Math.floor(Math.random()*9999);
-  const gender=oppositeAffairGender();
+  const gender=(game.playerOrientation==='bisexual'||!game.playerOrientation)
+    ?(Math.random()<0.5?'male':'female'):(typeof oppositeAffairGender==='function'?oppositeAffairGender():(Math.random()<0.5?'male':'female'));
   const displayName=typeof pickStrangerDisplayName==='function'?pickStrangerDisplayName(gender):'路人';
   const person={id,name:displayName,jobTitle:job.title,jobSlug:job.slug,category:job.category,
     company:co?co.name:'未知公司',companyTier:co?co.tier:'mid',companyScale:co?co.scale:'medium',
@@ -805,7 +820,7 @@ function playerAffairStatusHtml(){
   if(!game||!game.married||game.divorced)return '';
   const sessions=playerAffairSessionCount();
   if(game.affairActive){
-    return '<div style="color:var(--red)">婚外情进行中 · 幽会'+sessions+'次 · 月支出×2'+
+    return '<div style="color:var(--red)">亲密关系进行中 · 幽会'+sessions+'次 · 月支出×2'+
       '<div style="font-size:.66rem;color:var(--muted);margin-top:2px">规则：完成1次幽会即成立；维持约'+
       AFFAIR_MIN_WEEKS_FOR_PROPOSAL+'周且近期有联系可能求婚；异性幽会有怀孕几率；已有亲生子则你无法再怀孕</div></div>';
   }
@@ -1186,12 +1201,17 @@ function affairLocLabel(k){
   return {hotel:'酒店',luxury:'五星酒店',toilet:'厕所',outdoor:'户外',car:'车里',their_home:'对方家里',player_home:'家里'}[k]||k;
 }
 function startContactAffair(contactId){
-  if(!game||game.gameOver||isPlayerImprisoned()){addLog('当前无法偷情','fail');return}
+  if(!game||game.gameOver||isPlayerImprisoned()){addLog('当前无法发展亲密关系','fail');return}
   const c=findContact(contactId);
   if(!c){addLog('联系人不存在','fail');return}
+  if(typeof isParentContact==='function'&&isParentContact(c)){addLog('无法与父母发展亲密关系','fail');return}
   if(c.unreachable){addLog(c.name+' 已与你断绝联系','fail');return}
-  if((!game.married||game.divorced)&&c.affairStatus!=='fwb'&&!(c.affairCount>0)){
-    addLog('需先发生艳遇或成为炮友后才能联系','fail');return;
+  const hasRecord=contactHasAffairRecord(c);
+  if(!hasRecord&&typeof canDevelopIntimateRelation==='function'&&!canDevelopIntimateRelation(c)){
+    addLog('需好友以上或高吸引力且性向相符才能发展亲密关系','fail');return;
+  }
+  if(!hasRecord&&(!game.married||game.divorced)&&c.affairStatus!=='fwb'&&!(c.affairCount>0)){
+    /* 未婚也可凭吸引力直接发展 */
   }
   const ph=game.daily&&game.daily.phase;
   if(ph!=='morning'&&ph!=='evening'&&ph!=='allnight'){
@@ -1412,8 +1432,8 @@ function renderContactAffairBtn(c){
   if(c.affairStatus==='married_affair')return ' <span class="fold-meta">秘密成婚</span>';
   if(c.affairStatus==='proposal_pending')return ' <button class="btn" onclick="promptAffairWedding(\''+c.id+'\')">办婚礼</button>';
   if(c.affairStatus==='fwb')return ' <button class="btn" onclick="startContactAffair(\''+c.id+'\')">炮友</button>';
-  if(c.affairCount>0||c.affairStatus==='affair')return ' <button class="btn" onclick="startContactAffair(\''+c.id+'\')">偷情</button>';
-  if(game.affairActive||c.affairCount>0)return ' <button class="btn" onclick="startContactAffair(\''+c.id+'\')">偷情</button>';
+  if(c.affairCount>0||c.affairStatus==='affair')return ' <button class="btn" onclick="startContactAffair(\''+c.id+'\')">亲密关系</button>';
+  if(game.affairActive||c.affairCount>0)return ' <button class="btn" onclick="startContactAffair(\''+c.id+'\')">亲密关系</button>';
   return ' <button class="btn" onclick="startContactAffair(\''+c.id+'\')">联系</button>';
 }
 function migrateAffairContacts(){

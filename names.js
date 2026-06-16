@@ -42,17 +42,77 @@ const STRANGER_ENGLISH_NAMES=[
   'Emma','Ryan','Lucy','Eric','Anna','David','Grace','Tom','Ivy','Alex'
 ];
 
+const FEM_GIVEN_CHARS='芳娜敏静丽艳娟霞兰红梅欣怡涵萱琪诗词婉馨婧妍琳瑶璐珊菲雯蕾婷悦秀慧';
+const MASC_GIVEN_CHARS='伟强磊洋勇杰涛明超刚文鹏飞军浩宇轩博睿泽晨皓俊嘉弘翔骏威峰昊朗煜晖晟钊琦栋诚毅航凯铭';
 function nameRng(rng){return rng?rng():Math.random()}
 function namePick(arr,rng){return arr[Math.floor(nameRng(rng)*arr.length)]}
-/** 名部分：约 46% 单字、38% 叠字、16% 双字（词语/常见名） */
+function filterGivenByChars(arr,chars){
+  const out=arr.filter(function(c){
+    for(let i=0;i<c.length;i++){if(chars.indexOf(c.charAt(i))>=0)return true}
+    return false;
+  });
+  return out.length?out:arr.slice();
+}
+const GIVEN_SINGLE_FEMALE=filterGivenByChars(GIVEN_SINGLE_100,FEM_GIVEN_CHARS);
+const GIVEN_SINGLE_MALE=filterGivenByChars(GIVEN_SINGLE_100,MASC_GIVEN_CHARS);
+const GIVEN_STACK_FEMALE=filterGivenByChars(GIVEN_STACK_80,FEM_GIVEN_CHARS);
+const GIVEN_STACK_MALE=filterGivenByChars(GIVEN_STACK_80,MASC_GIVEN_CHARS);
+const GIVEN_DOUBLE_FEMALE=GIVEN_DOUBLE_120.filter(function(n){
+  return /[涵萱怡悦婷妍琳瑶璐珊菲雯蕾静淑贤惠芳兰梅秋月荷]/.test(n);
+});
+const GIVEN_DOUBLE_MALE=GIVEN_DOUBLE_120.filter(function(n){
+  return /[轩豪宇辰飞航凯毅诚栋铭瀚泽昊朗煜晖晟鹏龙虎俊杰强军建国建平建华志明国强文翰鹏程]/.test(n);
+});
+function givenNameFeminineScore(given){
+  if(!given)return 0;
+  let s=0;
+  for(let i=0;i<given.length;i++){
+    const ch=given.charAt(i);
+    if(FEM_GIVEN_CHARS.indexOf(ch)>=0)s++;
+    if(MASC_GIVEN_CHARS.indexOf(ch)>=0)s--;
+  }
+  return s;
+}
+function isGivenNameForGender(given,gender){
+  if(!given)return true;
+  const g=gender==='female'?'female':'male';
+  const score=givenNameFeminineScore(given);
+  if(score===0)return true;
+  return g==='female'?score>0:score<=0;
+}
+function genderGivenPools(gender){
+  const g=gender==='female'?'female':'male';
+  return{
+    single:g==='female'?GIVEN_SINGLE_FEMALE:GIVEN_SINGLE_MALE,
+    stack:g==='female'?GIVEN_STACK_FEMALE:GIVEN_STACK_MALE,
+    dbl:(g==='female'?GIVEN_DOUBLE_FEMALE:GIVEN_DOUBLE_MALE).length
+      ?(g==='female'?GIVEN_DOUBLE_FEMALE:GIVEN_DOUBLE_MALE):GIVEN_DOUBLE_120
+  };
+}
+/** 名部分：约 46% 单字、38% 叠字、16% 双字（词语/常见名）；按性别选字池 */
 function composeGivenPart(gender,rng){
+  const pools=genderGivenPools(gender);
   const r=nameRng(rng);
-  if(r<0.46)return namePick(GIVEN_SINGLE_100,rng);
+  if(r<0.46)return namePick(pools.single,rng);
   if(r<0.84){
-    const c=namePick(GIVEN_STACK_80,rng);
+    const c=namePick(pools.stack,rng);
     return c+c;
   }
-  return namePick(GIVEN_DOUBLE_120,rng);
+  return namePick(pools.dbl,rng);
+}
+function fixFullNameGender(fullName,gender,rng,surnameHint){
+  if(!fullName||fullName.length<2)return fullName;
+  const doubles=['欧阳','司马','上官','诸葛','东方','皇甫','令狐','公孙','宇文','长孙'];
+  let sur=surnameHint||'';
+  if(!sur){
+    for(let i=0;i<doubles.length;i++){
+      if(fullName.indexOf(doubles[i])===0){sur=doubles[i];break}
+    }
+    if(!sur)sur=fullName.charAt(0);
+  }
+  const given=fullName.slice(sur.length);
+  if(isGivenNameForGender(given,gender))return fullName;
+  return sur+composeGivenPart(gender,rng);
 }
 function randomChineseFullName(gender,rng){
   return namePick(SURNAME_100,rng)+composeGivenPart(gender,rng);
