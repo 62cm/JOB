@@ -9,6 +9,10 @@ try {
 }
 const data = JSON.parse(fs.readFileSync('data.json', 'utf8'));
 const REAL_CO = require('./real-companies.js');
+const WISH_LIST_EVENTS_SRC = fs.readFileSync(path.join(__dirname, 'wish-list-events.js'), 'utf8');
+const WORK_KPI_SRC = fs.readFileSync(path.join(__dirname, 'work-kpi.js'), 'utf8');
+const IDEAL_PANEL_SRC = fs.readFileSync(path.join(__dirname, 'ideal-panel.js'), 'utf8');
+const RELATIONSHIP_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'relationship-system.js'), 'utf8');
 const DAILY_ACTIVITY_SRC = fs.readFileSync(path.join(__dirname, 'daily-activity.js'), 'utf8');
 const JOB_HUNT_DAILY_SRC = fs.readFileSync(path.join(__dirname, 'job-hunt-daily.js'), 'utf8');
 const AUTO_LIFE_SRC = fs.readFileSync(path.join(__dirname, 'auto-life.js'), 'utf8');
@@ -22,8 +26,10 @@ const SPOUSE_FINANCE_SRC = fs.readFileSync(path.join(__dirname, 'spouse-finance.
 const FERTILITY_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'fertility-system.js'), 'utf8');
 const MENSTRUAL_CYCLE_SRC = fs.readFileSync(path.join(__dirname, 'menstrual-cycle.js'), 'utf8');
 const STARTER_JOB_SRC = fs.readFileSync(path.join(__dirname, 'starter-job.js'), 'utf8');
+const CAMPUS_RECRUITMENT_SRC = fs.readFileSync(path.join(__dirname, 'campus-recruitment.js'), 'utf8');
 const ARTIFACT_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'artifact-system.js'), 'utf8');
 const PROPERTY_COMPANY_SRC = fs.readFileSync(path.join(__dirname, 'property-company.js'), 'utf8');
+const HOUSING_SYSTEM_SRC = fs.readFileSync(path.join(__dirname, 'housing-system.js'), 'utf8');
 const STOCK_FLOAT_SRC = fs.readFileSync(path.join(__dirname, 'stock-float.js'), 'utf8');
 const ASSETS_PANEL_SRC = fs.readFileSync(path.join(__dirname, 'assets-panel.js'), 'utf8');
 const COMPANY_MANAGEMENT_SRC = fs.readFileSync(path.join(__dirname, 'company-management.js'), 'utf8');
@@ -40,6 +46,7 @@ const LIFE_EXTENSIONS_SRC = fs.readFileSync(path.join(__dirname, 'life-extension
 const FLUX_ENGINE_SRC = fs.readFileSync(path.join(__dirname, 'flux-engine.js'), 'utf8');
 const OUTDOOR_HOBBY_SRC = fs.readFileSync(path.join(__dirname, 'outdoor-hobby.js'), 'utf8');
 const IDEAL_COMPANY_EXT_SRC = fs.readFileSync(path.join(__dirname, 'ideal-company-ext.js'), 'utf8');
+const SCAM_JOB_LISTINGS_SRC = fs.readFileSync(path.join(__dirname, 'scam-job-listings.js'), 'utf8');
 const WORKPLACE_CIRCLE_SRC = fs.readFileSync(path.join(__dirname, 'workplace-circle.js'), 'utf8');
 const PROJECT_WORK_OPS_SRC = fs.readFileSync(path.join(__dirname, 'project-work-ops.js'), 'utf8');
 const EXTENSIONS_BATCH3_SRC = fs.readFileSync(path.join(__dirname, 'extensions-batch3.js'), 'utf8');
@@ -48,7 +55,7 @@ const COMPANY_KPI_SRC = fs.readFileSync(path.join(__dirname, 'company-kpi.js'), 
 const LIFE_CREATION_SRC = fs.readFileSync(path.join(__dirname, 'life-creation.js'), 'utf8');
 const NETWORK_PANEL_SRC = fs.readFileSync(path.join(__dirname, 'network-panel.js'), 'utf8');
 const SELF_EMPLOY_SRC = fs.readFileSync(path.join(__dirname, 'self-employ.js'), 'utf8');
-const GAME_BUILD_ID = '2026.06.17-gaokao-max-base';
+const GAME_BUILD_ID = '2026.06.17-remove-work-banner';
 const CASINO_WAIT_SCALE = 0.5;
 function casinoWaitMs(ms){return Math.max(1,Math.round(ms*CASINO_WAIT_SCALE))}
 const CASINO_TIMING = {
@@ -76,14 +83,12 @@ const html = `<!DOCTYPE html>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
   header{background:linear-gradient(135deg,#1a1f35,#0d1117);border-bottom:1px solid var(--border);padding:6px 0 8px;position:relative}
-  .header-grid{display:grid;grid-template-columns:118px 1fr auto auto;gap:0 8px;align-items:center;padding:0 10px;transition:grid-template-columns .2s ease}
-  header.ref-collapsed .header-grid{grid-template-columns:34px 1fr auto auto}
-  .header-title{grid-column:1;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:4px 4px 4px 8px;min-height:0;white-space:nowrap}
+  .header-grid{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:0 12px;align-items:center;padding:0 10px}
+  .header-title{grid-column:1;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:4px 8px 4px 0;min-width:max-content;flex-shrink:0;white-space:nowrap;position:relative;z-index:2}
   .header-title .ht-main{font-size:clamp(1.05rem,2vw,1.45rem);font-weight:800;line-height:1.15;letter-spacing:.02em}
   .header-title .ht-main .ht-accent{color:var(--accent)}
   .header-title .ht-sub{font-size:clamp(.88rem,1.6vw,1.15rem);color:var(--muted);margin-top:2px;font-weight:700;line-height:1.15}
-  header.ref-collapsed .header-title{overflow:hidden;opacity:.85}
-  .header-stats{grid-column:2;min-width:0}
+  .header-stats{grid-column:2;min-width:0;overflow:visible}
   .header-prog-row{grid-column:3;display:flex;flex-direction:row;gap:12px;align-items:flex-start;padding:4px 10px;border-left:1px solid var(--border);border-right:1px solid var(--border);flex-shrink:0}
   .social-medals{grid-column:4;position:relative;top:auto;right:auto;text-align:right;max-width:210px;padding:4px 4px 4px 0;align-self:center}
   .social-medals-row{pointer-events:auto}
@@ -98,6 +103,7 @@ const html = `<!DOCTYPE html>
   .social-medal.lit .medal-effect{display:block}
   .stats-bar{display:flex;flex-wrap:wrap;gap:10px 12px;font-size:.82rem;align-items:flex-end;padding:4px 0}
   .stat-prog{min-width:0}
+  .header-prog-row .stat-prog-ideal{width:118px;flex:0 0 auto}
   .header-prog-row .stat-prog-mort{width:118px;flex:0 0 auto}
   .header-prog-row .stat-prog-sav{width:158px;flex:0 0 auto}
   .header-prog-row .prog-track{width:100%}
@@ -106,6 +112,7 @@ const html = `<!DOCTYPE html>
   .prog-track{position:relative;height:8px;background:var(--bg);border-radius:4px;border:1px solid var(--border);overflow:visible}
   .prog-fill{height:100%;border-radius:3px;transition:width .3s ease;min-width:0}
   .prog-fill.mortgage{background:linear-gradient(90deg,#388bfd,#3fb950)}
+  .prog-fill.ideal{background:linear-gradient(90deg,#6e40c9,#a371f7,#58a6ff)}
   .prog-fill.savings{background:linear-gradient(90deg,#9e6a03,#d29922,#3fb950)}
   .milestone-row{position:relative;height:30px;margin-top:2px}
   .milestone-mark{position:absolute;transform:translateX(-50%);text-align:center;font-size:.58rem;line-height:1;white-space:nowrap}
@@ -358,6 +365,10 @@ const html = `<!DOCTYPE html>
   .daily-job-actions-bottom{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);width:100%}
   .daily-job-actions-bottom .btn{margin:0}
   .inbox-cat-hdr.inbox-cat-expired .fold-meta{color:var(--red)}
+  .inbox-cat-hdr.inbox-cat-scam{color:var(--orange);border-color:var(--orange)}
+  .inbox-item.inbox-scam{border-color:var(--orange);background:rgba(240,136,62,.1)}
+  .daily-scam-bait-row{border-color:rgba(210,153,34,.45)!important;background:rgba(210,153,34,.06)}
+  .daily-scam-bait-applied{border-color:var(--green)!important}
   .company-row{display:flex;gap:8px;padding:6px;border-bottom:1px solid var(--border);font-size:.76rem;flex-wrap:wrap;align-items:flex-start}
   .company-row:hover{background:rgba(88,166,255,.05)}
   .company-row.picked{background:rgba(88,166,255,.08)}
@@ -526,6 +537,7 @@ const html = `<!DOCTYPE html>
   .offer-box{background:var(--bg);border:1px dashed var(--border);border-radius:6px;padding:8px;margin:6px 0}
   .emp-card{background:rgba(63,185,80,.08);border:1px solid rgba(63,185,80,.3);border-radius:8px;padding:9px;margin-bottom:10px;font-size:.82rem}
   .daily-hdr{font-size:.95rem;margin-bottom:8px}
+  .daily-time-bar{padding:4px 0 8px;margin-bottom:4px;border-bottom:1px solid var(--border)}
   .daily-stats{display:flex;flex-wrap:wrap;gap:10px;font-size:.8rem;margin-bottom:8px}
   .daily-stats b{color:var(--green)}
   .daily-temp,.daily-stat-panel{font-size:.8rem;margin-bottom:8px;display:block;line-height:1.55}
@@ -764,7 +776,7 @@ const html = `<!DOCTYPE html>
   <div class="modal slot-modal">
     <h2>万物涨落 · 理想人生</h2>
     <p class="storage-hint">存档保存在本机浏览器（GitHub Pages 在线玩同样有效，仅当前浏览器；换电脑或换浏览器无存档）</p>
-    <p style="font-size:.85rem;color:var(--muted)"><strong>通关目标：</strong>30年还清房贷安度晚年。每周自动存档，共 3 个档位；可为每档<strong>命名</strong>，或将任一档<strong>复制</strong>到空档用于人生分岔。</p>
+    <p style="font-size:.92rem;color:var(--text);line-height:1.55;margin:8px 0 4px">在一切消失前，探索理想的人生。</p>
     <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 ${GAME_BUILD_ID} · 若线上数值不对请 Ctrl+F5 强刷</p>
     <div class="slot-grid" id="slotGrid"></div>
     <div id="charCreatePanel" class="char-create-panel" style="display:none">
@@ -874,10 +886,16 @@ const html = `<!DOCTYPE html>
       <div class="stat"><label>月支出</label><value id="statMonthly">¥11000</value></div>
       <div class="stat"><label>压力</label><value class="stress" id="statStress">0</value><div class="stress-track"><div class="stress-fill" id="stressBar" style="width:0%"></div></div></div>
       <div class="stat"><label>状态</label><value id="statLife">正常</value></div>
-      <div class="stat"><label>房贷</label><value id="statMortgage">0/360月</value></div>
+      <div class="stat"><label>理想</label><value id="statIdeal">—</value></div>
+      <div class="stat"><label>住房</label><value id="statMortgage">—</value></div>
       <div class="stat"><label>家庭</label><value id="statFamily">无孩</value></div>
     </div>
     <div class="header-prog-row">
+      <div class="stat stat-prog stat-prog-ideal">
+        <label>理想进度</label>
+        <value id="idealProgText">—</value>
+        <div class="prog-track"><div class="prog-fill ideal" id="idealProgFill" style="width:0%"></div></div>
+      </div>
       <div class="stat stat-prog stat-prog-mort">
         <label>房贷还清</label>
         <value id="mortgageProgText">0/360月</value>
@@ -959,24 +977,35 @@ const html = `<!DOCTYPE html>
     <div class="emp-card" id="empCard" style="display:none"></div>
     <div class="tabs" id="mainTabs">
       <button class="btn active" data-tab="daily" onclick="showTab('daily')">日常</button>
+      <button class="btn" data-tab="job" onclick="showTab('job')">应聘求职</button>
+      <button class="btn" data-tab="sideincome" onclick="showTab('sideincome')">副业自营</button>
       <button class="btn" data-tab="network" onclick="showTab('network')">网络</button>
       <button class="btn" data-tab="company" id="btnTabCompany" onclick="showTab('company')" style="display:none">公司管理</button>
       <button class="btn" data-tab="stock" onclick="showTab('stock')">资产管理</button>
       <button class="btn" data-tab="gamble" onclick="showTab('gamble')">赌博</button>
       <button class="btn" data-tab="life" onclick="showTab('life')">生活消费</button>
       <button class="btn" data-tab="companion" onclick="showTab('companion')">家庭</button>
+      <button class="btn" data-tab="ideal" onclick="showTab('ideal')">理想</button>
     </div>
+    <div id="dailyTimeBar" class="daily-time-bar" style="display:none"></div>
     <div id="tabDaily">
       <div class="detail-panel" id="dailyPanel"><p style="color:var(--muted)">开始游戏後，在此安排每周七天日程（白天/晚上/休息）。</p></div>
       <div id="autoLifePanel"></div>
     </div>
     <div id="tabNetwork" style="display:none">
-      <div class="detail-panel" id="networkPanel"><p style="color:var(--muted)">需手机或电脑 · 三层圈子（社交/爱好/职场）· 点击人物可层层深入</p></div>
+      <div class="detail-panel" id="networkPanel"><p style="color:var(--muted)">本人资料始终可见 · 智能手机（非诺基亚）或电脑可浏览关系网与他人详情</p></div>
     </div>
     <div id="tabCompany" style="display:none">
       <div class="detail-panel company-mgmt-panel" id="companyMgmtPanel"><p style="color:var(--muted)">创办公司后，在此管理组织、在研业务与招聘。</p></div>
     </div>
     <div id="tabJob" style="display:none">
+      <div class="detail-panel" id="jobHuntPanel"><p style="color:var(--muted)">在此浏览招聘、投递简历（与日常时段共用 8h）。</p></div>
+      <div id="tabJobLegacy" style="display:none">
+      <div class="detail-panel" id="campusRecruitmentPanel" style="display:none;margin-bottom:10px">
+        <div class="panel-title">🎓 校园招聘 · <span id="campusRecruitMeta"></span></div>
+        <p style="font-size:.72rem;color:var(--muted);margin-bottom:6px">离校前专场 · 岗位匹配你的院校与学历 · 录取率约为社会招聘的3倍 · 免费投递</p>
+        <div id="campusRecruitList"></div>
+      </div>
       <div class="detail-panel" id="detailPanel" style="display:none">
         <h3 id="detailTitle"></h3>
         <div id="detailMeta" style="color:var(--muted);margin-bottom:5px;font-size:.8rem"></div>
@@ -1026,6 +1055,10 @@ const html = `<!DOCTYPE html>
         <span id="applyPickHint" style="display:block;font-size:.72rem;color:var(--muted);margin-top:4px">从「日常」进入应聘后，在此选职业并投递</span>
       </div>
       <div class="detail-panel" id="selfEmployPanel" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div id="tabSideIncome" style="display:none">
+      <div class="detail-panel" id="sideIncomeTabPanel"><p style="color:var(--muted)">兼职、电商、自媒体、个体户 · 不占应聘页签</p></div>
     </div>
     <div id="applyModal" class="overlay hidden">
       <div class="modal wide">
@@ -1192,6 +1225,12 @@ const html = `<!DOCTYPE html>
         <div id="companionContent"></div>
       </div>
     </div>
+    <div id="tabIdeal" style="display:none">
+      <div class="companion-panel" id="idealPanel">
+        <p class="companion-note">理想项目助力名单与愿望单。暧昧/亲热≠亲密关系认定；被认定者可在离世时将遗产留给你。</p>
+        <div id="idealPanelContent"></div>
+      </div>
+    </div>
   </section>
 
   <aside class="log-panel"><div class="panel-title">人生日志</div><div id="financeLedgerPanel"></div><div id="gameLog"></div></aside>
@@ -1202,6 +1241,22 @@ const RAW_DATA = ${JSON.stringify(data)};
 const REAL_COMPANIES = ${JSON.stringify(REAL_CO)};
 const TOTAL_WEEKS = 30 * 52;
 const START_DATE = new Date(2024, 0, 1);
+function getGameStartDate(){
+  let d;
+  if(game&&game.startDate){
+    const p=String(game.startDate).split('-');
+    if(p.length===3){
+      d=new Date(parseInt(p[0],10),parseInt(p[1],10)-1,parseInt(p[2],10));
+      d.setHours(0,0,0,0);
+      if(!isNaN(d.getTime()))return d;
+    }
+  }
+  if(game&&typeof computeGameStartDate==='function'){
+    d=computeGameStartDate(game);
+    if(d&&!isNaN(d.getTime()))return new Date(d.getTime());
+  }
+  return new Date(START_DATE.getTime());
+}
 const HISTORY_LEN = 52;
 const WEEKS_PER_MONTH = 4;
 const EDU_RANK = {'初中及以下':1,'高中':2,'中专':2,'高中/中专':2,'大专':3,'本科':4,'硕士':5,'博士':6};
@@ -1218,7 +1273,7 @@ const JOB_POOL_SIZE = 100;
 const TIER_POOL_PER_JOB = {high:7,mid:13,low:80};
 const IMP_ORDER = ['low','mid','high'];
 const IMP_LABEL = {low:'普通',mid:'专家',high:'总监'};
-const ROLE_EXTRA = {intern:'实习',temp:'临时工'};
+const ROLE_EXTRA = {intern:'实习',temp:'临时工',scam:'诈骗岗'};
 const JOB_APPS = {boss:'BOSS直聘',zhilian:'智联招聘','51job':'前程无忧',lagou:'拉勾网',liepin:'猎聘'};
 const APP_COST_EACH = 100;
 const APP_SUB_WEEKS = WEEKS_PER_MONTH;
@@ -2045,8 +2100,21 @@ function writeAllSlots(slots,opts){
 function stripCoInOffer(offer){
   if(!offer)return offer;
   const o={...offer};
-  if(o.company&&o.company.id){o.companyId=o.company.id;delete o.company}
+  if(o.company&&o.company.id){
+    const sid=String(o.company.id);
+    if(o.scamBait||sid.indexOf('scam_')===0){
+      /* 诈骗/合成企业不在 corp 库，保留完整 company 避免读档后 pipeline 崩溃 */
+    }else{
+      o.companyId=o.company.id;delete o.company;
+    }
+  }
   return o;
+}
+function offerCompanyName(offer){
+  if(!offer)return '企业';
+  if(offer.company&&offer.company.name)return offer.company.name;
+  if(offer.companyId)return String(offer.companyId);
+  return '企业';
 }
 function relinkOffer(offer,byId){
   if(!offer)return offer;
@@ -2227,9 +2295,13 @@ function restoreGameState(g,corp){
   if(typeof normalizePlayerStress==='function')normalizePlayerStress();
   game.companyAll=corp.all;game.companyById=corp.byId;game.jobCompanies=corp.jobCompanies;game.companyStats=corp.stats;
   if(game.employment&&game.employment.companyId){
-    game.employment.company=corp.byId[game.employment.companyId];
-    delete game.employment.companyId;
+    const empCo=corp.byId[game.employment.companyId];
+    if(empCo){
+      game.employment.company=empCo;
+      delete game.employment.companyId;
+    }
   }
+  if(typeof ensureEmploymentCompanyLinked==='function')ensureEmploymentCompanyLinked();
   game.inbox=(game.inbox||[]).map(it=>({...it,offer:relinkOffer(it.offer,corp.byId)}));
   game.offers=(game.offers||[]).map(o=>({...o,offer:relinkOffer(o.offer,corp.byId)}));
   game.applications=(game.applications||[]).map(a=>({...a,offer:relinkOffer(a.offer,corp.byId)}));
@@ -2237,6 +2309,7 @@ function restoreGameState(g,corp){
   if(game.referralOpportunity&&game.referralOpportunity.positions){
     game.referralOpportunity.positions=game.referralOpportunity.positions.map(p=>({...p,offer:relinkOffer(p.offer,corp.byId)}));
   }
+  if(typeof migrateScamOfferCompanies==='function')migrateScamOfferCompanies();
   delete game._severanceCtx;
   if(!game.inboxReadIds)game.inboxReadIds=[];
   if(game.monthLedger)delete game.monthLedger._closing;
@@ -2290,11 +2363,9 @@ function toggleRefPanel(){
 function applyRefPanelCollapse(){
   const panel=document.getElementById('refPanel');
   const main=document.querySelector('main');
-  const hdr=document.getElementById('gameHeader');
   const btn=document.getElementById('btnRefCollapse');
   if(panel)panel.classList.toggle('collapsed',refPanelCollapsed);
   if(main)main.classList.toggle('ref-collapsed',refPanelCollapsed);
-  if(hdr)hdr.classList.toggle('ref-collapsed',refPanelCollapsed);
   if(btn){
     btn.textContent=refPanelCollapsed?'▶':'◀';
     btn.title=refPanelCollapsed?'展开就业市场':'折叠就业市场';
@@ -2974,10 +3045,10 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender,slo
     employedWeeks:0,switches:0,layoffs:0,totalApplications:0,successfulHires:0,failedApplications:0,
     jobHuntSpent:0,headhunterDebt:0,longestStreak:0,currentStreak:0,
     familyStress:0,familyPressureEvents:0,stressMultiplier:1,lifeStressEvents:{},cashStressMilestones:{},
-    married:true,divorced:false,marriedWeeks:0,affairActive:false,affairTriggered:false,monthsUnderpaid:0,
+    married:false,divorced:false,marriedWeeks:0,affairActive:false,affairTriggered:false,monthsUnderpaid:0,
     spouseIntimacy:INTIMACY_INITIAL,lastDateWeek:0,livingOffSpouse:false,companionFlirtTotal:0,
     mortgageMonthlyOverride:0,procreateIntentWeek:-1,
-    ownsHome:true,mortgagePaymentsMade:0,mortgagePaidOff:false,
+    ownsHome:false,mortgagePaymentsMade:0,mortgagePaidOff:true,
     hasChildren:false,childRaisingMonthsLeft:0,childRecord:null,
     pregnant:false,pregnantSubject:null,pregnancyStartWeek:null,pregnancyWeeksLeft:0,pregnancyIntimacyNet:0,
     pregnancyBioFather:null,pregnancyConceivedMarried:false,pendingChildCustody:null,
@@ -3032,6 +3103,8 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender,slo
   game.spouseBigLoanUsed=false;
   game.fertilityOrder=null;
   if(game.companion){
+    game.companion.married=false;
+    game.companion.divorced=false;
     game.companion.stats=rollRandomStats();
     game.companion.spouseIntimacy=INTIMACY_INITIAL;
     game.companion.lastDateWeek=0;
@@ -3042,13 +3115,13 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender,slo
     game.companion.cash=rollPartnerStartingCash(stockSeed*3+11);
     initPartnerSecretStash(game.companion,game.stocks,stockSeed*7+23);
     game.companion.secretStashRevealed=false;
-    initCompanionStartingEmployment(game.companion,market,edu,corp.jobCompanies,stockSeed*19+77);
   }
   if(typeof initCoreContacts==='function')initCoreContacts();
   if(typeof applyLifeProfileToGame==='function'&&lifeProfile)applyLifeProfileToGame(lifeProfile);
+  else if(typeof applyOpeningLifeDefaults==='function')applyOpeningLifeDefaults(game,edu);
   if(typeof migrateDreamSystem==='function')migrateDreamSystem();
+  if(typeof migrateCampusRecruitment==='function')migrateCampusRecruitment();
   if(typeof initMenstrualCycleState==='function')initMenstrualCycleState();
-  if(typeof initOpeningJobEvent==='function')initOpeningJobEvent(market,edu,corp.jobCompanies,stockSeed*31+17);
   if(typeof migrateArtifacts==='function')migrateArtifacts();
   selectedJobIdxs=new Set();applyCategoryPicks=new Set();actionDone=false;pendingBatch=null;
   if(typeof resetAutoLifeState==='function')resetAutoLifeState();
@@ -3068,21 +3141,19 @@ function createNewGame(slot,playerName,edu,school,playerGender,partnerGender,slo
   }
   const schoolLabel=typeof playerEducationDisplayLine==='function'?playerEducationDisplayLine():((game.playerEducation||'本科')+'（'+schoolLabelFor(game.playerSchool)+'）');
   const st=corp.stats;
-  const gradYear=game.graduationYear||2010;
-  const startAge=game.startAge!=null?game.startAge:START_AGE;
-  addLog(gradYear+'年 · '+startAge+'岁的'+game.playerName+' · 离校还有一个月 · 带着 ¥'+(game.cash||0).toLocaleString()+'、'+schoolLabel,'info');
+  const openLine=typeof buildOpeningLifeLog==='function'?buildOpeningLifeLog(game):(function(){
+    const gradYear=game.graduationYear||2010;
+    const startAge=game.startAge!=null?game.startAge:START_AGE;
+    return gradYear+'年 · '+startAge+'岁的'+game.playerName;
+  })();
+  addLog(openLine+' · 带着 ¥'+(game.cash||0).toLocaleString()+'、'+schoolLabel,'info');
   addLog('📊 你：肉体'+game.stats.body+' 心智'+game.stats.mind+' 精神'+game.stats.spirit+'（合计'+statTotal(game.stats)+'）','info');
-  addLog('📊 '+game.partnerDisplayName+'：肉体'+game.partnerStats.body+' 心智'+game.partnerStats.mind+' 精神'+game.partnerStats.spirit+'（合计'+statTotal(game.partnerStats)+'）','info');
-  addLog('👨‍👩‍👧 配偶 '+game.partnerDisplayName+' 已记入通讯录，可在「家庭」页签查看状态。','info');
-  if(game.companion){
-    addLog('💵 '+game.partnerDisplayName+' 随身储蓄约 ¥'+(game.companion.cash||0).toLocaleString(),'info');
-    if(game.companion.employed&&game.companion.employment){
-      const e=game.companion.employment,j=market[e.jobIdx];
-      const role=e.roleExtra?IMP_LABEL[e.importance]+'·'+ROLE_EXTRA[e.roleExtra]:IMP_LABEL[e.importance];
-      addLog('💼 '+game.partnerDisplayName+' 已在 '+e.company.name+' 任【'+(j?j.title:'职员')+'】（'+TIER_LABEL[e.tier]+'·'+role+'）','info');
-      game.companion.log.push({date:getDateStr(0),msg:'入职 '+e.company.name+' · '+(j?j.title:'职员'),type:'success'});
-    }
-    game.companion.log.push({date:getDateStr(0),msg:'与 '+playerName+' 一同从 '+PLAYER_HOME_CITY+' 出发，开始平行人生。',type:'info'});
+  if(game.openingPhase==='residency_seek'){
+    addLog('🏥 医学生：大三结束后的暑假 · 请在劳动力市场寻找规培医院（规培约3年）','info');
+  }else if(game.inSchoolDorm){
+    addLog('🏫 住校寝室 · 生活费含宿舍开销','info');
+  }else if(game.livingAtHome){
+    addLog('🏠 住家里 · 与父母同住','info');
   }
   addLog('劳动力市场：'+st.total+'家企业（大型'+st.byScale.large+'·中型'+st.byScale.medium+'·小型'+st.byScale.small+
     '｜头部'+st.byTier.high+'·重点'+st.byTier.mid+'·草根'+st.byTier.low+'），每职业约'+st.avgPerJob+'个招聘方。','info');
@@ -3155,19 +3226,25 @@ function showTab(t){
   document.getElementById('tabNetwork').style.display=t==='network'?'block':'none';
   document.getElementById('tabCompany').style.display=t==='company'?'block':'none';
   document.getElementById('tabJob').style.display=t==='job'?'block':'none';
+  document.getElementById('tabSideIncome').style.display=t==='sideincome'?'block':'none';
   document.getElementById('tabStock').style.display=t==='stock'?'block':'none';
   document.getElementById('tabGamble').style.display=t==='gamble'?'block':'none';
   document.getElementById('tabLife').style.display=t==='life'?'block':'none';
   document.getElementById('tabCompanion').style.display=t==='companion'?'block':'none';
+  document.getElementById('tabIdeal').style.display=t==='ideal'?'block':'none';
   document.querySelectorAll('#mainTabs .btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
+  if(typeof renderDailyTimeBar==='function')renderDailyTimeBar();
+  if(typeof renderActionTip==='function')renderActionTip();
   if(t==='daily') safeRender(renderDailyPanel,'renderDailyPanel');
   if(t==='network') safeRender(renderNetworkPanel,'renderNetworkPanel');
   if(t==='company') safeRender(renderCompanyMgmtTab,'renderCompanyMgmtTab');
   if(t==='stock'){ if(typeof renderFinanceTab==='function')renderFinanceTab(); else renderStocks(); }
   if(t==='life') renderSpendingPanel();
   if(t==='companion') renderCompanionPanel();
-  if(t==='job'){ safeRender(renderJobs,'renderJobs'); safeRender(renderSelfEmployPanel,'renderSelfEmployPanel'); }
+  if(t==='ideal') safeRender(renderIdealPanel,'renderIdealPanel');
+  if(t==='job') safeRender(renderJobHuntPanel,'renderJobHuntPanel');
+  if(t==='sideincome') safeRender(renderSideIncomeTabPanel,'renderSideIncomeTabPanel');
   renderCasinoRefStats();
 }
 
@@ -3264,18 +3341,18 @@ function filterJobsForTreemap(extraFilter){
 }
 function refreshJobTreemapViews(){
   renderJobs();
-  if(typeof renderDailyPanel==='function'&&game&&game.daily&&game.daily.subMenu==='job'){
-    const sm=game.daily.jobSubMenu;
-    if(sm==='app_jobs'||sm==='headhunter_jobs')renderDailyPanel();
+  if(typeof renderJobHuntPanel==='function'&&typeof currentTab!=='undefined'&&currentTab==='job'){
+    const sm=game&&game.daily&&game.daily.jobSubMenu;
+    if(sm==='app_jobs'||sm==='headhunter_jobs')renderJobHuntPanel();
   }
 }
 function onJobSearchInput(){refreshJobTreemapViews()}
-function getDateStr(week){const d=new Date(START_DATE);d.setDate(d.getDate()+week*7);return d.toLocaleDateString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit'})}
+function getDateStr(week){const d=getGameStartDate();d.setDate(d.getDate()+week*7);return d.toLocaleDateString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit'})}
 function getGameWeekDate(week){
-  const d=new Date(START_DATE);d.setDate(d.getDate()+week*7);d.setHours(0,0,0,0);return d;
+  const d=getGameStartDate();d.setDate(d.getDate()+week*7);d.setHours(0,0,0,0);return d;
 }
 function dateToGameWeek(date){
-  const start=new Date(START_DATE);start.setHours(0,0,0,0);
+  const start=getGameStartDate();
   const d=new Date(date);d.setHours(0,0,0,0);
   return Math.floor((d-start)/86400000/7);
 }
@@ -3323,7 +3400,7 @@ const ACTOR_FIELDS=[
   'stealthJobSearch','stealthSearchWeeks','pendingHire','severanceBlacklistUntil','severanceLitigation',
   'ownsConsole','ownsComputer','consumption','lifestyleSpent','flirtPeopleTotal','mobileAdFreeUntilWeek',
   'casinoCoupons','shownLifeFlags',
-  'stats','partnerStats','tempStats','daily','contacts','ownedCar','ownedCars','carSwitchMonthKey','phone','playerGender','partnerGender','playerOrientation','coupleOrientation','villaFacilities','birthYear','graduationYear','startAge','familyTier','baseStress','lifeExpectancy','deathWeek','spouseDeceased','stressLifeStreak','stressLifeWarnings','parentNames','parentFamiliarity','gaokaoScore','playerDream','playerCircles','playerInfluence','selfEmploy','hobbyProjects','hobbyAttendedWeek','flux','idealWorkContracts','activeIdealContractId','workplaceMeta','networkFocusId','networkStack','majorPrefs','openingPhase','inheritancePending','destinyLove','hiredOnTempStats','partnerSoftRice'
+  'stats','partnerStats','tempStats','daily','contacts','ownedCar','ownedCars','carSwitchMonthKey','phone','playerGender','partnerGender','playerOrientation','coupleOrientation','villaFacilities','birthYear','graduationYear','startAge','familyTier','baseStress','lifeExpectancy','deathWeek','spouseDeceased','stressLifeStreak','stressLifeWarnings','parentNames','parentFamiliarity','gaokaoScore','playerDream','playerCircles','playerInfluence','selfEmploy','hobbyProjects','hobbyAttendedWeek','flux','idealWorkContracts','activeIdealContractId','workplaceMeta','networkFocusId','networkStack','majorPrefs','openingPhase','inheritancePending','destinyLove','destinyYear','lotteryNum','lotteryPending','hiredOnTempStats','partnerSoftRice','livingSituation','livingAtHome','inSchoolDorm','dormRent','playerSchoolCity','residencyTraining','inResidencyPhase','campusRecruitment','playerProfileOpen','myLifeOpen','sideIncomePanelOpen','housingType','rentPlan','_housingForcedLD','_housingMigrated'
 ];
 let _companionActor=false;
 function initCompanionStartingEmployment(companion,market,edu,jobCompanies,seed){
@@ -3525,6 +3602,15 @@ function restoreCompanionActor(c,byId){
 }
 function getMonthlyExpensesFor(a){
   if(!a)return {total:0,label:'',mortgage:0,living:0};
+  if(a===game&&(game.livingSituation==='home'||game.livingAtHome)){
+    const living=applyChildLivingCost(2200,(a===game&&typeof getPlayerChildExpense==='function')?getPlayerChildExpense():{living:0,additive:false});
+    return {housing:0,living,total:living,mortgage:0,label:game.livingOffParents?'住家里（啃老）':'住家里',isRent:false,affairMult:1};
+  }
+  if(a===game&&game.inSchoolDorm){
+    const dorm=game.dormRent||650;
+    const living=applyChildLivingCost(2800,(typeof getPlayerChildExpense==='function')?getPlayerChildExpense():{living:0,additive:false});
+    return {housing:dorm,living,total:dorm+living,mortgage:0,label:'学校寝室',isRent:true,affairMult:1};
+  }
   if(a.homeless)return {housing:0,living:1000,total:1000,mortgage:0,label:'流浪（桥洞）',isRent:true,affairMult:1};
   if(a.onWelfare)return {housing:1000,living:1000,total:2000,mortgage:0,label:a.disabled?'伤残低保':'低保',isRent:true,affairMult:1};
   if(a.divorced){
@@ -4080,12 +4166,14 @@ function migrateLoadedGameState(slotIdx){
   }
   if(!game.financeSubTab)game.financeSubTab='stock';
   if(typeof migrateDreamSystem==='function')migrateDreamSystem();
+  if(typeof migrateCampusRecruitment==='function')migrateCampusRecruitment();
   if(typeof migrateContactsSystem==='function')migrateContactsSystem();
   if(typeof migrateSocialCircles==='function')migrateSocialCircles();
   if(typeof migrateFamilyCircles==='function')migrateFamilyCircles();
   syncSpouseIntimacyToCompanion();
   if(game.employed&&game.employment){
-    if(game.employment.companyId&&game.companyById&&game.companyById[game.employment.companyId]){
+    if(typeof ensureEmploymentCompanyLinked==='function')ensureEmploymentCompanyLinked();
+    else if(game.employment.companyId&&game.companyById&&game.companyById[game.employment.companyId]){
       game.employment.company=game.companyById[game.employment.companyId];
       delete game.employment.companyId;
     }else if(game.employment.company&&game.employment.company.id&&game.companyById){
@@ -4160,9 +4248,13 @@ function migrateLoadedGameState(slotIdx){
     if((a.status==='interview_invite'||a.status==='interview_confirmed')&&!a.interviewMode)
       setupInterviewMode(a);
   });
-  if(game.companion.employment&&game.companion.employment.companyId){
-    game.companion.employment.company=game.companyById[game.companion.employment.companyId];
-    delete game.companion.employment.companyId;
+  if(typeof ensureCompanionEmploymentCompanyLinked==='function')ensureCompanionEmploymentCompanyLinked();
+  else if(game.companion&&game.companion.employment&&game.companion.employment.companyId){
+    const compCo=game.companyById&&game.companyById[game.companion.employment.companyId];
+    if(compCo){
+      game.companion.employment.company=compCo;
+      delete game.companion.employment.companyId;
+    }
   }
   syncInviteExpiryState();
   (game.inbox||[]).forEach(it=>{
@@ -4252,7 +4344,7 @@ function spendCash(amt,label){
   ledgerAddExpense('lifestyle','🛒',label,amt,false);
   return true;
 }
-function getYear(week){const d=new Date(START_DATE);d.setDate(d.getDate()+week*7);return d.getFullYear()}
+function getYear(week){const d=getGameStartDate();d.setDate(d.getDate()+week*7);return d.getFullYear()}
 function getPlayerAge(){const base=game&&game.startAge!=null?game.startAge:START_AGE;return base+Math.floor((game.week||0)/52)}
 function getSelectedApps(){
   const m=getApplyMethod();
@@ -4467,10 +4559,10 @@ function confirmReferralApply(){
   updateLongDistanceStatus();
   game.referralOpportunity=null;
   closeReferralModal();
-  const inDailyJob=game.daily&&game.daily.subMenu==='job';
+  const inDailyJob=typeof currentTab!=='undefined'&&currentTab==='job';
   if(inDailyJob&&typeof dailySpendJobHours==='function'){
-    if(!dailySpendJobHours(typeof JOB_REFERRAL_H!=='undefined'?JOB_REFERRAL_H:4,'🤝 内推投递 -'+(typeof JOB_REFERRAL_H!=='undefined'?JOB_REFERRAL_H:4)+'h')){renderDailyPanel();updateUI();return}
-    renderInterviewCalendar();renderDailyPanel();updateUI();
+    if(!dailySpendJobHours(typeof JOB_REFERRAL_H!=='undefined'?JOB_REFERRAL_H:4,'🤝 内推投递 -'+(typeof JOB_REFERRAL_H!=='undefined'?JOB_REFERRAL_H:4)+'h')){if(typeof refreshJobHuntUi==='function')refreshJobHuntUi();updateUI();return}
+    renderInterviewCalendar();if(typeof refreshJobHuntUi==='function')refreshJobHuntUi();updateUI();
     return;
   }
   actionDone=true;
@@ -4759,7 +4851,7 @@ function toggleInboxFold(cat){
 function refreshInboxViews(){
   if(typeof syncInviteExpiryState==='function')syncInviteExpiryState();
   renderInbox();
-  if(typeof renderDailyPanel==='function'&&game&&game.daily&&game.daily.subMenu==='job')renderDailyPanel();
+  if(typeof refreshJobHuntUi==='function'&&typeof currentTab!=='undefined'&&currentTab==='job')refreshJobHuntUi();
 }
 function markInboxInvalid(item,reason){
   if(!item)return;
@@ -4810,6 +4902,7 @@ function isInviteActionable(app,it){
   return true;
 }
 function classifyInboxItem(it,app){
+  if(it.type==='offer'&&(it.scamBait||String(it.id||'').indexOf('scam_')===0||String(it.id||'').indexOf('_sb_offer')>0))return 'scam';
   if(it.type==='ghost')return 'ghost';
   if(it.type==='reject')return 'rejected';
   if(it.type==='interview_done'||it.type==='interview_reply')return it.type==='interview_done'?'attended':'replied';
@@ -4837,7 +4930,7 @@ function classifyInboxItem(it,app){
 function findInboxApp(it){
   if(!game||!it)return null;
   if(it.type==='reject')return game.applications.find(a=>it.id===a.id+'_rej');
-  const baseId=it.appId||it.id.replace(/_attend_confirm$/,'').replace(/_missed_mail$/,'').replace(/_reply_confirm$/,'');
+  const baseId=it.appId||it.id.replace(/_sb_offer$/,'').replace(/_attend_confirm$/,'').replace(/_missed_mail$/,'').replace(/_reply_confirm$/,'');
   return game.applications.find(a=>a.id===baseId);
 }
 function inboxItemKey(it){return it.id+'_'+it.type}
@@ -4845,7 +4938,7 @@ function ensureInboxReadIds(){if(!game.inboxReadIds)game.inboxReadIds=[]}
 function isInboxItemUnread(it,app){
   ensureInboxReadIds();
   const cat=classifyInboxItem(it,app);
-  if(cat==='pending'||cat==='ghost'||cat==='rejected')return !game.inboxReadIds.includes(inboxItemKey(it));
+  if(cat==='pending'||cat==='ghost'||cat==='rejected'||cat==='scam')return !game.inboxReadIds.includes(inboxItemKey(it));
   return false;
 }
 function markInboxItemsRead(items){
@@ -4858,6 +4951,7 @@ function markInboxItemsRead(items){
 function getVisibleInboxRaw(){
   if(!game||!game.inbox)return [];
   return game.inbox.filter(x=>{
+    if(x.type==='offer'&&(String(x.id||'').indexOf('scam_')===0||x.scamBait||String(x.id||'').indexOf('_sb_offer')>0))return true;
     if(x.type==='ghost'||x.type==='reject'||x.type==='interview_done'||x.type==='interview_missed'||x.type==='interview_reply')return true;
     if(x.type!=='interview')return false;
     const app=findInboxApp(x);
@@ -4876,7 +4970,7 @@ function countJobInboxUnread(){
   return n;
 }
 function bucketInboxItems(raw){
-  const buckets={pending:[],replied:[],confirmed:[],attended:[],missed:[],expired:[],ghost:[],rejected:[]};
+  const buckets={pending:[],replied:[],confirmed:[],attended:[],missed:[],expired:[],ghost:[],rejected:[],scam:[]};
   raw.forEach(it=>{
     const app=findInboxApp(it);
     const cat=classifyInboxItem(it,app);
@@ -4888,6 +4982,7 @@ function bucketInboxItems(raw){
 }
 function renderInboxBucketsHtml(buckets){
   let html='';
+  html+=renderInboxCategory('⚠ 可疑招聘 · 诈骗岗','scam',buckets.scam,true);
   html+=renderInboxCategory('待确认 · 面试邀请','pending',buckets.pending,true);
   html+=renderInboxCategory('已回复 · 确认参加面试','replied',buckets.replied,true);
   html+=renderInboxCategory('已确认 · 待面试','confirmed',buckets.confirmed,true);
@@ -4940,6 +5035,7 @@ function getResumeProbability(job,offer,apps){
   if(m==='headhunter')base=Math.min(.88,base*1.2+.1);
   else if(m==='referral')base=Math.min(.85,base*1.35+.15);
   else if(m==='app')base=Math.min(.88,base*getAppChannelMult(job,offer.tier,apps,offer.importance));
+  else if(m==='campus'&&typeof CAMPUS_HIRE_MULT!=='undefined')base=Math.min(.88,base*CAMPUS_HIRE_MULT);
   const mod=getHireProbabilityModifiers(offer);
   base*=Math.min(1,mod.combined*2.2);
   const gap=tierImpGap(offer);
@@ -5403,33 +5499,49 @@ function processApplicationPipeline(){
   game.applications.forEach(app=>{
     if(app.status==='pending'&&w>=app.replyWeek){
       const job=game.market[app.jobIdx], offer=app.offer;
+      if(!offer||!job)return;
+      const coName=offerCompanyName(offer);
       const gap=tierImpGap(offer);
-      if(gap>=6){app.status='silent';game.resumeFailCount++;return}
+      if(gap>=6){
+        app.status='silent';
+        if(app.method==='campus'){
+          game.inbox.push({id:app.id+'_silent',type:'ghost',week:w,jobIdx:app.jobIdx,company:coName,
+            msg:coName+'：感谢您的关注，本轮暂无合适安排。',offer});
+        }
+        game.resumeFailCount++;return;
+      }
       if(game.severanceBlacklistUntil>game.week&&Math.random()<0.4){
         app.status='ghost';
-        game.inbox.push({id:app.id,type:'ghost',week:w,jobIdx:app.jobIdx,company:offer.company.name,
-          msg:offer.company.name+'：感谢您的关注，本轮暂无合适安排。',offer});
+        game.inbox.push({id:app.id,type:'ghost',week:w,jobIdx:app.jobIdx,company:coName,
+          msg:coName+'：感谢您的关注，本轮暂无合适安排。',offer});
         game.resumeFailCount++;return;
       }
       if(game.severanceLitigation&&game.week<game.severanceLitigation.untilWeek){
         const cat=job&&job.category;
         if(cat&&cat===game.severanceLitigation.category&&Math.random()<0.55){
           app.status='ghost';
-          game.inbox.push({id:app.id,type:'ghost',week:w,jobIdx:app.jobIdx,company:offer.company.name,
-            msg:offer.company.name+'：背调未通过，暂不合适。',offer});
+          game.inbox.push({id:app.id,type:'ghost',week:w,jobIdx:app.jobIdx,company:coName,
+            msg:coName+'：背调未通过，暂不合适。',offer});
           game.resumeFailCount++;return;
         }
       }
       const artGuar=typeof artifactGuaranteedFor==='function'&&artifactGuaranteedFor(job,offer);
       const rp=artGuar?0.88:getResumeProbability(job,offer,offer.apps);
-      if(!artGuar&&Math.random()>=rp){app.status='silent';game.resumeFailCount++;return}
-      const ghostRate=artGuar?0:(app.viaReferral?0.25:0.52);
+      if(!artGuar&&Math.random()>=rp){
+        app.status='silent';
+        if(app.method==='campus'){
+          game.inbox.push({id:app.id+'_silent',type:'ghost',week:w,jobIdx:app.jobIdx,company:coName,
+            msg:coName+'：感谢您的关注，本轮暂无合适安排。',offer});
+        }
+        game.resumeFailCount++;return;
+      }
+      const ghostRate=artGuar?0:(app.method==='campus'?0.22:(app.viaReferral?0.25:0.52));
       if(Math.random()<ghostRate){
         app.status='ghost';
         const ghostMsg=offer.planned?
-          offer.company.name+' 预定招聘筛选结果：简历暂未通过本轮筛选，感谢关注。':
-          offer.company.name+'：感谢您的投递，如有合适机会我们将通知您面试时间。';
-        game.inbox.push({id:app.id,type:'ghost',week:w,jobIdx:app.jobIdx,company:offer.company.name,
+          coName+' 预定招聘筛选结果：简历暂未通过本轮筛选，感谢关注。':
+          coName+'：感谢您的投递，如有合适机会我们将通知您面试时间。';
+        game.inbox.push({id:app.id,type:'ghost',week:w,jobIdx:app.jobIdx,company:coName,
           msg:ghostMsg,offer});
         game.resumeFailCount++;
       }else{
@@ -5443,17 +5555,18 @@ function processApplicationPipeline(){
         app.interviewSlot=pickInterviewSlot(app.interviewWeek,app.id);
         setupInterviewMode(app);
         const slotTxt=interviewSlotLabel(app.interviewSlot);
-        const cityTxt=isRemoteCompany(offer.company)?'（'+getCompanyCity(offer.company)+'·异地）':'';
+        const cityTxt=offer.company&&isRemoteCompany(offer.company)?'（'+getCompanyCity(offer.company)+'·异地）':'';
         const whenNote=sched<=1?'近期':'约'+sched+'周后';
         const modeNote=' · '+interviewModeLabel(app)+' · '+formatInterviewCostDesc(app);
         const inviteMsg=offer.planned?
-          offer.company.name+cityTxt+' 预定招聘筛选通过：【'+IMP_LABEL[offer.importance]+'】面试资格 · '+whenNote+' '+getDateStr(app.interviewWeek)+' '+slotTxt+modeNote:
-          offer.company.name+cityTxt+' 邀请【'+IMP_LABEL[offer.importance]+'】面试 · '+whenNote+' '+getDateStr(app.interviewWeek)+' '+slotTxt+modeNote;
-        game.inbox.push({id:app.id,type:'interview',week:w,jobIdx:app.jobIdx,company:offer.company.name,
+          coName+cityTxt+' 预定招聘筛选通过：【'+IMP_LABEL[offer.importance]+'】面试资格 · '+whenNote+' '+getDateStr(app.interviewWeek)+' '+slotTxt+modeNote:
+          coName+cityTxt+' 邀请【'+IMP_LABEL[offer.importance]+'】面试 · '+whenNote+' '+getDateStr(app.interviewWeek)+' '+slotTxt+modeNote;
+        game.inbox.push({id:app.id,type:'interview',week:w,jobIdx:app.jobIdx,company:coName,
           interviewWeek:app.interviewWeek,interviewSlot:app.interviewSlot,
           msg:inviteMsg,offer,attended:false,confirmed:false});
         updateLongDistanceStatus();
-        if(offer.planned)addLog('✉️ '+offer.company.name+' 预定招聘公布：获得面试资格','success');
+        if(offer.planned)addLog('✉️ '+coName+' 预定招聘公布：获得面试资格','success');
+        else if(app.method==='campus')addLog('✉️ 【校招】'+coName+' 邀请面试 · 见应聘邮箱','success');
       }
     }
     if(app.status==='interview_confirmed'&&app.interviewWeek!=null&&w>app.interviewWeek&&!app.interviewHeld){
@@ -5830,6 +5943,13 @@ function closeConsumeModal(skipUi){
     game._resumeOvertimeAfterModal=false;
     if(game.daily&&game.daily.inOvertime&&typeof showOvertimeChoiceModal==='function'){
       showOvertimeChoiceModal();
+      return;
+    }
+  }
+  if(game&&game._resumeWorkShiftAfterModal){
+    game._resumeWorkShiftAfterModal=false;
+    if(typeof returnToWorkShiftModal==='function'){
+      returnToWorkShiftModal();
       return;
     }
   }
@@ -6319,6 +6439,7 @@ function formatInboxOfferDetail(it,app){
     '岗位：<b>'+jobTitle+'</b> · '+fmtCompanyBadge(offer.company)+' · <b>'+imp+'</b> · '+pay+
     (offer.welfare?'<br>'+offer.welfare:'')+'</div>';
 }
+function renderDailyPanelSafe(){if(typeof renderDailyPanel==='function')renderDailyPanel();}
 function renderInboxRow(it){
   const app=findInboxApp(it);
   const cat=classifyInboxItem(it,app);
@@ -6333,8 +6454,18 @@ function renderInboxRow(it){
   else if(cat==='replied')cls+=' has-reply';
   else if(it.type==='interview')cls+=' has-reply';
   else if(it.type==='reject')cls+=' invalid';
+  else if(cat==='scam')cls+=' inbox-scam';
+  else if(it.type==='offer')cls+=' ghost';
   let acts='',invalidTag='';
-  if(it.type==='interview_reply'||it.type==='interview_done'||it.type==='interview_missed'){
+  if(it.type==='offer'&&String(it.id||'').indexOf('scam_')===0){
+    invalidTag='<div class="invalid-tag" style="color:var(--orange);border-color:var(--orange)">⚠ 投必中 · 诈骗岗</div>';
+    acts='<button class="btn btn-warn" onclick="acceptScamJob();refreshInboxViews();renderDailyPanelSafe();if(typeof refreshJobHuntUi===\\'function\\')refreshJobHuntUi()">接受（诈骗岗 · 特殊通讯簿）</button>'+
+      '<button class="btn" onclick="dismissScamOffer(\\''+it.id+'\\')">忽略</button>';
+  }else if(it.type==='offer'&&it.scamBait){
+    invalidTag='<div class="invalid-tag" style="color:var(--yellow);border-color:var(--yellow)">✨ 优选录用 · 上岗后需推销套餐</div>';
+    acts='<button class="btn btn-warn" onclick="acceptScamBaitOffer(\\''+(it.appId||'')+'\\');refreshInboxViews();renderDailyPanelSafe();if(typeof refreshJobHuntUi===\\'function\\')refreshJobHuntUi()">确认入职</button>'+
+      '<button class="btn" onclick="dismissScamBaitOffer(\\''+(it.appId||'')+'\\',\\''+it.id+'\\')">放弃</button>';
+  }else if(it.type==='interview_reply'||it.type==='interview_done'||it.type==='interview_missed'){
     acts='<div style="color:var(--'+(it.type==='interview_missed'?'red':'green')+');font-size:.7rem;margin-top:4px">'+
       (it.type==='interview_reply'?'✓ 已回复确认':it.type==='interview_done'?'✓ 已参加确认':'✗ 缺席记录')+'</div>';
   }else if(cat==='missed'){
@@ -6370,9 +6501,12 @@ function renderInboxRow(it){
         '<div style="color:var(--muted);font-size:.65rem;margin-top:3px">'+modeNote+' · '+costDesc+'</div>';
     }
   }
-  const offerLine=(it.type==='interview'||it.type==='reject'||it.type==='ghost')?formatInboxOfferDetail(it,app):'';
+  const offerLine=(it.type==='interview'||it.type==='reject'||it.type==='ghost')?formatInboxOfferDetail(it,app):
+    (it.type==='offer'&&it.body)?('<div class="inbox-offer-detail">'+it.body+'</div>'):'';
   const dateLine='通知 '+getDateStr(it.week)+(ivWeek?' · 面试 <b>'+getDateStr(ivWeek)+(slotTxt?' '+slotTxt:'')+'</b>':'');
-  return '<div class="'+cls+'"><div>'+it.msg+'</div>'+offerLine+'<div style="color:var(--muted);font-size:.7rem">'+dateLine+'</div>'+invalidTag+acts+'</div>';
+  const msgLine=it.msg||(it.title||'');
+  const scamNote=cat==='scam'&&!it.scamBait?'<div style="color:var(--orange);font-size:.68rem;margin-bottom:3px">不在 APP 刷岗列表 · 仅通过应聘邮箱投递</div>':'';
+  return '<div class="'+cls+'">'+scamNote+'<div>'+msgLine+'</div>'+offerLine+'<div style="color:var(--muted);font-size:.7rem">'+dateLine+'</div>'+invalidTag+acts+'</div>';
 }
 function renderInboxCategory(title,catKey,items,foldable){
   if(!items.length)return '';
@@ -6871,7 +7005,7 @@ function getLedgerMonthKey(week){
   return Math.max(1,Math.ceil((week||0)/WEEKS_PER_MONTH));
 }
 function ledgerPeriodLabel(week){
-  const d=new Date(START_DATE);
+  const d=getGameStartDate();
   d.setDate(d.getDate()+(week||game.week)*7);
   return d.toLocaleDateString('zh-CN',{year:'numeric',month:'long'});
 }
@@ -7035,6 +7169,21 @@ function renderFinanceLedger(){
     (financeFoldOpen?'<div class="fin-fold-body">'+body+'</div>':'')+'</div>';
 }
 function getMonthlyExpenses(){
+  if(game.livingSituation==='home'||game.livingAtHome){
+    const childExp=getPlayerChildExpense();
+    let living=applyChildLivingCost(2200,childExp);
+    let label=game.livingOffParents?'住家里（啃老）':'住家里';
+    if(childExp.childLabel)label=childExp.childLabel;
+    return {housing:0,living,total:living,mortgage:0,label,isRent:false,affairMult:1};
+  }
+  if(game.inSchoolDorm){
+    const dorm=game.dormRent||650;
+    const childExp=getPlayerChildExpense();
+    let living=applyChildLivingCost(2800,childExp);
+    let label='学校寝室';
+    if(childExp.childLabel)label=childExp.childLabel;
+    return {housing:dorm,living,total:dorm+living,mortgage:0,label,isRent:true,affairMult:1};
+  }
   if(game.homeless)return {housing:0,living:1000,total:1000,mortgage:0,label:'流浪（桥洞）',isRent:true,affairMult:1};
   if(game.onWelfare)return {housing:1000,living:1000,total:2000,mortgage:0,label:game.disabled?'伤残低保':'低保',isRent:true,affairMult:1};
   if(game.divorced){
@@ -7089,6 +7238,11 @@ function savingsBarPct(amt){
 
 function renderHeaderProgress(){
   if(!game)return;
+  const idealPct=typeof playerIdealProgressPct==='function'?playerIdealProgressPct():0;
+  const idealFill=document.getElementById('idealProgFill');
+  const idealText=document.getElementById('idealProgText');
+  if(idealFill)idealFill.style.width=idealPct+'%';
+  if(idealText)idealText.textContent=typeof playerIdealProgressLabel==='function'?playerIdealProgressLabel():'—';
   const mortPct=game.mortgagePaidOff?100:Math.min(100,game.mortgagePaymentsMade/MORTGAGE_MONTHS*100);
   const mortFill=document.getElementById('mortgageProgFill');
   const mortText=document.getElementById('mortgageProgText');
@@ -8988,6 +9142,11 @@ function hirePlayer(jobIdx,offer,viaReferral){
   addLog(msg,'success');
   if(typeof hookHirePlayerStats==='function')hookHirePlayerStats(jobIdx);
   if(typeof onPlayerEmploymentChanged==='function')onPlayerEmploymentChanged(was);
+  if(typeof onPlayerResidencyHospitalHired==='function'&&game.inResidencyPhase&&game.residencyTraining&&game.residencyTraining.seeking){
+    const jt=(job&&job.title)||'';
+    const cn=(offer.company&&offer.company.name)||'';
+    if(/医|护理|临床|规培|住院/.test(jt+cn))onPlayerResidencyHospitalHired(cn);
+  }
   updateHeadhunterOption();
   updateLongDistanceStatus();
 }
@@ -9103,6 +9262,8 @@ function updateMarket(){
 function advanceOneWeek(){
   if(game.week>=TOTAL_WEEKS){endGame('timeout');return false}
   game.week++;
+  if(typeof tickResidencyTrainingWeekly==='function')tickResidencyTrainingWeekly();
+  if(typeof tickCampusRecruitmentWeekly==='function')tickCampusRecruitmentWeekly();
   if(typeof checkOpeningLayoffEvent==='function')checkOpeningLayoffEvent();
   if(game.married&&!game.divorced)game.marriedWeeks++;
   checkAffairEvent();
@@ -9122,6 +9283,7 @@ function advanceOneWeek(){
   checkCashStressMilestones();
   if(typeof autoLifeRunning==='undefined'||!autoLifeRunning)tickCompanionWeek();
   if(typeof tickContactLoans==='function')tickContactLoans();
+  if(typeof tickHousingRentLease==='function')tickHousingRentLease();
   if(typeof tickSpouseLoans==='function')tickSpouseLoans();
   if(typeof tickFertilityOrders==='function')tickFertilityOrders();
   if(typeof flushMenstrualCycleWeek==='function')flushMenstrualCycleWeek();
@@ -10973,6 +11135,7 @@ function renderJobs(){
   renderRefPanel();
   if(selectedIdx>=0)showDetail(selectedIdx);
   renderCasinoRefStats();
+  if(typeof renderCampusRecruitmentPanel==='function')renderCampusRecruitmentPanel();
 }
 
 function updateOfferPreview(){
@@ -11119,7 +11282,8 @@ function updateHeaderStats(){
   else if(game.livingOffSpouse)life='吃软饭';
   else if(game.livingOffParents)life='啃老';
   set('statLife',life);
-  set('statMortgage',game.mortgagePaidOff?'已还清':game.mortgagePaymentsMade+'/'+MORTGAGE_MONTHS+'月');
+  set('statIdeal',typeof playerIdealProgressLabel==='function'?playerIdealProgressLabel():'—');
+  set('statMortgage',typeof playerMortgageStatLabel==='function'?playerMortgageStatLabel():((game.ownsHome&&game.mortgagePaidOff)?'已还清':(game.ownsHome?game.mortgagePaymentsMade+'/'+MORTGAGE_MONTHS+'月':'—')));
   const pregLeft=game.pregnant?(typeof pregnancyWeeksRemaining==='function'?pregnancyWeeksRemaining():game.pregnancyWeeksLeft):0;
   set('statFamily',game.pregnant?('孕期剩'+pregLeft+'周'):game.hasChildren?(game.childRaisingMonthsLeft>0?'育儿中':'已育'):'无孩');
 }
@@ -11138,7 +11302,7 @@ function renderLifePanelContent(){
   lifeEl.innerHTML=
     '<div><b>人生目标</b></div><div style="color:var(--muted);margin:4px 0">还清30年房贷，与伴侣在自己的房中度晚年</div>'+
     '<div><b>本月 ¥'+exp.total.toLocaleString()+'</b> · '+exp.label+'</div>'+
-    (game.ownsHome&&!game.mortgagePaidOff?'<div>房贷进度 '+game.mortgagePaymentsMade+'/'+MORTGAGE_MONTHS+'</div>':'')+
+    (typeof playerMortgageStatLabel==='function'?'<div>住房 · '+playerMortgageStatLabel()+'</div>':'')+
     (game.pregnant?'<div style="color:var(--green)">怀孕中 · 剩 '+(typeof pregnancyWeeksRemaining==='function'?pregnancyWeeksRemaining():game.pregnancyWeeksLeft)+' 周 · 亲密度每周±1'+
       ' · '+pregnancyWhoLabel()+' · 净波动 '+(game.pregnancyIntimacyNet||0)+'</div>':'')+
     (game.hasChildren&&game.childRaisingMonthsLeft>0?'<div>育儿剩余 '+game.childRaisingMonthsLeft+' 月</div>':'')+
@@ -11193,6 +11357,7 @@ function updateUI(){
     safeRender(renderAutoLifePanel,'renderAutoLifePanel');
     if(typeof updateAutoLifeProgress==='function')updateAutoLifeProgress();
     safeRender(renderDailyPanel,'renderDailyPanel');
+  if(typeof currentTab!=='undefined'&&currentTab==='job')safeRender(renderJobHuntPanel,'renderJobHuntPanel');
     safeRender(renderInbox,'renderInbox');
     safeRender(renderOffers,'renderOffers');
     safeRender(renderStocks,'renderStocks');
@@ -11200,14 +11365,16 @@ function updateUI(){
   }
   try{
   safeRender(renderEmpCard,'renderEmpCard');
-  const d=game.daily||{dayIndex:0,phase:'morning'};
-  const dailyHint=d.dayIndex>=7?'':(' · 日常 '+DAY_NAMES[Math.min(d.dayIndex,6)]+' '+PHASE_LABELS[d.phase||'morning']);
-  const actionTipEl=document.getElementById('actionTip');
-  if(actionTipEl)actionTipEl.innerHTML=actionDone
-    ?'<strong>本周日程已满</strong> → 日常页「进入下周」或自动生活':'<strong>'+getDateStr(game.week)+'</strong>'+dailyHint+' · 每时段8h · 炒股工作日白天更新';
-  const inDailyJobMenu=game.daily&&game.daily.subMenu==='job';
-  if(game.employed&&selectedIdx<0&&!inDailyJobMenu)selectedIdx=game.employment.jobIdx;
+  if(typeof renderActionTip==='function')renderActionTip();
+  else{
+    const actionTipEl=document.getElementById('actionTip');
+    if(actionTipEl)actionTipEl.innerHTML=actionDone
+      ?'<strong>本周日程已满</strong> → 日常页「进入下周」或自动生活':'<strong>'+getDateStr(game.week)+'</strong> · 每时段8h';
+  }
+  const inJobTab=typeof currentTab!=='undefined'&&currentTab==='job';
+  if(game.employed&&selectedIdx<0&&!inJobTab)selectedIdx=game.employment.jobIdx;
   safeRender(renderDailyPanel,'renderDailyPanel');
+  if(typeof currentTab!=='undefined'&&currentTab==='job')safeRender(renderJobHuntPanel,'renderJobHuntPanel');
   safeRender(renderAutoLifePanel,'renderAutoLifePanel');
   safeRender(renderJobs,'renderJobs');
   safeRender(renderStocks,'renderStocks');
@@ -11219,7 +11386,8 @@ function updateUI(){
   safeRender(renderNetworkPanel,'renderNetworkPanel');
   safeRender(renderCompanyMgmtTab,'renderCompanyMgmtTab');
   safeRender(syncCompanyMgmtTabVisibility,'syncCompanyMgmtTabVisibility');
-  safeRender(renderSelfEmployPanel,'renderSelfEmployPanel');
+  safeRender(renderSideIncomeTabPanel,'renderSideIncomeTabPanel');
+  if(typeof renderDailyTimeBar==='function')renderDailyTimeBar();
   safeRender(renderCasinoRefStats,'renderCasinoRefStats');
   safeRender(renderFinanceLedger,'renderFinanceLedger');
   safeRender(updateButtons,'updateButtons');
@@ -11230,6 +11398,7 @@ function updateUI(){
   }catch(e){
     console.error('updateUI',e);
     safeRender(renderDailyPanel,'renderDailyPanel');
+  if(typeof currentTab!=='undefined'&&currentTab==='job')safeRender(renderJobHuntPanel,'renderJobHuntPanel');
     safeRender(renderAutoLifePanel,'renderAutoLifePanel');
   }
 }
@@ -11238,6 +11407,7 @@ ${WORKPLACE_STORIES_POOLS_SRC}
 ${WORKPLACE_STORIES_SRC}
 ${ARTIFACT_SYSTEM_SRC}
 ${STOCK_FLOAT_SRC}
+${HOUSING_SYSTEM_SRC}
 ${PROPERTY_COMPANY_SRC}
 ${ASSETS_PANEL_SRC}
 ${COMPANY_MANAGEMENT_SRC}
@@ -11248,11 +11418,15 @@ ${COMPANY_TRAVEL_SRC}
 ${COMPANY_COMPETITION_SRC}
 ${COMPANY_KPI_SRC}
 ${DAILY_ACTIVITY_SRC}
+${WISH_LIST_EVENTS_SRC}
+${WORK_KPI_SRC}
 ${JOB_HUNT_DAILY_SRC}
 ${AFFAIR_SYSTEM_SRC}
 ${NAMES_SRC}
 ${CONTACTS_SYSTEM_SRC}
+${RELATIONSHIP_SYSTEM_SRC}
 ${DREAM_SYSTEM_SRC}
+${IDEAL_PANEL_SRC}
 ${SOCIAL_CIRCLES_SRC}
 ${FAMILY_CIRCLES_SRC}
 ${LIFESPAN_SYSTEM_SRC}
@@ -11260,6 +11434,7 @@ ${LIFE_EXTENSIONS_SRC}
 ${FLUX_ENGINE_SRC}
 ${OUTDOOR_HOBBY_SRC}
 ${IDEAL_COMPANY_EXT_SRC}
+${SCAM_JOB_LISTINGS_SRC}
 ${WORKPLACE_CIRCLE_SRC}
 ${PROJECT_WORK_OPS_SRC}
 ${EXTENSIONS_BATCH3_SRC}
@@ -11271,6 +11446,7 @@ ${SPOUSE_FINANCE_SRC}
 ${FERTILITY_SYSTEM_SRC}
 ${MENSTRUAL_CYCLE_SRC}
 ${STARTER_JOB_SRC}
+${CAMPUS_RECRUITMENT_SRC}
 ${AUTO_LIFE_SRC}
 renderSlotGrid();
 syncPlayerSchoolEdu();

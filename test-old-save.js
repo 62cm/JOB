@@ -43,6 +43,7 @@ const ctx = {
   console,
   Math, Date, Set, Map, JSON, parseInt, parseFloat, isNaN, isFinite,
   Array, Object, String, Number, Boolean, RegExp, Error, Promise, Symbol,
+  window: null,
   localStorage: {
     _d: {},
     getItem(k) { return this._d[k] || null; },
@@ -63,6 +64,7 @@ const ctx = {
   alert() {}, confirm() { return true; }, prompt() { return null; },
   location: { href: 'file:///test/index.html' }
 };
+ctx.window = ctx;
 vm.createContext(ctx);
 
 try {

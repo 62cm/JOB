@@ -94,20 +94,31 @@ function renderAssetsPanel() {
   h += '<p class="fold-meta" style="margin:0 0 10px">汇总个人不动产、股票持仓、收购企业股权与集团持股。持股市值每周随行情变动结算至现金。</p>';
 
   h += '<div class="company-mgmt-section" style="padding:10px;margin-bottom:10px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">';
-  h += '<b>🏠 不动产</b>';
+  h += '<b>🏠 不动产</b> <span class="fold-meta">· 仅含购房/别墅等产权，租房不计入</span>';
   const reBits = [];
   let reVal = 0;
   if (game.ownsHome) {
-    reBits.push(game.mortgagePaidOff ? '自住房（房贷已清）' : '自住房（按揭中）');
-    reVal += game.mortgagePaidOff ? 2500000 : 800000;
+    reBits.push(game.mortgagePaidOff ? '商品房（已清贷）' : '商品房（按揭）');
+    reVal += game.mortgagePaidOff ? 3000000 : 800000;
   }
-  if (game.villaOwned) { reBits.push('别墅'); reVal += typeof VILLA_PRICE !== 'undefined' ? VILLA_PRICE : 10000000; }
-  if (typeof hasPrivateJet === 'function' && hasPrivateJet()) { reBits.push('私人飞机'); reVal += 200000000; }
-  if (!reBits.length) h += '<p class="fold-meta" style="margin:6px 0 0">暂无不动产</p>';
+  if (game.villaOwned) {
+    reBits.push('别墅');
+    reVal += typeof VILLA_PRICE !== 'undefined' ? VILLA_PRICE : 10000000;
+  }
+  if (typeof hasPrivateJet === 'function' && hasPrivateJet()) {
+    reBits.push('私人飞机');
+    reVal += 200000000;
+  }
+  if (!reBits.length) h += '<p class="fold-meta" style="margin:6px 0 0">暂无购房类不动产</p>';
   else {
     h += '<p style="margin:6px 0 2px">' + reBits.join(' · ') + '</p>';
     h += '<p class="fold-meta">估算市值 ' + fmtMoney(reVal) + '</p>';
     total += reVal;
+  }
+  const rentId = typeof playerActiveRentPlanId === 'function' ? playerActiveRentPlanId() : null;
+  if (rentId) {
+    const plan = typeof rentPlanMeta === 'function' ? rentPlanMeta(rentId) : (game.rentPlan || null);
+    h += '<p class="fold-meta" style="margin:6px 0 0;color:var(--muted)">当前租住「' + (plan ? plan.label : rentId) + '」· 消费性支出，不计入资产</p>';
   }
   h += '</div>';
 

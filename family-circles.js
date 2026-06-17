@@ -5,11 +5,7 @@ const FAMILY_ANCESTOR_DEFS = [
   { id: 'core_pp_gf', kind: 'grandparent', role: '爷爷', gender: 'male', line: 'paternal', gen: 2 },
   { id: 'core_pp_gm', kind: 'grandparent', role: '奶奶', gender: 'female', line: 'paternal', gen: 2 },
   { id: 'core_pm_gf', kind: 'grandparent', role: '外公', gender: 'male', line: 'maternal', gen: 2 },
-  { id: 'core_pm_gm', kind: 'grandparent', role: '外婆', gender: 'female', line: 'maternal', gen: 2 },
-  { id: 'core_pp_ggf', kind: 'great_grandparent', role: '曾祖父', gender: 'male', line: 'paternal', gen: 3 },
-  { id: 'core_pp_ggm', kind: 'great_grandparent', role: '曾祖母', gender: 'female', line: 'paternal', gen: 3 },
-  { id: 'core_pm_ggf', kind: 'great_grandparent', role: '曾外祖父', gender: 'male', line: 'maternal', gen: 3 },
-  { id: 'core_pm_ggm', kind: 'great_grandparent', role: '曾外祖母', gender: 'female', line: 'maternal', gen: 3 }
+  { id: 'core_pm_gm', kind: 'grandparent', role: '外婆', gender: 'female', line: 'maternal', gen: 2 }
 ];
 const SPOUSE_ANCESTOR_DEFS = [
   { id: 'core_sp_father', kind: 'spouse_parent', role: '岳父/公公', gender: 'male', gen: 1 },
@@ -17,11 +13,7 @@ const SPOUSE_ANCESTOR_DEFS = [
   { id: 'core_sp_pp_gf', kind: 'spouse_grandparent', role: '配偶爷爷', gender: 'male', line: 'paternal', gen: 2 },
   { id: 'core_sp_pp_gm', kind: 'spouse_grandparent', role: '配偶奶奶', gender: 'female', line: 'paternal', gen: 2 },
   { id: 'core_sp_pm_gf', kind: 'spouse_grandparent', role: '配偶外公', gender: 'male', line: 'maternal', gen: 2 },
-  { id: 'core_sp_pm_gm', kind: 'spouse_grandparent', role: '配偶外婆', gender: 'female', line: 'maternal', gen: 2 },
-  { id: 'core_sp_pp_ggf', kind: 'spouse_great_grandparent', role: '配偶曾祖父', gender: 'male', line: 'paternal', gen: 3 },
-  { id: 'core_sp_pp_ggm', kind: 'spouse_great_grandparent', role: '配偶曾祖母', gender: 'female', line: 'paternal', gen: 3 },
-  { id: 'core_sp_pm_ggf', kind: 'spouse_great_grandparent', role: '配偶曾外祖父', gender: 'male', line: 'maternal', gen: 3 },
-  { id: 'core_sp_pm_ggm', kind: 'spouse_great_grandparent', role: '配偶曾外祖母', gender: 'female', line: 'maternal', gen: 3 }
+  { id: 'core_sp_pm_gm', kind: 'spouse_grandparent', role: '配偶外婆', gender: 'female', line: 'maternal', gen: 2 }
 ];
 const CONTACT_GROUP_LABELS = {
   family: '家族',
@@ -114,22 +106,52 @@ function ancestorSurnameHint(def) {
   if (def.line === 'maternal') return lines.maternal;
   return lines.paternal;
 }
+function playerBirthYearRef() {
+  return game.birthYear || (typeof PLAYER_BIRTH_YEAR !== 'undefined' ? PLAYER_BIRTH_YEAR : 1988);
+}
+function ancestorBirthYear(def) {
+  const pb = playerBirthYearRef();
+  const rng = familyRng((def.id || '') + '_age');
+  if (def.gen === 1) {
+    return pb - (24 + Math.floor(rng() * 9));
+  }
+  if (def.gen === 2) {
+    return pb - (50 + Math.floor(rng() * 15));
+  }
+  return pb - 55;
+}
+function initFamilyAncestorLifespan(c, def) {
+  if (!c || c.dead) return c;
+  c.birthYear = ancestorBirthYear(def);
+  if (c.attraction == null) {
+    c.attraction = 20 + Math.floor(familyRng((def.id || '') + '_attr')() * 35);
+  }
+  if (c.lifeExpectancy == null) {
+    const rng = familyRng((def.id || '') + '_life');
+    const base = def.gen === 2 ? 82 : 78;
+    c.lifeExpectancy = typeof rollLifeExpectancy === 'function' ? rollLifeExpectancy(base, rng) : base;
+  }
+  return c;
+}
 function ensureFamilyAncestorContact(def) {
   if (!game) return null;
   const hint = ancestorSurnameHint(def);
   if (def.id.indexOf('core_sp_') === 0 && !hint && !(game.married && !game.divorced)) return null;
   const existing = (game.contacts || []).find(function (c) { return c.id === def.id; });
   const name = existing && existing.name ? existing.name : genPersonName(def.gender, def.id, hint);
-  const birthYear = (game.birthYear || 1988) - (def.gen * 25 + 8 + Math.floor(familyRng(def.id)() * 6));
+  const birthYear = ancestorBirthYear(def);
   const role = def.role;
   const fields = {
     kind: def.kind, name: name, gender: def.gender, role: role,
-    company: '', jobTitle: def.gen >= 3 ? '退休' : '', metWhere: '家族',
-    birthYear: birthYear, familiarity: 55 + def.gen * 5, unreachable: def.gen >= 3
+    company: '', jobTitle: def.gen >= 2 ? '退休' : '', metWhere: '家族',
+    birthYear: birthYear, familiarity: 55 + def.gen * 5, unreachable: false
   };
+  if (!existing || existing.attraction == null) {
+    fields.attraction = 20 + Math.floor(familyRng(def.id + '_attr')() * 35);
+  }
   if (typeof ensureCoreContact === 'function') ensureCoreContact(def.id, fields);
   const c = (game.contacts || []).find(function (x) { return x.id === def.id; });
-  if (c && typeof initContactLifespan === 'function') initContactLifespan(c, def.id.length * 13);
+  if (c) initFamilyAncestorLifespan(c, def);
   return c;
 }
 function isFamilyKind(c) {
@@ -435,7 +457,7 @@ function buildFamilySubcircle(id, name, memberIds) {
     if (!mid || seen[mid]) return;
     seen[mid] = true;
     const c = (game.contacts || []).find(function (x) { return x.id === mid; });
-    members.push({ id: mid, familiarity: c && c.familiarity != null ? c.familiarity : 80, attraction: 0 });
+    members.push({ id: mid, familiarity: c && c.familiarity != null ? c.familiarity : 80, attraction: c && c.attraction != null ? c.attraction : 25 });
   });
   return { id: id, name: name, members: members };
 }
@@ -447,7 +469,6 @@ function syncFamilyCircle() {
   if (game.married && !game.divorced) {
     SPOUSE_ANCESTOR_DEFS.forEach(function (d) { ensureFamilyAncestorContact(d); });
   }
-  const gen3 = FAMILY_ANCESTOR_DEFS.filter(function (d) { return d.gen === 3; }).map(function (d) { return d.id; });
   const gen2 = FAMILY_ANCESTOR_DEFS.filter(function (d) { return d.gen === 2; }).map(function (d) { return d.id; });
   const parents = [CORE_CONTACT_IDS.father, CORE_CONTACT_IDS.mother];
   const spouseIds = [];
@@ -455,11 +476,9 @@ function syncFamilyCircle() {
   if (game.divorced) spouseIds.push(CORE_CONTACT_IDS.exSpouse);
   const spParents = (game.married && !game.divorced) ? SPOUSE_ANCESTOR_DEFS.filter(function (d) { return d.gen === 1; }).map(function (d) { return d.id; }) : [];
   const spGen2 = (game.married && !game.divorced) ? SPOUSE_ANCESTOR_DEFS.filter(function (d) { return d.gen === 2; }).map(function (d) { return d.id; }) : [];
-  const spGen3 = (game.married && !game.divorced) ? SPOUSE_ANCESTOR_DEFS.filter(function (d) { return d.gen === 3; }).map(function (d) { return d.id; }) : [];
   const childIds = (game.children || []).map(function (ch) { return ch.contactId || ch.id; });
   const exIds = game.divorced ? [CORE_CONTACT_IDS.exSpouse] : [];
   game.playerCircles.family = [
-    buildFamilySubcircle('family_great', '曾祖辈', gen3.concat(spGen3)),
     buildFamilySubcircle('family_grand', '祖辈', gen2.concat(spGen2)),
     buildFamilySubcircle('family_parents', '父母与姻亲', parents.concat(spParents)),
     buildFamilySubcircle('family_core', '本人与伴侣', spouseIds),
@@ -529,33 +548,17 @@ function buildFamilyTreeGraph(ownerId) {
     if (okA && okB) linkSpouse(a, b);
     return okA || okB;
   }
-  addPair('core_pp_ggf', 'core_pp_ggm', 0, 0);
-  addPair('core_pm_ggf', 'core_pm_ggm', 0, 4);
+  addPair('core_pp_gf', 'core_pp_gm', 0, 1);
+  addPair('core_pm_gf', 'core_pm_gm', 0, 5);
   if (married) {
-    addPair('core_sp_pp_ggf', 'core_sp_pp_ggm', 0, 8);
-    addPair('core_sp_pm_ggf', 'core_sp_pm_ggm', 0, 12);
+    addPair('core_sp_pp_gf', 'core_sp_pp_gm', 0, 9);
+    addPair('core_sp_pm_gf', 'core_sp_pm_gm', 0, 13);
   }
-  addPair('core_pp_gf', 'core_pp_gm', 1, 1);
-  addPair('core_pm_gf', 'core_pm_gm', 1, 5);
+  addPerson(CORE_CONTACT_IDS.father, 1, 2, '父亲');
+  addPerson(CORE_CONTACT_IDS.mother, 1, 6, '母亲');
   if (married) {
-    addPair('core_sp_pp_gf', 'core_sp_pp_gm', 1, 9);
-    addPair('core_sp_pm_gf', 'core_sp_pm_gm', 1, 13);
-  }
-  linkParentChild('core_pp_ggf', 'core_pp_gf');
-  linkParentChild('core_pp_ggm', 'core_pp_gm');
-  linkParentChild('core_pm_ggf', 'core_pm_gf');
-  linkParentChild('core_pm_ggm', 'core_pm_gm');
-  if (married) {
-    linkParentChild('core_sp_pp_ggf', 'core_sp_pp_gf');
-    linkParentChild('core_sp_pp_ggm', 'core_sp_pp_gm');
-    linkParentChild('core_sp_pm_ggf', 'core_sp_pm_gf');
-    linkParentChild('core_sp_pm_ggm', 'core_sp_pm_gm');
-  }
-  addPerson(CORE_CONTACT_IDS.father, 2, 2, '父亲');
-  addPerson(CORE_CONTACT_IDS.mother, 2, 6, '母亲');
-  if (married) {
-    addPerson('core_sp_father', 2, 10, null);
-    addPerson('core_sp_mother', 2, 14, null);
+    addPerson('core_sp_father', 1, 10, null);
+    addPerson('core_sp_mother', 1, 14, null);
     linkParentChild('core_sp_pp_gf', 'core_sp_father');
     linkParentChild('core_sp_pp_gm', 'core_sp_father');
     linkParentChild('core_sp_pm_gf', 'core_sp_mother');
@@ -565,9 +568,9 @@ function buildFamilyTreeGraph(ownerId) {
   linkParentChild('core_pp_gm', CORE_CONTACT_IDS.father);
   linkParentChild('core_pm_gf', CORE_CONTACT_IDS.mother);
   linkParentChild('core_pm_gm', CORE_CONTACT_IDS.mother);
-  addPerson('player', 3, 5, '本人');
+  addPerson('player', 2, 5, '本人');
   if (married) {
-    addPerson(CORE_CONTACT_IDS.spouse, 3, 7, '伴侣');
+    addPerson(CORE_CONTACT_IDS.spouse, 2, 7, '伴侣');
     linkSpouse('player', CORE_CONTACT_IDS.spouse);
     linkParentChild('core_sp_father', CORE_CONTACT_IDS.spouse);
     linkParentChild('core_sp_mother', CORE_CONTACT_IDS.spouse);
@@ -575,11 +578,11 @@ function buildFamilyTreeGraph(ownerId) {
   if (seen[CORE_CONTACT_IDS.father]) linkParentChild(CORE_CONTACT_IDS.father, 'player');
   if (seen[CORE_CONTACT_IDS.mother]) linkParentChild(CORE_CONTACT_IDS.mother, 'player');
   if (game.divorced && familyContactExists(CORE_CONTACT_IDS.exSpouse)) {
-    addPerson(CORE_CONTACT_IDS.exSpouse, 3, 9, '前任');
+    addPerson(CORE_CONTACT_IDS.exSpouse, 2, 9, '前任');
   }
   const childIds = (game.children || []).filter(function (ch) { return ch && ch.monthsLeft > 0; }).map(function (ch) { return ch.contactId || ch.id; });
   childIds.forEach(function (cid, i) {
-    if (!addPerson(cid, 4, 4 + i * 2, '子女')) return;
+    if (!addPerson(cid, 3, 4 + i * 2, '子女')) return;
     linkParentChild('player', cid);
     if (married && seen[CORE_CONTACT_IDS.spouse]) linkParentChild(CORE_CONTACT_IDS.spouse, cid);
   });
@@ -601,7 +604,7 @@ function renderFamilyTreeSvg(graph, ownerId, width) {
   graph.nodes.forEach(function (n) {
     pos[n.id] = { x: padX + n.col * colW + colW / 2, y: padY + n.tier * rowH };
   });
-  const tierLabels = ['曾祖辈', '祖辈', '父母辈', '本人辈', '子女辈'];
+  const tierLabels = ['祖辈', '父母辈', '本人辈', '子女辈'];
   let svg = '<svg viewBox="0 0 ' + width + ' ' + height + '" class="network-family-tree" style="width:100%;max-width:' + width + 'px;height:auto;background:var(--bg);border-radius:8px;border:1px solid var(--border)">';
   graph.edges.forEach(function (e) {
     const pa = pos[e.a];
@@ -630,7 +633,9 @@ function renderFamilyTreeSvg(graph, ownerId, width) {
     const short = (n.label || '').length > 3 ? (n.label || '').slice(0, 3) + '…' : (n.label || '?');
     svg += '<text x="' + p.x + '" y="' + (p.y + 3) + '" text-anchor="middle" font-size="8" fill="var(--text)" pointer-events="none">' + short + '</text>';
     if (n.role) svg += '<text x="' + p.x + '" y="' + (p.y + r + 11) + '" text-anchor="middle" font-size="7" fill="var(--accent)" pointer-events="none">' + n.role + '</text>';
-    svg += '<text x="' + p.x + '" y="' + (p.y + r + 21) + '" text-anchor="middle" font-size="6.5" fill="var(--muted)" pointer-events="none">熟' + Math.round(n.fam || 0) + '</text>';
+    if (!isCenter && n.id !== 'player') {
+      svg += '<text x="' + p.x + '" y="' + (p.y + r + 21) + '" text-anchor="middle" font-size="6.5" fill="var(--muted)" pointer-events="none">熟' + Math.round(n.fam || 0) + '/吸' + Math.round(n.attr || 0) + '</text>';
+    }
     svg += '</g>';
   });
   svg += '</svg>';
@@ -667,7 +672,10 @@ function groupContactsForModal(list) {
 function isCircleFolded(key) {
   if (!game) return true;
   game.circleFoldState = game.circleFoldState || {};
-  if (game.circleFoldState[key] == null) return true;
+  if (game.circleFoldState[key] == null) {
+    if (String(key).indexOf('kind_') === 0) return false;
+    return true;
+  }
   return !!game.circleFoldState[key];
 }
 function toggleCircleFold(key) {
@@ -717,30 +725,82 @@ function migrateChildrenSurnames() {
   });
   syncChildRecordFromChildren();
 }
+function pruneObsoleteGreatGrandContacts() {
+  if (!game || !game.contacts) return;
+  const dropKinds = ['great_grandparent', 'spouse_great_grandparent'];
+  game.contacts = game.contacts.filter(function (c) {
+    return dropKinds.indexOf(c.kind) < 0;
+  });
+}
+function repairAllFamilyAncestorAges() {
+  if (!game) return;
+  FAMILY_ANCESTOR_DEFS.forEach(function (d) { ensureFamilyAncestorContact(d); });
+  if (game.married && !game.divorced) {
+    SPOUSE_ANCESTOR_DEFS.forEach(function (d) { ensureFamilyAncestorContact(d); });
+  }
+}
+function repairFamilyAttractionOnce() {
+  if (!game || !game.contacts) return;
+  (game.contacts || []).forEach(function (c) {
+    if (!c || typeof isFamilyKind !== 'function' || !isFamilyKind(c)) return;
+    if (c.kind === 'spouse') return;
+    if (c.attraction == null || c.attraction === 0) {
+      c.attraction = 20 + Math.floor(familyRng((c.id || '') + '_attrfix')() * 35);
+    }
+  });
+}
 function migrateFamilyCircles() {
   if (!game) return;
+  if (game.familyCirclesVersion >= 4) {
+    migrateChildrenSurnames();
+    (game.children || []).forEach(function (ch) {
+      if (ch) repairChildBirthDate(ch);
+    });
+    repairAllFamilyAncestorAges();
+    syncFamilyCircle();
+    return;
+  }
+  if (game.familyCirclesVersion >= 3) {
+    game.familyCirclesVersion = 4;
+    repairFamilyAttractionOnce();
+    migrateChildrenSurnames();
+    (game.children || []).forEach(function (ch) {
+      if (ch) repairChildBirthDate(ch);
+    });
+    repairAllFamilyAncestorAges();
+    syncFamilyCircle();
+    return;
+  }
   if (game.familyCirclesVersion >= 2) {
-  migrateChildrenSurnames();
-  (game.children || []).forEach(function (ch) {
-    if (ch) repairChildBirthDate(ch);
-  });
-  syncFamilyCircle();
+    game.familyCirclesVersion = 4;
+    pruneObsoleteGreatGrandContacts();
+    repairFamilyAttractionOnce();
+    migrateChildrenSurnames();
+    (game.children || []).forEach(function (ch) {
+      if (ch) repairChildBirthDate(ch);
+    });
+    repairAllFamilyAncestorAges();
+    syncFamilyCircle();
     return;
   }
   if (game.familyCirclesVersion >= 1) {
-    game.familyCirclesVersion = 2;
-  migrateChildrenSurnames();
-  (game.children || []).forEach(function (ch) {
-    if (ch) repairChildBirthDate(ch);
-  });
-  syncFamilyCircle();
+    game.familyCirclesVersion = 4;
+    pruneObsoleteGreatGrandContacts();
+    repairFamilyAttractionOnce();
+    migrateChildrenSurnames();
+    (game.children || []).forEach(function (ch) {
+      if (ch) repairChildBirthDate(ch);
+    });
+    repairAllFamilyAncestorAges();
+    syncFamilyCircle();
     return;
   }
-  game.familyCirclesVersion = 2;
+  game.familyCirclesVersion = 4;
   game.circleFoldState = game.circleFoldState || {};
   (game.contacts || []).forEach(function (c) {
     if (c.followed == null) c.followed = false;
   });
+  repairFamilyAttractionOnce();
   migrateChildrenSurnames();
   (game.children || []).forEach(function (ch) {
     if (ch) repairChildBirthDate(ch);

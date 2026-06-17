@@ -128,10 +128,15 @@ function idealWorkShiftHtml() {
 function idealWorkShiftButtons() {
   const con = activeIdealContract();
   if (!con) return null;
-  return [{ text: '📋 理想项目制运营', fn: 'doIdealProjectWorkShift()' }];
+  if (typeof isPlayerOnWorkShift === 'function' && isPlayerOnWorkShift() && !game.daily.inOvertime) {
+    const left = typeof dailySlotHoursLeft === 'function' ? dailySlotHoursLeft() : 8;
+    if (left < 2) return null;
+  }
+  return [{ text: '📋 理想项目制运营（2h）', fn: 'doIdealProjectWorkShift()' }];
 }
 
 function doIdealProjectWorkShift() {
+  if (typeof workShiftConsumeHours === 'function' && !workShiftConsumeHours(2, '理想项目制运营')) return;
   const con = activeIdealContract();
   if (!con || con.status !== 'active') { addLog('无有效项目合同', 'fail'); return; }
   const c = typeof findContact === 'function' ? findContact(con.contactId) : null;
@@ -150,8 +155,11 @@ function doIdealProjectWorkShift() {
   if (typeof ledgerAddIncome === 'function') ledgerAddIncome('ideal', '📋', '项目制运营', pay);
   addLog('📋 项目制运营「' + con.dreamTitle + '」+' + gain + '% · +¥' + pay.toLocaleString(), 'success');
   if (con.progress >= 100 || con.weeksDone >= con.weeksTotal) completeIdealWorkContract(con);
-  if (typeof closeConsumeModal === 'function') closeConsumeModal(true);
-  if (typeof finishWorkShift === 'function') finishWorkShift();
+  const html = '<p>「<b>' + con.dreamTitle + '</b>」进度 <b>+' + gain + '%</b> → ' + Math.round(con.progress) + '%</p>' +
+    '<p>本周运营费 <b style="color:var(--green)">+¥' + pay.toLocaleString() + '</b></p>';
+  if (typeof showWorkShiftActionResult === 'function') showWorkShiftActionResult('📋', '理想项目制运营', html);
+  else if (typeof closeConsumeModal === 'function') closeConsumeModal(true);
+  if (typeof recordIdealHelper === 'function') recordIdealHelper(con.contactId, con.contactName, con.dreamTitle, con.progress, '项目制运营');
 }
 
 function completeIdealWorkContract(con) {

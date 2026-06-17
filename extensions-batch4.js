@@ -1,11 +1,19 @@
 /* 第四批 · 诈骗岗理想联动 + 爱好外出剧情 — 由 build.js 注入 */
 const SCAM_CO_NAMES = ['鸿运信息', '鑫达科技', '汇通咨询'];
 
+function hasActiveScamBook() {
+  if (!game || !game.selfEmploy || !game.selfEmploy.scamBook) return false;
+  const book = game.selfEmploy.scamBook;
+  return !!(book.contacts && book.contacts.length) || !!book.companyName;
+}
+
 function isScamEmployment() {
-  if (!game || !game.employed || !game.selfEmploy || !game.selfEmploy.scamBook) return false;
+  if (!game || !game.employed || !hasActiveScamBook()) return false;
   if (game.employment && game.employment.roleExtra === 'scam') return true;
-  const co = game.employment && game.employment.company;
-  return !!(co && co.name && SCAM_CO_NAMES.some(function (n) { return co.name.indexOf(n) >= 0; }));
+  /* 暗线：明面在岗 + 已接诈骗岗通讯簿 */
+  const sideHired = (game.applications || []).some(function (a) { return a.status === 'hired_scam'; });
+  if (sideHired) return true;
+  return hasActiveScamBook();
 }
 
 function ensureScamBookState() {
@@ -15,6 +23,11 @@ function ensureScamBookState() {
   if (book.opsCredits == null) book.opsCredits = 0;
   if (book.idealConverted == null) book.idealConverted = 0;
   if (book.pipeline == null) book.pipeline = { opsWeeks: 0, linkedContractId: null };
+  if (book.contacts) {
+    book.contacts.forEach(function (t) {
+      if (t.familiarity == null) t.familiarity = 12 + Math.floor(Math.random() * 38);
+    });
+  }
   return book;
 }
 
@@ -73,49 +86,147 @@ function convertScamLeadToIdeal(idx) {
   if (typeof updateUI === 'function') updateUI();
 }
 
+function scamCallSuccessRate(t) {
+  const fam = (t && t.familiarity != null) ? t.familiarity : 25;
+  return Math.min(0.52, 0.10 + fam * 0.004);
+}
+
+function scamCallPayRange(t) {
+  const fam = (t && t.familiarity != null) ? t.familiarity : 25;
+  return { min: 200 + Math.floor(fam * 2), max: 800 + Math.floor(fam * 4) };
+}
+
+function scamCallPayAmount(t) {
+  const r = scamCallPayRange(t);
+  return r.min + Math.floor(Math.random() * (r.max - r.min + 1));
+}
+
+function runOneScamCall(book, idx) {
+  if (!book || !book.contacts[idx]) return null;
+  const t = book.contacts[idx];
+  if (t.called) return { skipped: true, name: t.name };
+  t.called = true;
+  book.calls++;
+  const rate = scamCallSuccessRate(t);
+  const ok = Math.random() < rate;
+  let pay = 0;
+  if (ok) {
+    t.outcome = 'hook';
+    pay = scamCallPayAmount(t);
+    game.cash += pay;
+    book.income = (book.income || 0) + pay;
+    if (typeof ledgerAddIncome === 'function') ledgerAddIncome('scam', '📞', '诈骗岗提成', pay);
+    if (Math.random() < 0.34 && typeof markScamIdealLead === 'function') markScamIdealLead(t);
+    book.opsCredits = (book.opsCredits || 0) + 1;
+    addLog('📞 ' + t.name + ' · 上钩 +¥' + pay + (t.lead === 'ideal' ? ' · 流露理想诉求' : ''), 'success');
+  } else {
+    t.outcome = 'reject';
+    addLog('📞 ' + t.name + ' · 未接通或被拒', 'info');
+  }
+  if (typeof updateUI === 'function') updateUI();
+  return { name: t.name, ok: ok, pay: pay, rate: rate, fam: t.familiarity, lead: t.lead };
+}
+
+function callScamTargetFromWorkShift(idx) {
+  const book = ensureScamBookState();
+  if (!book || !book.contacts[idx]) {
+    if (typeof showWorkShiftActionResult === 'function') showWorkShiftActionResult('📞', '外呼', '<p class="fold-meta">无效目标</p>');
+    return;
+  }
+  const t = book.contacts[idx];
+  if (t.called) {
+    if (typeof showWorkShiftActionResult === 'function') showWorkShiftActionResult('📞', '外呼', '<p>' + t.name + ' 已联系过</p>');
+    return;
+  }
+  if (typeof workShiftConsumeHours === 'function' && !workShiftConsumeHours(1, '外呼')) return;
+  const res = runOneScamCall(book, idx);
+  const ratePct = Math.round((res.rate || 0.22) * 100);
+  let html = '<p><b>' + res.name + '</b> · 熟' + (res.fam != null ? res.fam : '?') + ' · 成功率约 ' + ratePct + '%</p>';
+  if (res.ok) {
+    html += '<p>上钩 · 提成 <b style="color:var(--green)">+¥' + res.pay.toLocaleString() + '</b></p>';
+    if (res.lead === 'ideal') html += '<p class="fold-meta">✨ 对方流露理想诉求</p>';
+  } else {
+    html += '<p class="fold-meta">未接通或被拒 · 占 1h</p>';
+  }
+  if (typeof addStress === 'function') addStress(2, '外呼 ');
+  html += '<p class="fold-meta" style="margin-top:6px">压力 +2</p>';
+  if (typeof showWorkShiftActionResult === 'function') showWorkShiftActionResult('📞', '外呼 · 1h', html);
+}
+
 function scamWorkShiftHtml() {
   if (!isScamEmployment()) return '';
   const book = ensureScamBookState();
   if (!book) return '';
   const leads = book.contacts.filter(function (t) { return t.lead === 'ideal' && !t.converted; }).length;
   const uncalled = book.contacts.filter(function (t) { return !t.called; }).length;
+  let salesLine = '';
+  if (book.sales) {
+    const s = book.sales;
+    salesLine = '<br>🛒 「' + s.product + '」销售 ' + s.sold + '/' + s.quota + ' · 本周 ' + (s.weekSold || 0) + '/' + s.weekTarget;
+    if (s.mlmRecruits) salesLine += ' · 下线 ' + s.mlmRecruits;
+  }
   return '<p style="margin-top:8px;padding:8px;background:var(--bg);border-radius:8px;border:1px dashed var(--orange)">' +
-    '📒 话术运营 · 未拨 ' + uncalled + ' · 理想线索 ' + leads + ' · 运营点 ' + (book.opsCredits || 0) +
-    (book.pipeline.linkedContactId ? '<br><span class="fold-meta">已绑定理想客户 · 外呼可推进项目制进度</span>' : '') + '</p>';
+    '📒 话术运营 · 未拨 ' + uncalled + ' · 理想线索 ' + leads + ' · 运营点 ' + (book.opsCredits || 0) + salesLine +
+    '<br><span class="fold-meta">三种方式：<b>📒通讯簿单人外呼(1h)</b> · <b>📞集中外呼(2h)</b> · <b>🛒推销套餐(2h)</b></span>' +
+    (book.pipeline && book.pipeline.linkedContactId ? '<br><span class="fold-meta">已绑定理想客户 · 外呼可推进项目制进度</span>' : '') + '</p>';
 }
 
 function scamWorkShiftButtons() {
   if (!isScamEmployment()) return null;
-  return [
-    { text: '📞 集中外呼', fn: 'doScamOpsWorkShift()' },
-    { text: '📒 通讯簿', fn: 'openScamBookFromWork()' }
-  ];
+  const book = ensureScamBookState();
+  const left = typeof dailySlotHoursLeft === 'function' ? dailySlotHoursLeft() : 8;
+  const btns = [];
+  if (left >= 1) btns.push({ text: '📒 通讯簿（单人1h）', fn: 'openScamBookFromWork()' });
+  if (book) {
+    const uncalled = book.contacts.filter(function (t) { return !t.called; }).length;
+    if (uncalled > 0 && left >= 2) btns.unshift({ text: '📞 集中外呼（2h）', fn: 'doScamOpsWorkShift()' });
+    if (typeof doScamProductSales === 'function' && book.sales && left >= 2) {
+      btns.unshift({ text: '🛒 推销套餐（2h）', fn: 'doScamProductSales()' });
+    }
+  }
+  return btns.length ? btns : null;
 }
 
 function openScamBookFromWork() {
-  if (typeof openScamBook === 'function') openScamBook();
+  if (typeof closeConsumeModal === 'function') closeConsumeModal(true);
+  if (typeof openScamBook === 'function') openScamBook(true);
 }
 
 function doScamOpsWorkShift() {
   const book = ensureScamBookState();
-  if (!book) { addLog('无通讯簿', 'fail'); return; }
-  let dialed = 0, hooked = 0, idealHits = 0;
+  if (!book) {
+    if (typeof showWorkShiftActionResult === 'function') showWorkShiftActionResult('📞', '集中外呼', '<p class="fold-meta">无通讯簿</p>');
+    else addLog('无通讯簿', 'fail');
+    return;
+  }
   const pool = book.contacts.filter(function (t) { return !t.called; }).slice(0, 4);
-  pool.forEach(function (t, i) {
+  if (!pool.length) {
+    if (typeof showWorkShiftActionResult === 'function') {
+      showWorkShiftActionResult('📞', '集中外呼', '<p class="fold-meta">通讯簿里没有未拨号码了</p>');
+    } else addLog('本轮没有可拨号码', 'warn');
+    return;
+  }
+  if (typeof workShiftConsumeHours === 'function' && !workShiftConsumeHours(2, '集中外呼')) return;
+  let dialed = 0, hooked = 0, idealHits = 0, income = 0;
+  const lines = [];
+  pool.forEach(function (t) {
     const idx = book.contacts.indexOf(t);
     if (idx < 0) return;
-    if (typeof callScamTarget === 'function') {
-      const before = t.called;
-      callScamTarget(idx);
-      if (!before && t.called) {
-        dialed++;
-        if (t.lead === 'ideal') idealHits++;
-        if (t.outcome === 'hook' || (t.lead === 'ideal')) hooked++;
-      }
+    const res = runOneScamCall(book, idx);
+    if (!res || res.skipped) return;
+    dialed++;
+    if (res.ok) {
+      hooked++;
+      income += res.pay || 0;
+      if (res.lead === 'ideal') idealHits++;
+      lines.push('<b>' + res.name + '</b> · 熟' + (res.fam != null ? res.fam : '?') + ' · 上钩 +¥' + (res.pay || 0) + (res.lead === 'ideal' ? ' · ✨理想线索' : ''));
+    } else {
+      lines.push('<b>' + res.name + '</b> · 熟' + (res.fam != null ? res.fam : '?') + ' · 未接通或被拒');
     }
   });
   book.opsCredits = (book.opsCredits || 0) + Math.max(1, dialed);
   book.pipeline.opsWeeks = (book.pipeline.opsWeeks || 0) + 1;
+  let extra = '';
   const con = typeof activeIdealContract === 'function' ? activeIdealContract() : null;
   if (con && con.status === 'active' && book.pipeline.linkedContactId === con.contactId) {
     const boost = 2 + Math.floor(Math.random() * 3);
@@ -123,18 +234,26 @@ function doScamOpsWorkShift() {
     const c = typeof findContact === 'function' ? findContact(con.contactId) : null;
     if (c && c.dream) c.dream.progress = con.progress;
     if (typeof checkIdealContractMilestones === 'function') checkIdealContractMilestones(con);
+    extra = '<p class="fold-meta">话术推进理想项目 +' + boost + '%</p>';
     addLog('📋 话术推进理想项目 +' + boost + '%', 'success');
   } else if (book.pipeline.linkedContactId) {
     const lc = typeof findContact === 'function' ? findContact(book.pipeline.linkedContactId) : null;
     if (lc && lc.dream && lc.dream.active) {
       lc.dream.progress = Math.min(100, (lc.dream.progress || 0) + 1);
+      extra = '<p class="fold-meta">维护客户理想进度 → ' + lc.dream.progress + '%</p>';
       addLog('✨ 话术维护客户理想 +' + lc.dream.progress + '%', 'info');
     }
   }
   if (typeof addStress === 'function') addStress(4, '话术外呼 ');
   addLog('📞 集中外呼完成 · 拨打 ' + dialed + ' · 上钩 ' + hooked + ' · 理想线索 ' + idealHits, dialed ? 'info' : 'warn');
-  if (typeof closeConsumeModal === 'function') closeConsumeModal(true);
-  if (typeof finishWorkShift === 'function') finishWorkShift();
+  let html = '<p>本轮拨打 <b>' + dialed + '</b> 人 · 上钩 <b>' + hooked + '</b> · 理想线索 <b>' + idealHits + '</b></p>';
+  if (lines.length) {
+    html += '<ul style="margin:8px 0 0;padding-left:18px;line-height:1.55;font-size:.85rem">' + lines.map(function (l) { return '<li>' + l + '</li>'; }).join('') + '</ul>';
+  }
+  html += extra;
+  html += '<p class="fold-meta" style="margin-top:8px">占 2h · 压力 +4 · 运营点 +' + Math.max(1, dialed) + (income ? ' · 提成 +¥' + income.toLocaleString() : '') + '</p>';
+  if (typeof updateUI === 'function') updateUI();
+  if (typeof showWorkShiftActionResult === 'function') showWorkShiftActionResult('📞', '集中外呼', html);
 }
 
 function patchCallScamTargetForIdeal() {
@@ -145,27 +264,7 @@ function patchCallScamTargetForIdeal() {
     if (!book || !book.contacts[idx]) { orig(idx); return; }
     const t = book.contacts[idx];
     if (t.called) { addLog(t.name + ' 已联系过', 'warn'); return; }
-    t.called = true;
-    book.calls++;
-    const ok = Math.random() < 0.22;
-    if (ok) {
-      t.outcome = 'hook';
-      const pay = 200 + Math.floor(Math.random() * 800);
-      game.cash += pay;
-      book.income += pay;
-      if (typeof ledgerAddIncome === 'function') ledgerAddIncome('scam', '📞', '诈骗岗提成', pay);
-      if (Math.random() < 0.34) {
-        markScamIdealLead(t);
-        addLog('📞 ' + t.name + ' · 上钩且流露理想「' + t.dreamTitle + '」+¥' + pay, 'success');
-      } else {
-        addLog('📞 ' + t.name + ' · 上钩 +¥' + pay, 'success');
-      }
-      book.opsCredits = (book.opsCredits || 0) + 1;
-    } else {
-      t.outcome = 'reject';
-      addLog('📞 ' + t.name + ' · 未接通或被拒', 'info');
-    }
-    if (typeof updateUI === 'function') updateUI();
+    runOneScamCall(book, idx);
   };
   callScamTarget._idealPatch = true;
 }
@@ -233,10 +332,13 @@ function tickHobbyNarrativeEvents() {
 }
 
 function tickExtensionsBatch4() {
-  patchCallScamTargetForIdeal();
-  patchOperateOnIdealScamBonus();
   tickHobbyNarrativeEvents();
 }
+
+(function initExtensionsBatch4() {
+  patchCallScamTargetForIdeal();
+  patchOperateOnIdealScamBonus();
+})();
 
 function patchOperateOnIdealScamBonus() {
   if (typeof operateOnIdeal !== 'function' || operateOnIdeal._scamPatch) return;

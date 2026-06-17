@@ -10,6 +10,36 @@ const JOB_APP_BROWSE_H=1;
 const JOB_HEADHUNTER_H=4;
 const JOB_REFERRAL_H=4;
 
+function refreshJobHuntUi(){
+  if(typeof currentTab!=='undefined'&&currentTab==='job'&&typeof renderJobHuntPanel==='function')renderJobHuntPanel();
+  else if(typeof renderDailyPanel==='function')renderDailyPanel();
+  if(typeof renderDailyTimeBar==='function')renderDailyTimeBar();
+}
+function hasPendingScamOffer(){
+  if(!game||!game.inbox)return false;
+  return game.inbox.some(it=>it.type==='offer'&&String(it.id||'').indexOf('scam_')===0);
+}
+function renderScamJobHintHtml(){
+  if(hasPendingScamOffer()){
+    return '<div class="daily-scam-banner" style="padding:8px;margin:6px 0;border:1px solid var(--orange);border-radius:6px;background:rgba(255,140,0,.1)">'+
+      '⚠ <b>应聘邮箱</b> 有待处理的 <b>投必中</b> 可疑邮件 · '+
+      '<button type="button" class="btn btn-warn" style="margin-left:4px" onclick="dailyOpenJobInbox()">打开邮箱</button></div>';
+  }
+  return '<p class="fold-meta" style="margin:4px 0;color:var(--muted)">刷招聘APP会出现 <span style="color:var(--yellow)">✨优选·高福利</span> 诱饵岗（在职也刷得到）· 校招也会混入 · 应聘邮箱另有 <b>投必中</b> 可疑邮件</p>';
+}
+function renderJobHuntPanel(){
+  const el=document.getElementById('jobHuntPanel');
+  if(!el||!game)return;
+  if(typeof renderDailyTimeBar==='function')renderDailyTimeBar();
+  const d=ensureDailyState();
+  if(d.dayIndex>=7){
+    el.innerHTML='<p class="daily-done">✅ 本周七天日程已满 · 请回「日常」进入下周</p>';
+    return;
+  }
+  const phase=d.phase||'morning';
+  el.innerHTML=renderDailyJobMenu(phase);
+}
+
 function dailyJobSlotKey(){
   const d=game&&game.daily;
   if(!d)return 'morning';
@@ -76,6 +106,7 @@ function listingCoreMatch(aOffer,itemOffer){
 /** null=可投；exact=完全相同；onboarding=仅薪资等不同且未到入职时间 */
 function listingApplyBlockReason(item){
   if(!game||!game.applications||!item||!item.offer)return null;
+  if(item.offer.scamBait&&typeof scamBaitListingApplied==='function'&&scamBaitListingApplied(item))return 'exact';
   const co=item.offer.company;
   const pay=item.offer.annualPay;
   let exact=false,waitOnboard=false;
@@ -120,7 +151,7 @@ function dailySubscribeApp(appKey){
   if(typeof activateAppSubscriptions==='function')activateAppSubscriptions([appKey]);
   if(typeof updateAppSubscriptionLabels==='function')updateAppSubscriptionLabels();
   addLog('📱 开通 '+JOB_APPS[appKey]+' 至 '+getDateStr(game.appSubscriptions[appKey])+'（不自动续费，到期需重新开通）','success');
-  renderDailyPanel();
+  refreshJobHuntUi();
   return true;
 }
 function dailyEligibleJobIdxs(){
@@ -158,13 +189,14 @@ function dailyBeginJobChannel(method){
     if(dailySlotHoursLeft()<JOB_HEADHUNTER_H){addLog('猎头投递需 '+JOB_HEADHUNTER_H+'h，本时段只剩 '+dailySlotHoursLeft()+'h','fail');return}
     d.jobSubMenu='headhunter_jobs';
     d.dailyPickJobIdxs=[];
-    renderDailyPanel();return;
+    refreshJobHuntUi();return;
   }
   if(method==='app'){
     if(typeof canUseJobApp==='function'&&!canUseJobApp()){
       addLog(typeof jobAppBlockMessage==='function'?jobAppBlockMessage():'无法使用招聘APP','fail');
       return;
     }
+    if(typeof nudgeScamJobOfferOnJobHunt==='function')nudgeScamJobOfferOnJobHunt();
     if(dailyJobHourlyBlocked())return;
     if(dailySlotHoursLeft()<JOB_APP_BROWSE_H){addLog('刷APP需 '+JOB_APP_BROWSE_H+'h/次，本时段只剩 '+dailySlotHoursLeft()+'h','fail');return}
     d.jobSubMenu='app_select';
@@ -172,7 +204,7 @@ function dailyBeginJobChannel(method){
     d.dailyPickJobIdxs=[];
     d.dailyAppListings=null;
     d.dailyAppRefreshN=0;
-    renderDailyPanel();return;
+    refreshJobHuntUi();return;
   }
 }
 function dailyJobBack(){
@@ -190,21 +222,22 @@ function dailyJobBack(){
     d.subMenu=null;
     d.jobSubMenu=null;
   }
-  renderDailyPanel();
+  refreshJobHuntUi();
 }
 function dailyOpenJobInbox(){
   const d=ensureDailyJobState();
+  if(typeof nudgeScamJobOfferOnJobHunt==='function')nudgeScamJobOfferOnJobHunt();
   if(d.jobSubMenu!=='inbox')d.jobInboxReturnTo=d.jobSubMenu;
   d.jobSubMenu='inbox';
   if(typeof syncInviteExpiryState==='function')syncInviteExpiryState();
   if(typeof markVisibleInboxRead==='function')markVisibleInboxRead();
-  renderDailyPanel();
+  refreshJobHuntUi();
 }
 function dailyCloseJobInbox(){
   const d=ensureDailyJobState();
   d.jobSubMenu=d.jobInboxReturnTo!=null?d.jobInboxReturnTo:null;
   d.jobInboxReturnTo=null;
-  renderDailyPanel();
+  refreshJobHuntUi();
 }
 function dailyPickApp(appKey){
   if(!dailyAppSubscribed(appKey)){
@@ -217,7 +250,7 @@ function dailyPickApp(appKey){
   d.dailyPickJobIdxs=[];
   d.dailyAppListings=null;
   d.dailyAppRefreshN=0;
-  renderDailyPanel();
+  refreshJobHuntUi();
 }
 function syncRefPanelFromDailyJobPick(lastJi,wasAdded){
   const d=game&&game.daily;
@@ -243,7 +276,7 @@ function dailyTogglePickJob(ji){
   if(wasAdded)d.dailyPickJobIdxs.push(ji);
   else d.dailyPickJobIdxs.splice(idx,1);
   syncRefPanelFromDailyJobPick(ji,wasAdded);
-  renderDailyPanel();
+  refreshJobHuntUi();
 }
 function dailyDrawAppListings(refresh){
   const d=ensureDailyJobState();
@@ -268,12 +301,13 @@ function dailyDrawAppListings(refresh){
   let batch;
   try{batch=typeof drawRecruitmentRound==='function'?drawRecruitmentRound(jobIdxs,rc,opts):null}
   catch(e){addLog('抽取岗位失败','fail');return}
-  if(!batch||!batch.listings.length){addLog(JOB_APPS[appKey]+' 本次未刷到岗位（-'+JOB_APP_BROWSE_H+'h）','warn');renderDailyPanel();return}
-  d.dailyAppListings=batch.listings;
+  if(!batch||!batch.listings.length){addLog(JOB_APPS[appKey]+' 本次未刷到岗位（-'+JOB_APP_BROWSE_H+'h）','warn');refreshJobHuntUi();return}
+  const seedExtra=dailyJobDrawSeed(appKey)+d.dailyAppRefreshN*9973;
+  d.dailyAppListings=typeof mergeScamBaitJobListings==='function'?mergeScamBaitJobListings(batch.listings,jobIdxs,seedExtra):batch.listings;
   d.dailyListingSort='default';
   d.jobSubMenu='app_list';
   addLog('📋 刷到 '+batch.listings.length+' 条岗位'+(slot==='allnight'?'（通宵×2）':''),'info');
-  renderDailyPanel();
+  refreshJobHuntUi();
 }
 function dailyRunHeadhunterApply(){
   const d=ensureDailyJobState();
@@ -298,24 +332,44 @@ function dailySubmitAppListings(){
   let plannedCount=0;
   selected.forEach((item,idx)=>{
     const id='app_'+game.week+'_'+idx+'_'+Math.floor(Math.random()*9999);
-    const replyWeek=typeof calcApplicationReplyWeek==='function'?calcApplicationReplyWeek(item.offer,game.week,item.jobIdx):game.week+2;
+    const isBait=!!(item.offer&&item.offer.scamBait);
+    const replyWeek=isBait?game.week:(typeof calcApplicationReplyWeek==='function'?calcApplicationReplyWeek(item.offer,game.week,item.jobIdx):game.week+2);
     if(item.offer.planned)plannedCount++;
     game.applications.push({
       id,jobIdx:item.jobIdx,offer:{...item.offer,apps:[appKey],method:'app'},
       status:'pending',applyWeek:game.week,replyWeek,planned:!!item.offer.planned,
-      interviewWeek:null,resultWeek:null,viaReferral:false,method:'app',resumeCostLabel:rc.label
+      interviewWeek:null,resultWeek:null,viaReferral:false,method:'app',resumeCostLabel:rc.label,
+      scamBait:isBait,scamBaitId:item.offer.scamBaitId||item.uid
     });
     game.totalApplications++;
     if(item.category)game.appliedCategories[item.category]=true;
   });
   addLog('📤 【'+rc.label+'】投递 '+selected.length+' 份简历','info');
+  selected.forEach(item=>{
+    if(!item.offer||!item.offer.scamBait)return;
+    const app=game.applications.slice().reverse().find(a=>a.scamBaitId===(item.offer.scamBaitId||item.uid));
+    if(app&&typeof processScamBaitApplicationReply==='function')processScamBaitApplicationReply(app,game.week);
+  });
+  if(typeof refreshInboxViews==='function')refreshInboxViews();
   if(plannedCount)addLog('📅 '+plannedCount+' 个预定招聘已记入日历','info');
   if(typeof updateLongDistanceStatus==='function')updateLongDistanceStatus();
   if(typeof renderInterviewCalendar==='function')renderInterviewCalendar();
-  renderDailyPanel();
+  refreshJobHuntUi();
+}
+function dailyJobExitToHome(){
+  const d=ensureDailyJobState();
+  d.jobSubMenu=null;
+  d.dailyPickApp=null;
+  d.dailyPickJobIdxs=[];
+  d.dailyAppListings=null;
+  d.dailyAppRefreshN=0;
+  d.jobInboxReturnTo=null;
+  refreshJobHuntUi();
 }
 function dailyJobExitToMain(){
-  dailyBackToMain();
+  dailyJobExitToHome();
+  if(typeof showTab==='function')showTab('daily');
+  else if(typeof dailyBackToMain==='function')dailyBackToMain();
 }
 function dailyToggleAllListings(on){
   document.querySelectorAll('.daily-listing-pick').forEach(cb=>{cb.checked=!!on});
@@ -330,7 +384,7 @@ function dailyUpdateListingPickCount(){
 function dailySortAppListings(){
   const d=ensureDailyJobState();
   d.dailyListingSort=d.dailyListingSort==='pay'?'default':'pay';
-  renderDailyPanel();
+  refreshJobHuntUi();
 }
 function renderDailyJobBottomBtns(html){
   return '<div class="daily-job-actions-bottom">'+html+'</div>';
@@ -384,14 +438,16 @@ function renderDailyListingToolbar(sort,pickN){
 }
 function renderDailyListingRow(item,checked){
   const o=item.offer;
+  const bait=!!(o&&o.scamBait);
+  const baitTag=bait&&typeof scamBaitListingTagHtml==='function'?scamBaitListingTagHtml(o):'';
   const block=typeof listingApplyBlockReason==='function'?listingApplyBlockReason(item):null;
   if(block){
     const imp=o.roleExtra?IMP_LABEL[o.importance]+'·'+ROLE_EXTRA[o.roleExtra]:IMP_LABEL[o.importance];
     const pay=formatOfferPay(o);
     const start=o.planned?'<span style="color:var(--blue)">预定招聘</span> · 入职约'+o.startDelayWeeks+'周后':'上岗约'+o.startDelayWeeks+'周内';
-    const blockTag=block==='onboarding'?'入职前':'已投过';
-    return '<div class="company-row picked daily-applied"><span class="fold-meta" style="color:var(--green);flex-shrink:0">'+blockTag+'</span>'+
-      '<div style="flex:1"><b>'+o.company.name+'</b> '+fmtCompanyBadge(o.company)+' · <b>'+imp+'</b>'+(o.planned?' <span style="color:var(--blue);font-size:.68rem">预定</span>':'')+'<br>'+
+    const blockTag=block==='onboarding'?'入职前':'已投递';
+    return '<div class="company-row picked daily-applied'+(bait?' daily-scam-bait-applied':'')+'"><span class="fold-meta" style="color:var(--green);flex-shrink:0">'+blockTag+'</span>'+
+      '<div style="flex:1"><b>'+o.company.name+'</b> '+fmtCompanyBadge(o.company)+' · <b>'+imp+'</b>'+baitTag+(o.planned?' <span style="color:var(--blue);font-size:.68rem">预定</span>':'')+'<br>'+
       '招：'+item.jobTitle+' · '+pay+' · '+start+' · '+formatListingInterviewHint(o)+
       (isRemoteCompany(o.company)?' · <span style="color:var(--orange)">'+getCompanyCity(o.company)+'</span>':'')+'<br>'+
       '<span style="color:var(--muted)">'+o.welfare+'</span></div></div>';
@@ -399,8 +455,8 @@ function renderDailyListingRow(item,checked){
   const imp=o.roleExtra?IMP_LABEL[o.importance]+'·'+ROLE_EXTRA[o.roleExtra]:IMP_LABEL[o.importance];
   const pay=formatOfferPay(o);
   const start=o.planned?'<span style="color:var(--blue)">预定招聘</span> · 入职约'+o.startDelayWeeks+'周后（提前半年左右）':'上岗约'+o.startDelayWeeks+'周内';
-  return '<label class="company-row picked"><input type="checkbox" class="daily-listing-pick" data-uid="'+item.uid+'"'+(checked?' checked':'')+' onchange="dailyUpdateListingPickCount()">'+
-    '<div style="flex:1"><b>'+o.company.name+'</b> '+fmtCompanyBadge(o.company)+' · <b>'+imp+'</b>'+(o.planned?' <span style="color:var(--blue);font-size:.68rem">预定</span>':'')+'<br>'+
+  return '<label class="company-row picked'+(bait?' daily-scam-bait-row':'')+'"><input type="checkbox" class="daily-listing-pick" data-uid="'+item.uid+'"'+(checked?' checked':'')+' onchange="dailyUpdateListingPickCount()">'+
+    '<div style="flex:1"><b>'+o.company.name+'</b> '+fmtCompanyBadge(o.company)+' · <b>'+imp+'</b>'+baitTag+(o.planned?' <span style="color:var(--blue);font-size:.68rem">预定</span>':'')+'<br>'+
     '招：'+item.jobTitle+' · '+pay+' · '+start+' · '+formatListingInterviewHint(o)+
     (isRemoteCompany(o.company)?' · <span style="color:var(--orange)">'+getCompanyCity(o.company)+'</span>':'')+'<br>'+
     '<span style="color:var(--muted)">'+o.welfare+'</span></div></label>';
@@ -431,7 +487,7 @@ function renderDailyJobInboxPanel(){
     }
   }
   h+='</div>';
-  h+=renderDailyJobBottomBtns('<button class="btn" onclick="dailyCloseJobInbox()">← 返回</button> <button class="btn" onclick="dailyJobExitToMain()">退出</button>');
+  h+=renderDailyJobBottomBtns('<button class="btn" onclick="dailyCloseJobInbox()">← 返回</button> <button class="btn" onclick="dailyJobExitToHome()">退出</button>');
   return h;
 }
 function renderDailyReferralBtn(){
@@ -465,7 +521,7 @@ function renderDailyJobMenu(phase){
       else h+='<button class="btn" style="margin-top:4px" onclick="dailySubscribeApp(\''+k+'\')">开通包月 ¥'+(typeof APP_COST_EACH!=='undefined'?APP_COST_EACH:100)+'</button>';
       h+='</div>';
     });
-    h+=renderDailyJobBottomBtns('<button class="btn" onclick="dailyJobBack()">← 返回</button> '+renderDailyMailBtn(unread)+' <button class="btn" onclick="dailyJobExitToMain()">退出</button>');
+    h+=renderDailyJobBottomBtns('<button class="btn" onclick="dailyJobBack()">← 返回</button> '+renderDailyMailBtn(unread)+' <button class="btn" onclick="dailyJobExitToHome()">退出</button>');
     return h;
   }
   if(d.jobSubMenu==='app_jobs'){
@@ -475,7 +531,7 @@ function renderDailyJobMenu(phase){
     const canBrowse=left>=JOB_APP_BROWSE_H&&!dailyJobHourlyBlocked(true);
     h+=renderDailyJobBottomBtns(
       '<button class="btn btn-primary" '+(canBrowse?'':'disabled')+' onclick="dailyDrawAppListings(false)">查看岗位（-'+JOB_APP_BROWSE_H+'h）</button> '+
-      renderDailyMailBtn(unread)+' <button class="btn" onclick="dailyJobBack()">← 返回</button> <button class="btn" onclick="dailyJobExitToMain()">退出</button>'
+      renderDailyMailBtn(unread)+' <button class="btn" onclick="dailyJobBack()">← 返回</button> <button class="btn" onclick="dailyJobExitToHome()">退出</button>'
     );
     return h;
   }
@@ -485,13 +541,14 @@ function renderDailyJobMenu(phase){
     const listings=d.dailyAppListings||[];
     const pickN=listings.filter(it=>!listingAlreadyApplied(it)).length;
     let h='<p class="fold-meta">③ '+JOB_APPS[d.dailyPickApp]+' · 共 '+n+' 条 · 刷新 -'+JOB_APP_BROWSE_H+'h/次 · 剩 '+left+'h</p>';
+    h+='<p class="fold-meta" style="margin:2px 0 6px"><span style="color:var(--blue)">预定</span>=预定招聘 · 绿色「已投递/入职前」=不可再投 · <span style="color:var(--yellow)">✨优选</span>=诈骗诱饵岗（<b>投递后秒回录用</b>，不走面试 · 见邮箱「可疑招聘」）</p>';
     h+=renderDailyListingToolbar(sort,pickN);
     h+=renderDailyAppListingRows(listings,sort);
     h+=renderDailyJobBottomBtns(
       '<button class="btn btn-primary" onclick="dailySubmitAppListings()">确认投递</button> '+
       '<button class="btn" '+(left>=JOB_APP_BROWSE_H?'':'disabled')+' onclick="dailyDrawAppListings(true)">🔄 刷新（-'+JOB_APP_BROWSE_H+'h）</button> '+
-      '<button class="btn" onclick="dailyJobBack()">重选职业</button> '+
-      renderDailyMailBtn(unread)+' <button class="btn" onclick="dailyJobExitToMain()">退出</button>'
+      '<button class="btn" onclick="dailyJobBack()">← 返回</button> '+
+      renderDailyMailBtn(unread)+' <button class="btn" onclick="dailyJobExitToHome()">退出</button>'
     );
     return h;
   }
@@ -500,11 +557,13 @@ function renderDailyJobMenu(phase){
     h+=renderDailyJobTreemap(d.dailyPickJobIdxs||[]);
     h+=renderDailyJobBottomBtns(
       '<button class="btn btn-primary" '+(left>=JOB_HEADHUNTER_H?'':'disabled')+' onclick="dailyRunHeadhunterApply()">抽取并投递（-'+JOB_HEADHUNTER_H+'h）</button> '+
-      renderDailyMailBtn(unread)+' <button class="btn" onclick="dailyJobBack()">← 返回</button> <button class="btn" onclick="dailyJobExitToMain()">退出</button>'
+      renderDailyMailBtn(unread)+' <button class="btn" onclick="dailyJobBack()">← 返回</button> <button class="btn" onclick="dailyJobExitToHome()">退出</button>'
     );
     return h;
   }
   let h='<p class="fold-meta">与宅家共用本时段 '+SLOT_HOURS_TOTAL+'h · 剩 <b>'+left+'</b>h · 外出/上班/人才市场占满时段</p>';
+  h+=renderScamJobHintHtml();
+  if(typeof renderCampusRecruitmentDailyBlock==='function')h+=renderCampusRecruitmentDailyBlock();
   h+='<div class="daily-job-channel-row">';
   h+='<button class="btn mail-badge-wrap" onclick="dailyOpenJobInbox()">📬 应聘邮箱'+
     (unread?'<span class="mail-unread">'+unread+'</span>':'')+'</button> ';
@@ -522,6 +581,5 @@ function renderDailyJobMenu(phase){
     h+='<button class="btn" style="display:block;width:100%;margin:6px 0" onclick="dailyBeginJobChannel(\'app\')">'+
       '📱 招聘APP · '+JOB_APP_BROWSE_H+'h/次 · 5-20条'+(phase==='allnight'?'（通宵10-40条）':'')+'</button>';
   }
-  h+='<button class="btn" onclick="dailyJobExitToMain()">退出</button>';
   return h;
 }

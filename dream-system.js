@@ -288,18 +288,40 @@ function seedContactCareerExp(c) {
 function ensurePlayerHobbies(g) {
   g = g || game;
   if (!g) return;
+  if (!g.playerCircles) {
+    if (typeof initPlayerSchoolCircles === 'function') initPlayerSchoolCircles();
+  }
   if (!g.hobbies || !g.hobbies.length) {
     const circle = g.playerCircles && g.playerCircles.hobby && g.playerCircles.hobby[0];
-    g.hobbies = circle && circle.theme ? [circle.theme] : [HOBBY_THEMES[Math.floor(Math.random() * HOBBY_THEMES.length)]];
-    if (Math.random() < 0.45) {
-      const t2 = HOBBY_THEMES[Math.floor(Math.random() * HOBBY_THEMES.length)];
-      if (g.hobbies.indexOf(t2) < 0) g.hobbies.push(t2);
+    if (circle && circle.theme) {
+      g.hobbies = [circle.theme];
+    } else {
+      g.hobbies = pickContactHobbies({ id: 'player' }, Math.random);
+      if (!g.playerCircles.hobby) g.playerCircles.hobby = [];
+      if (!g.playerCircles.hobby.length) {
+        g.playerCircles.hobby.push({ id: 'hob_player', name: g.hobbies[0] + '同好', theme: g.hobbies[0], members: [], projects: [] });
+      }
     }
   }
   if (!g.hobbyExp) g.hobbyExp = {};
   g.hobbies.forEach(function (t) {
     if (g.hobbyExp[t] == null) g.hobbyExp[t] = 10 + Math.floor(Math.random() * 28);
   });
+}
+function seedPlayerCareerFromMajor(g) {
+  g = g || game;
+  if (!g) return;
+  ensurePlayerMajorExp(g);
+  const ce = ensurePlayerCareerExp(g);
+  let maj = g.playerMajor;
+  if (!maj && typeof ensurePlayerEduHistory === 'function') {
+    const hist = ensurePlayerEduHistory(g) || [];
+    for (let i = hist.length - 1; i >= 0; i--) {
+      if (hist[i] && hist[i].major) { maj = hist[i].major; g.playerMajor = maj; break; }
+    }
+  }
+  const related = maj && typeof majorToDefaultJobTitle === 'function' ? majorToDefaultJobTitle(maj) : null;
+  if (related) ce[related] = Math.max(ce[related] || 0, 22 + Math.floor(Math.random() * 35));
 }
 function ensurePlayerMajorExp(g) {
   g = g || game;
@@ -327,21 +349,39 @@ function bumpContactHobbyExp(c, theme, delta) {
   ensurePersonHobbies(c);
   c.hobbyExp[theme] = Math.max(0, Math.min(200, Math.round((c.hobbyExp[theme] || 0) + delta)));
 }
+function renderExpBarHtml(label, pct) {
+  const p = Math.max(0, Math.min(100, Math.floor(pct || 0)));
+  const rk = careerRankLabel(p);
+  return '<div class="exp-bar-row" style="margin-top:5px">' +
+    '<div style="display:flex;justify-content:space-between;font-size:.72rem;gap:8px"><span>' + label + '</span><span>' + p + '% · <b>' + rk + '</b></span></div>' +
+    '<div class="prob-track" style="height:7px;margin-top:3px"><div class="prob-fill" style="width:' + p + '%;background:linear-gradient(90deg,var(--blue),var(--green))"></div></div></div>';
+}
+function togglePlayerProfileFold() {
+  if (typeof toggleMyLifeFold === 'function') toggleMyLifeFold();
+}
+function renderPlayerProfileFold() {
+  if (typeof renderMyLifeFold === 'function') return renderMyLifeFold();
+  return '';
+}
 function renderPersonExperienceHtml(p, isPlayer) {
-  if (!p) return '';
   if (isPlayer) {
-    ensurePlayerHobbies();
-    ensurePlayerMajorExp();
-    migratePlayerCareerExp();
+    if (typeof ensurePlayerHobbies === 'function') ensurePlayerHobbies();
+    if (typeof ensurePlayerMajorExp === 'function') ensurePlayerMajorExp();
+    if (typeof seedPlayerCareerFromMajor === 'function') seedPlayerCareerFromMajor();
+    if (typeof migratePlayerCareerExp === 'function') migratePlayerCareerExp();
+    const ej = game.employed && game.employment && game.market ? game.market[game.employment.jobIdx] : null;
+    const co = game.employed && game.employment && game.employment.company ? game.employment.company : null;
     p = {
       hobbies: game.hobbies, hobbyExp: game.hobbyExp, majorExp: game.majorExp,
-      careerExp: game.careerExp, major: game.playerMajor,
-      jobTitle: game.employed && game.employment ? game.market[game.employment.jobIdx].title : null,
-      company: game.employed && game.employment ? game.employment.company.name : null,
+      careerExp: (typeof ensurePlayerCareerExp === 'function' ? ensurePlayerCareerExp() : (game.careerExp || {})),
+      major: game.playerMajor,
+      jobTitle: ej ? ej.title : null,
+      company: co ? co.name : null,
       employment: game.employment, market: game.market
     };
-  } else if (typeof ensureContactDreamFields === 'function') {
-    ensureContactDreamFields(p);
+  } else {
+    if (!p) return '';
+    if (typeof ensureContactDreamFields === 'function') ensureContactDreamFields(p);
   }
   let h = '<div style="margin-bottom:10px;padding:8px;background:var(--bg);border-radius:8px;font-size:.78rem;line-height:1.55">';
   h += '<span class="fold-meta">爱好 → 专业 → 职业</span>';
@@ -350,34 +390,37 @@ function renderPersonExperienceHtml(p, isPlayer) {
   h += '<div style="margin-top:6px"><b>爱好</b></div>';
   if (!hobbies.length) h += '<div class="fold-meta" style="margin-top:3px">暂无</div>';
   else hobbies.forEach(function (t) {
-    const exp = Math.floor(hobbyExp[t] || 0);
-    h += '<div class="fold-meta" style="margin-top:3px">' + t + ' · ' + exp + '% · <b>' + careerRankLabel(exp) + '</b></div>';
+    h += renderExpBarHtml('「' + t + '」', hobbyExp[t] || 0);
   });
   const major = p.major || contactPrimaryMajor(p);
   const majorExp = p.majorExp || {};
   h += '<div style="margin-top:8px"><b>专业</b></div>';
   if (!major) h += '<div class="fold-meta" style="margin-top:3px">暂无</div>';
-  else {
-    const mx = Math.floor(majorExp[major] || 0);
-    h += '<div class="fold-meta" style="margin-top:3px">' + major + ' · ' + mx + '% · <b>' + careerRankLabel(mx) + '</b></div>';
-  }
+  else h += renderExpBarHtml('「' + major + '」', majorExp[major] || 0);
   h += '<div style="margin-top:8px"><b>职业经验</b> <span class="fold-meta">· 实习生 / 普通岗 / 专家 / 总监</span></div>';
   if (isPlayer && p.employment && p.market) {
     const job = p.market[p.employment.jobIdx];
     const imp = typeof IMP_LABEL !== 'undefined' ? (IMP_LABEL[p.employment.importance] || p.employment.importance) : p.employment.importance;
     if (job) {
-      h += '<div class="fold-meta" style="margin-top:3px">现任 <b>' + job.title + '</b> @ ' + (p.company || '—') + ' · ' + imp + ' · 本岗 ' + (p.employment.weeksInRole || 0) + ' 周 · <b>' + playerJobCareerExp(job.title) + '% ' + playerCareerRankForJob(job.title) + '</b></div>';
+      h += '<div class="fold-meta" style="margin-top:3px">现任 <b>' + job.title + '</b> @ ' + (p.company || '—') + ' · ' + imp + ' · 本岗 ' + (p.employment.weeksInRole || 0) + ' 周</div>';
+      h += renderExpBarHtml(job.title, playerJobCareerExp(job.title));
     }
   } else if (p.jobTitle) {
     const cx = Math.floor((p.careerExp || {})[p.jobTitle] || 0);
-    h += '<div class="fold-meta" style="margin-top:3px">现任 <b>' + p.jobTitle + '</b>' + (p.company ? ' @ ' + p.company : '') + ' · <b>' + cx + '% ' + careerRankLabel(cx) + '</b></div>';
+    h += '<div class="fold-meta" style="margin-top:3px">现任 <b>' + p.jobTitle + '</b>' + (p.company ? ' @ ' + p.company : '') + '</div>';
+    h += renderExpBarHtml(p.jobTitle, cx);
   }
   const ce = p.careerExp || {};
-  const titles = Object.keys(ce).filter(function (k) { return (ce[k] || 0) > 0; }).sort(function (a, b) { return (ce[b] || 0) - (ce[a] || 0); });
-  if (!titles.length) h += '<div class="fold-meta" style="margin-top:3px">暂无职业积累</div>';
+  const titles = Object.keys(ce).filter(function (k) {
+    if (isPlayer && p.employment && p.market) {
+      const cur = p.market[p.employment.jobIdx];
+      if (cur && cur.title === k) return false;
+    }
+    return (ce[k] || 0) > 0;
+  }).sort(function (a, b) { return (ce[b] || 0) - (ce[a] || 0); });
+  if (!titles.length && !(isPlayer && p.employment && p.market)) h += '<div class="fold-meta" style="margin-top:3px">暂无职业积累</div>';
   else titles.slice(0, 8).forEach(function (title) {
-    const exp = Math.floor(ce[title] || 0);
-    h += '<div class="fold-meta" style="margin-top:3px">' + title + ' · ' + exp + '% · <b>' + careerRankLabel(exp) + '</b></div>';
+    h += renderExpBarHtml(title, ce[title] || 0);
   });
   h += '</div>';
   return h;
@@ -563,6 +606,7 @@ function migrateDreamSystem() {
   if (typeof ensurePlayerEduHistory === 'function') ensurePlayerEduHistory();
   if (typeof ensurePlayerHobbies === 'function') ensurePlayerHobbies();
   if (typeof ensurePlayerMajorExp === 'function') ensurePlayerMajorExp();
+  if (typeof seedPlayerCareerFromMajor === 'function') seedPlayerCareerFromMajor();
   if (typeof migratePlayerCareerExp === 'function') migratePlayerCareerExp();
   (game.contacts || []).forEach(function (c) {
     ensureContactDreamFields(c);
@@ -570,11 +614,13 @@ function migrateDreamSystem() {
   });
   syncSplitParentsContacts();
   migratePlayerNameFromParents();
+  syncGameStartDate(game);
   if (typeof migrateLifespanSystem === 'function') migrateLifespanSystem();
 }
 function isCoreContactKind(c) {
   if (!c) return true;
-  return c.kind === 'parents' || c.kind === 'father' || c.kind === 'mother' || c.kind === 'spouse' || c.kind === 'ex_spouse' || c.kind === 'bff';
+  if (typeof isFamilyKind === 'function' && isFamilyKind(c)) return true;
+  return c.kind === 'bff';
 }
 function contactDreamSummary(c) {
   if (!c) return '';
@@ -623,20 +669,156 @@ function gaokaoForkLabels(choice) {
   if (choice === 'normal_bachelor') return '普通本科';
   return '';
 }
+const EDU_GRAD_AGE = { '高中': 18, '中专': 18, '大专': 21, '本科': 22, '硕士': 25, '博士': 28 };
+function isHighSchoolLevelEdu(edu) {
+  return edu === '高中' || edu === '中专' || edu === '高中/中专';
+}
+function gameStartMonthDay(g) {
+  g = g || game;
+  const edu = g && (g.playerEducation || '');
+  if (isHighSchoolLevelEdu(edu)) return { month: 6, day: 1 };
+  return { month: 5, day: 1 };
+}
+function computeGameStartDate(g) {
+  g = g || game;
+  if (!g) return null;
+  const birth = g.birthYear || PLAYER_BIRTH_YEAR;
+  const age = g.startAge != null ? g.startAge : eduGraduationAge(g.playerEducation);
+  const year = g.graduationYear || (birth + age);
+  const md = gameStartMonthDay(g);
+  const d = new Date(year, md.month, md.day);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+function syncGameStartDate(g) {
+  g = g || game;
+  if (!g) return null;
+  const d = computeGameStartDate(g);
+  if (!d || isNaN(d.getTime())) return null;
+  g.startDate = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  return d;
+}
+function eduGraduationAge(edu) {
+  return EDU_GRAD_AGE[edu] != null ? EDU_GRAD_AGE[edu] : 22;
+}
 function computeGraduationFromEdu(edu, seed, retakeYears) {
   const birth = PLAYER_BIRTH_YEAR;
   const extra = retakeYears || 0;
-  const rng = typeof dreamRng === 'function' ? dreamRng(seed || 1) : Math.random;
-  if (edu === '博士') {
-    const startAge = 30 + Math.floor(rng() * 7) + extra;
-    return { graduationYear: birth + startAge, startAge: startAge };
+  const startAge = eduGraduationAge(edu) + extra;
+  return { graduationYear: birth + startAge, startAge: startAge };
+}
+function isMedicalMajor(major) {
+  if (!major) return false;
+  return /临床|口腔|中医|麻醉|医学|医科|护理|药学/.test(String(major));
+}
+function inferPlayerSchoolCity(g) {
+  g = g || game;
+  const home = typeof PLAYER_HOME_CITY !== 'undefined' ? PLAYER_HOME_CITY : '杭州';
+  const prefix = citySchoolPrefix(home);
+  const sn = g.playerSchoolName || '';
+  if (sn.indexOf(prefix) >= 0) return home;
+  const pool = ['北京', '上海', '南京', '武汉', '成都', '广州', '西安', '重庆', '苏州', '宁波'];
+  const rng = eduRngFor(g, 901);
+  return pool[Math.floor(rng() * pool.length)];
+}
+function applyPlayerHousingFromEdu(g) {
+  g = g || game;
+  if (!g) return;
+  const edu = g.playerEducation || '本科';
+  if (typeof ensurePlayerEduHistory === 'function') ensurePlayerEduHistory(g);
+  g.playerSchoolCity = inferPlayerSchoolCity(g);
+  const home = typeof PLAYER_HOME_CITY !== 'undefined' ? PLAYER_HOME_CITY : '杭州';
+  const isLocal = g.playerSchoolCity === home;
+  const atHomeEdu = edu === '高中' || edu === '中专';
+  if (atHomeEdu || isLocal) {
+    g.livingSituation = 'home';
+    g.livingAtHome = true;
+    g.inSchoolDorm = false;
+    g.ownsHome = false;
+    g.mortgagePaidOff = false;
+    g.mortgageMonthlyOverride = 0;
+    g.housingType = 'home';
+    g.livingOffParents = !!atHomeEdu;
+  } else {
+    g.livingSituation = 'dorm';
+    g.livingAtHome = false;
+    g.inSchoolDorm = true;
+    g.dormRent = 650;
+    g.ownsHome = false;
+    g.mortgagePaidOff = false;
+    g.housingType = 'dorm';
+    g.livingOffParents = false;
   }
-  if (edu === '硕士') {
-    const graduationYear = 2012 + Math.floor(rng() * 2) + extra;
-    return { graduationYear: graduationYear, startAge: graduationYear - birth };
+}
+function applyMedicalResidencySetup(g, profile) {
+  g = g || game;
+  if (!g) return false;
+  const edu = g.playerEducation || (profile && profile.playerEducation) || '';
+  if (edu !== '本科' && edu !== '硕士') return false;
+  if (typeof ensurePlayerEduHistory === 'function') ensurePlayerEduHistory(g);
+  const major = g.playerMajor || (profile && profile.playerMajor) || '';
+  if (!isMedicalMajor(major)) return false;
+  const extra = g.gaokaoRetakeYears || (profile && profile.gaokaoRetakeYears) || 0;
+  g.startAge = 21 + extra;
+  g.graduationYear = (g.birthYear || PLAYER_BIRTH_YEAR) + g.startAge;
+  g.openingPhase = 'residency_seek';
+  g.inResidencyPhase = true;
+  g.residencyTraining = {
+    seeking: true,
+    hospital: null,
+    weeksTotal: 156,
+    weeksDone: 0,
+    weeksLeft: 156
+  };
+  return true;
+}
+function tickResidencyTrainingWeekly(g) {
+  g = g || game;
+  if (!g || !g.residencyTraining || !g.inResidencyPhase || g.residencyTraining.seeking) return;
+  const rt = g.residencyTraining;
+  rt.weeksDone = (rt.weeksDone || 0) + 1;
+  rt.weeksLeft = Math.max(0, (rt.weeksTotal || 156) - rt.weeksDone);
+  if (rt.weeksLeft <= 0) {
+    g.inResidencyPhase = false;
+    g.openingPhase = 'residency_done';
+    if (typeof addLog === 'function') addLog('🎓 规培三年期满', 'success');
   }
-  const gy = GRADUATION_YEAR + extra;
-  return { graduationYear: gy, startAge: gy - birth };
+}
+function onPlayerResidencyHospitalHired(companyName) {
+  if (!game || !game.residencyTraining || !game.inResidencyPhase) return;
+  if (!game.residencyTraining.seeking) return;
+  game.residencyTraining.seeking = false;
+  game.residencyTraining.hospital = companyName || '规培医院';
+  if (typeof addLog === 'function') addLog('🏥 入培 ' + game.residencyTraining.hospital + ' · 规培约3年', 'success');
+}
+function buildOpeningLifeLog(g) {
+  g = g || game;
+  if (!g) return '';
+  const grad = g.graduationYear || GRADUATION_YEAR;
+  const age = g.startAge != null ? g.startAge : eduGraduationAge(g.playerEducation);
+  const edu = g.playerEducation || '本科';
+  if (g.openingPhase === 'residency_seek') {
+    return grad + '年 · ' + age + '岁 · 6月1日 · 临床医学大三结束后的暑假 · 寻找规培医院（约3年）';
+  }
+  if (edu === '高中' || edu === '中专' || edu === '高中/中专') {
+    return grad + '年 · ' + age + '岁 · 7月1日 · 刚毕业 · 住家里';
+  }
+  if (g.livingAtHome || g.livingSituation === 'home') {
+    return grad + '年 · ' + age + '岁 · 6月1日 · 离校还有一个月 · 在' + (g.playerSchoolCity || '本地') + '就读 · 住家里';
+  }
+  return grad + '年 · ' + age + '岁 · 6月1日 · 离校还有一个月 · 住校寝室' + (g.playerSchoolName ? ' · ' + g.playerSchoolName : '');
+}
+function applyOpeningLifeDefaults(g, edu) {
+  if (!g) return;
+  g.birthYear = PLAYER_BIRTH_YEAR;
+  if (g.startAge == null) g.startAge = eduGraduationAge(edu || g.playerEducation);
+  if (!g.graduationYear) g.graduationYear = g.birthYear + g.startAge;
+  applyPlayerHousingFromEdu(g);
+  if (!applyMedicalResidencySetup(g, null)) {
+    if (!g.openingPhase) g.openingPhase = 'graduation_month';
+  }
+  syncGameStartDate(g);
+  if (typeof initCampusRecruitment === 'function') initCampusRecruitment();
 }
 function resolveGaokaoOutcome(score, st, seed) {
   const s = score || 0;
@@ -977,7 +1159,15 @@ function applyLifeProfileToGame(profile) {
   game.playerOrientation = 'bisexual';
   game.inheritancePending = profile.inheritancePending || 0;
   game.destinyLove = !!profile.destinyLove;
-  game.openingPhase = 'graduation_month';
+  game.destinyYear = profile.destinyYear != null ? profile.destinyYear : null;
+  game.lotteryNum = profile.lotteryNum != null ? profile.lotteryNum : null;
+  game.lotteryPending = !!profile.lotteryPending;
+  if (typeof ensurePlayerEduHistory === 'function') ensurePlayerEduHistory();
+  applyPlayerHousingFromEdu(game);
+  if (!applyMedicalResidencySetup(game, profile)) {
+    game.openingPhase = 'graduation_month';
+  }
+  syncGameStartDate(game);
   if (profile.parentNames) game.parentNames = profile.parentNames;
   else game.parentNames = pickParentNames(dreamRng((game.stockSeed || 1) + 3));
   if (profile.startCash != null) { game.cash = profile.startCash; game.money = profile.startCash; }
@@ -990,7 +1180,6 @@ function applyLifeProfileToGame(profile) {
   if (profile.majorExpBonus) {
     ensurePlayerCareerExp();
     ensurePlayerMajorExp();
-    ensurePlayerEduHistory();
     const maj = game.playerMajor;
     if (maj) {
       game.majorExp[maj] = Math.max(game.majorExp[maj] || 0, weeksToCareerExpPct(profile.majorExpBonus) + 18);
@@ -999,9 +1188,9 @@ function applyLifeProfileToGame(profile) {
     }
   }
   if (typeof initPlayerSchoolCircles === 'function') initPlayerSchoolCircles();
-  if (typeof ensurePlayerEduHistory === 'function') ensurePlayerEduHistory();
   if (typeof migrateSocialCircles === 'function') migrateSocialCircles();
   if (typeof initPlayerLifespan === 'function') initPlayerLifespan(profile);
+  if (typeof initCampusRecruitment === 'function') initCampusRecruitment();
 }
 function createIdealForContact(contactId, tplId) {
   const c = typeof findContact === 'function' ? findContact(contactId) : (game.contacts || []).find(function (x) { return x.id === contactId; });

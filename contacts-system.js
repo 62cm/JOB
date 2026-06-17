@@ -92,6 +92,7 @@ function canDevelopIntimateByAttraction(c){
 }
 function canDevelopIntimateRelation(c){
   if(!c||c.unreachable||isParentContact(c))return false;
+  if(typeof isFamilyKind==='function'&&isFamilyKind(c))return false;
   ensureContactSocialFields(c);
   if(canDevelopIntimateByAttraction(c))return true;
   if(!mutualOrientationMatch(c))return false;
@@ -154,13 +155,17 @@ function respondContactConfession(contactId,accept){
   const c=findContact(contactId);
   if(!c||!c.pendingConfession)return;
   if(isParentContact(c)){c.pendingConfession=false;addLog('无法与父母确立恋爱关系','fail');return}
+  if(typeof isFamilyKind==='function'&&isFamilyKind(c)){c.pendingConfession=false;addLog('无法与亲戚确立恋爱关系','fail');return}
   c.pendingConfession=false;
   if(accept){
     c.affairStatus=c.affairStatus==='none'?'affair':c.affairStatus;
     if(!c.firstAffairWeek)c.firstAffairWeek=game.week;
     bumpContactFamiliarity(c,5);
     bumpContactAttraction(c,3);
-    addLog('💞 接受 '+c.name+' 的表白 · 确立亲密关系','success');
+    if(typeof ensureContactRelationFields==='function')ensureContactRelationFields(c);
+    c.intimateRelation=true;
+    c.intimateMarkedWeek=game.week||0;
+    addLog('💞 接受 '+c.name+' 的表白 · 确立亲密关系认定','success');
     if(game.married&&!game.divorced)game.affairActive=true;
   }else{
     const loss=Math.round(5+(c.attraction||0)/8);
@@ -175,6 +180,7 @@ function tickContactConfessions(){
   initPlayerOrientation();
   game.contacts.forEach(function(c){
     if(isCoreContact(c)||c.unreachable||c.pendingConfession||isParentContact(c))return;
+    if(typeof isFamilyKind==='function'&&isFamilyKind(c))return;
     ensureContactSocialFields(c);
     if(contactHasAffairRecord(c))return;
     if((c.attraction||0)<CONTACT_ATTRACTION_CONFESS||!mutualOrientationMatch(c))return;
@@ -565,6 +571,9 @@ function closeContactsModal(){
 function isContactPickerActive(){
   return !!(game&&game.contactPicker&&typeof game.contactPicker.onPick==='function');
 }
+function isScamBookPickerActive(){
+  return !!(game&&game.contactPicker&&game.contactPicker.mode==='scamBook');
+}
 function openContactPicker(opts){
   opts=opts||{};
   if(typeof hasUsablePhone==='function'&&!hasUsablePhone()){addLog('暂无可用手机，无法使用通讯录','fail');return false}
@@ -573,15 +582,18 @@ function openContactPicker(opts){
     title:opts.title||'选择联系人',
     hint:opts.hint||'点击「选择」确认',
     filter:opts.filter||null,
-    onPick:opts.onPick
+    onPick:opts.onPick,
+    onCancel:opts.onCancel||null
   };
   if(opts.closeConsumeModal!==false&&typeof closeConsumeModal==='function')closeConsumeModal(true);
   openContactsModal();
   return true;
 }
 function cancelContactPicker(){
-  if(game)game.contactPicker=null;
+  const pk=game&&game.contactPicker;
+  const onCancel=pk&&pk.onCancel;
   closeContactsModal();
+  if(onCancel)onCancel();
 }
 function pickContactFromPicker(id){
   const pk=game&&game.contactPicker;
@@ -598,23 +610,17 @@ function pickContactFromPicker(id){
   if(handler)handler(c);
 }
 function renderContactPickerRow(c){
-  const pk=game.contactPicker;
-  const ok=!pk.filter||pk.filter(c);
   const lbl=contactKindLabel(c);
   const gen=contactGenderLabel(c);
   const eid=escContactId(c.id);
   const dn=typeof contactDisplayName==='function'?contactDisplayName(c):c.name;
-  let h='<div class="contact-row contact-pick-row'+(ok?'':' contact-pick-disabled')+'">'+
+  return '<div class="contact-row contact-pick-row">'+
     '<div class="contact-row-hdr"><b>'+dn+'</b>'+
     (gen?'<span class="contact-gender">'+gen+'</span>':'')+
-    '<span class="fold-meta">'+lbl+'</span>'+
-  (!isCoreContact(c)?'<span class="fold-meta"> · 熟悉'+(c.familiarity|0)+'</span>':'')+
-    '</div>'+
+    '<span class="fold-meta">'+lbl+'</span></div>'+
     '<div class="contact-actions-row">'+
-    '<button class="btn btn-primary" style="font-size:.72rem;padding:3px 10px" '+(ok?'':'disabled')+' onclick="pickContactFromPicker(\''+eid+'\')">✓ 选择</button>'+
-    (!ok?'<span class="fold-meta">不符合条件</span>':'')+
+    '<button class="btn btn-primary" style="font-size:.72rem;padding:3px 10px" onclick="pickContactFromPicker(\''+eid+'\')">📞 选择</button>'+
     '</div></div>';
-  return h;
 }
 function isContactGroupFolded(key){
   if(!game)return false;
@@ -632,15 +638,21 @@ function renderContactsModal(){
   const body=document.getElementById('contactsModalBody');
   const ti=document.getElementById('contactsModalTitle');
   if(!body||!game)return;
+  if(isScamBookPickerActive()){
+    if(typeof renderScamBookPickerModal==='function')renderScamBookPickerModal(body,ti);
+    return;
+  }
   initCoreContacts();
   if(typeof syncFriendsCircle==='function')syncFriendsCircle();
-  const list=sortedContactsForModal();
+  let list=sortedContactsForModal();
   const ph=game.daily&&game.daily.phase;
   const picking=isContactPickerActive();
-  if(ti)ti.textContent=picking?('📇 '+(game.contactPicker.title||'选择联系人')):('📇 通讯录 · '+list.length+' 人');
+  const pk=game.contactPicker;
+  if(picking&&pk&&pk.filter)list=list.filter(function(c){return pk.filter(c);});
+  if(ti)ti.textContent=picking?('📇 '+(pk.title||'选择联系人')):('📇 通讯录 · '+list.length+' 人');
   let h='';
   if(picking){
-    h+='<p class="fold-meta" style="margin:0 0 8px">'+(game.contactPicker.hint||'点击「选择」确认')+'</p>';
+    h+='<p class="fold-meta" style="margin:0 0 8px">'+(pk.hint||'按组折叠 · 点「选择」拨号')+'</p>';
     h+='<button type="button" class="btn" style="font-size:.72rem;margin-bottom:8px" onclick="cancelContactPicker()">取消</button>';
   }else{
     h+='<p class="fold-meta" style="margin:0 0 8px">按圈层分组 · 点击组名折叠/展开 · 星标置顶 · 熟悉度≥60或「关注」入朋友圈 · 当前 '+PHASE_LABELS[ph||'morning']+'</p>';
@@ -650,7 +662,7 @@ function renderContactsModal(){
     h+='<p style="color:var(--yellow);font-size:.72rem;margin:0 0 8px">📅 约了 '+DAY_NAMES[p.dayIndex]+' '+PHASE_LABELS[p.phase]+' → '+p.label+'</p>';
   }
   if(!list.length){
-    h+='<p style="color:var(--muted)">暂无联系人</p>';
+    h+='<p style="color:var(--muted)">'+(picking?'本时段暂无可拨联系人':'暂无联系人')+'</p>';
     body.innerHTML=h;return;
   }
   const groups=typeof groupContactsForModal==='function'?groupContactsForModal(list):[{key:'all',label:'全部',contacts:list}];
@@ -711,7 +723,7 @@ function renderContactModalRow(c,ph){
     (!isCoreContact(c)?'<button class="btn" style="font-size:.72rem;padding:3px 8px'+(c.followed?';background:var(--accent);color:var(--bg)':'')+'" onclick="toggleContactFollow(\''+eid+'\')">'+(c.followed?'已关注':'关注')+'</button> ':'')+
     (c.pendingConfession?'<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="respondContactConfession(\''+eid+'\',true)">接受表白</button> '+
     '<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="respondContactConfession(\''+eid+'\',false)">拒绝</button> ':'')+
-    (canDevelopIntimateRelation(c)&&!contactHasAffairRecord(c)?'<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="startContactAffair(\''+eid+'\')">💞 亲密关系</button> ':'')+
+    (typeof relationshipContactActionButtons==='function'?relationshipContactActionButtons(c,eid):'')+
     (c.affairStatus==='proposal_pending'?'<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="promptAffairWedding(\''+eid+'\')">办婚礼</button> ':'')+
     (chk.ok?'':'<span class="fold-meta">'+chk.reason+'</span>')+
     (!isCoreContact(c)?'<button type="button" class="btn contact-del-btn" onclick="deleteContactFromModal(\''+eid+'\')">🗑 删除</button>':'')+
@@ -735,6 +747,7 @@ function callContactFromModal(id){
 }
 function canCallSpouse(){
   if(!game||game.divorced||!game.married)return {ok:false,reason:'无伴侣'};
+  if(game.daily&&game.daily.inOvertime)return {ok:true};
   if(typeof isPlayerWorkingNow==='function'&&isPlayerWorkingNow())return {ok:false,reason:'上班中无法给伴侣打电话'};
   const ph=game.daily&&game.daily.phase||'morning';
   if(typeof isPartnerOutForFun==='function'&&isPartnerOutForFun(ph)){
@@ -762,18 +775,92 @@ function canCallContact(c){
   }
   return {ok:true};
 }
-function callContact(id){
+function canCallContactFromOvertime(c){
+  if(!c||!game||game.gameOver)return {ok:false,reason:'无法联系'};
+  if(c.dead)return {ok:false,reason:'对方已离世'};
+  if(wasContactCalled(c.id))return {ok:false,reason:'本时段已联系过'};
+  if(wasContactNoAnswer(c.id))return {ok:false,reason:'对方未接，本时段不能再拨'};
+  const ph=game.daily&&game.daily.phase;
+  if(c.kind==='parents'||c.kind==='father'||c.kind==='mother'){
+    if(typeof areParentsAlive==='function'?!areParentsAlive():game.parentsInheritanceSettled)return {ok:false,reason:'父母已离世，无法联系'};
+    if(ph!=='morning'&&ph!=='evening'&&ph!=='allnight')return {ok:false,reason:'爸妈仅白天/晚上可联系'};
+  }
+  if(c.kind==='spouse'||c.id===CORE_CONTACT_IDS.spouse){
+    if(!game.married||game.divorced)return {ok:false,reason:'无伴侣'};
+    return {ok:true};
+  }
+  return {ok:true};
+}
+function isDirectFamilyContact(c){
+  if(!c)return false;
+  const k=c.kind;
+  return k==='grandparent'||k==='great_grandparent'||
+    k==='spouse_parent'||k==='spouse_grandparent'||k==='spouse_great_grandparent';
+}
+function isFamilyRelativeContact(c){
+  if(!c)return false;
+  if(c.kind==='child')return false;
+  if(isDirectFamilyContact(c))return true;
+  if(typeof isFamilyKind==='function'&&isFamilyKind(c)&&c.kind!=='spouse'&&c.kind!=='ex_spouse')return true;
+  if(c.circle==='family')return true;
+  return false;
+}
+function callFamilyRelative(c){
+  if(!c)return;
+  c.talkCount=(c.talkCount||0)+1;
+  bumpContactFamiliarity(c,2);
+  const role=contactKindLabel(c);
+  const direct=isDirectFamilyContact(c);
+  const roll=Math.random();
+  let html='';
+  if(roll<0.52){
+    const give=150+Math.floor(Math.random()*(direct?2200:900));
+    game.cash+=give;game.money+=give;
+    ledgerAddIncome('family','🧧',role+'·'+c.name+'红包',give);
+    html=role+' <b>'+c.name+'</b> 给你转了 <b>¥'+give.toLocaleString()+'</b>';
+    addLog('🧧 '+c.name+' 资助 ¥'+give.toLocaleString(),'success');
+  }else if(roll<0.78){
+    addStress(-1,role+'关心 ');
+    html='聊聊家常 · 压力 -1';
+    addLog('📞 '+c.name+' 嘘寒问暖 · 压力-1','info');
+  }else if(roll<0.88){
+    addStress(1,role+'唠叨 ');
+    html=role+'唠叨几句 · 压力 +1';
+    addLog('📞 '+c.name+' 唠叨 · 压力+1','info');
+  }else if(roll<0.93&&!direct){
+    promptContactLoan(c);
+    return;
+  }else if(roll<0.96&&direct){
+    promptContactLoan(c);
+    return;
+  }else if(roll<0.98&&!direct&&game.cash>=200){
+    const ask=200+Math.floor(Math.random()*600);
+    if(game.cash>=ask){
+      game.cash-=ask;
+      ledgerAddExpense('family','👪','给'+c.name+'钱',ask,false);
+      html='对方开口要点钱 · 你给了 ¥'+ask.toLocaleString();
+      addLog('👪 给 '+c.name+' ¥'+ask,'info');
+    }else html='对方想借钱 · 你没给';
+  }else{
+    html='互报近况，没多聊';
+    addLog('📞 和 '+c.name+' 闲聊','info');
+  }
+  showConsumeModal({icon:'👪',title:'联系'+role,html,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
+}
+function callContact(id,fromOvertime){
   if(typeof autoLifeRunning!=='undefined'&&autoLifeRunning)return;
   const c=findContact(id)||game.contacts.find(x=>x.id===id);
   if(!c){addLog('联系人不存在','fail');return}
-  const chk=canCallContact(c);
+  const inOt=!!fromOvertime||(game.daily&&game.daily.inOvertime);
+  const chk=(inOt&&typeof canCallContactFromOvertime==='function')?canCallContactFromOvertime(c):canCallContact(c);
   if(!chk.ok){addLog(chk.reason,'fail');return}
   markContactCalled(c.id);
   if(c.kind==='parents'||c.kind==='father'||c.kind==='mother')callParents(c);
-  else if(c.kind==='spouse')callSpouse(c);
+  else if(c.kind==='spouse')callSpouse(c,inOt);
   else if(c.kind==='ex_spouse')callExSpouse(c);
   else if(c.kind==='bff')callBff(c);
   else if((c.affairCount||0)>0||c.affairStatus==='affair'||c.affairStatus==='fwb'||c.affairStatus==='married_affair')callIntimateContact(c);
+  else if(isFamilyRelativeContact(c))callFamilyRelative(c);
   else callAcquaintance(c);
   renderDailyPanel();
 }
@@ -1059,8 +1146,16 @@ function callAcquaintance(c){
     submitContactReferral(c);
     return;
   }
-  if(Math.random()<0.45){
+  if(Math.random()<(c.circle==='family'?0.1:0.35)){
     promptContactLoan(c);
+    return;
+  }
+  if(c.circle==='family'&&Math.random()<0.22){
+    const give=80+Math.floor(Math.random()*520);
+    game.cash+=give;game.money+=give;
+    ledgerAddIncome('family','🧧',c.name+'红包',give);
+    addLog('🧧 '+c.name+' 给了 ¥'+give,'success');
+    showConsumeModal({icon:'🧧',title:'联系 '+c.name,html:'<b>'+c.name+'</b> 给你发了 <b>¥'+give.toLocaleString()+'</b> 红包。',buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
     return;
   }
   addLog('📞 和 '+c.name+' 闲聊了一会儿','info');

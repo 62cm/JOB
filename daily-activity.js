@@ -17,12 +17,20 @@ const STAT_MAX=120;
 const TEMP_STAT_RANGE=10;
 const STAT_LABEL={body:'肉体',mind:'心智',spirit:'精神'};
 const SLOT_HOURS_TOTAL=8;
+const WORK_SCAM_CALL_H=1;
+const WORK_SCAM_BATCH_H=2;
+const WORK_SCAM_SALES_H=2;
+const WORK_GOSSIP_H=1;
+const WORK_IDEAL_OPS_H=2;
 const SLOT_BATCH_HOURS=8;
 const PARTNER_RECALL_HOME_HOURS=2;
 const ALLNIGHT_DEVIL_HOURS_START=4;
 const OT_SOCIAL_PROB=0.38;
 const MONTHLY_ABSENCE_LIMIT=4;
-const OT_SOCIAL_PARTIAL_HOURS=6;
+const OT_SLACK_HOURS=6;
+const OT_GRIND_HOURS=8;
+const OT_SLACK_HOME_HOURS=2;
+const OT_SOCIAL_PARTIAL_HOURS=OT_SLACK_HOURS;
 const ALLNIGHT_DEATH_BY_STREAK=[0,0.0001,0.01,0.05,0.60,1];
 function getAllnightStreak(){return game&&(game.allnightStreak||0)||0}
 function setAllnightStreak(n){if(game)game.allnightStreak=Math.max(0,n||0)}
@@ -68,20 +76,154 @@ function renderCompanionAllnightStreakHint(){
   const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
   return '<p style="color:var(--orange);font-size:.72rem">'+pn+'：'+(s?'已连续通宵未睡 '+s+' 天':'未通宵')+'</p>';
 }
+function findCompanySnapshotById(id){
+  if(!id||!game)return null;
+  if(game.companyById&&game.companyById[id])return game.companyById[id];
+  if(typeof SCAM_BAIT_COMPANIES!=='undefined'){
+    const bait=SCAM_BAIT_COMPANIES.find(function(c){return c.id===id;});
+    if(bait)return Object.assign({},bait,{city:bait.city||game.playerCity||(typeof PLAYER_HOME_CITY!=='undefined'?PLAYER_HOME_CITY:'')});
+  }
+  if(id==='scam_co_mail'){
+    const mailNames=typeof SCAM_CO_NAMES!=='undefined'?SCAM_CO_NAMES:['鸿运信息','鑫达科技','汇通咨询'];
+    return{id:id,name:mailNames[0],tier:'low',scale:'small',city:game.playerCity||(typeof PLAYER_HOME_CITY!=='undefined'?PLAYER_HOME_CITY:'')};
+  }
+  if(game.jobCompanies){
+    for(const ji in game.jobCompanies){
+      const hit=(game.jobCompanies[ji]||[]).find(function(c){return c.id===id;});
+      if(hit)return hit;
+    }
+  }
+  if(game.companyAll){
+    const allHit=game.companyAll.find(function(c){return c.id===id;});
+    if(allHit)return allHit;
+  }
+  const scanOffer=function(offer){
+    if(!offer)return null;
+    if(offer.companyId===id&&offer.company)return offer.company;
+    if(offer.company&&offer.company.id===id)return offer.company;
+    return null;
+  };
+  let i,item,co;
+  for(i=0;i<(game.applications||[]).length;i++){
+    co=scanOffer(game.applications[i].offer);
+    if(co)return co;
+  }
+  for(i=0;i<(game.offers||[]).length;i++){
+    co=scanOffer(game.offers[i].offer);
+    if(co)return co;
+  }
+  for(i=0;i<(game.inbox||[]).length;i++){
+    item=game.inbox[i];
+    co=scanOffer(item.offer||(item.type==='offer'?item:null));
+    if(co)return co;
+  }
+  if(game.pendingHire&&game.pendingHire.offer){
+    co=scanOffer(game.pendingHire.offer);
+    if(co)return co;
+  }
+  const book=game.selfEmploy&&game.selfEmploy.scamBook;
+  if(book&&book.companyId===id&&book.companyName){
+    return{id:id,name:book.companyName,tier:'low',scale:'small',city:game.playerCity||(typeof PLAYER_HOME_CITY!=='undefined'?PLAYER_HOME_CITY:'')};
+  }
+  return null;
+}
+function linkEmploymentCompany(emp){
+  if(!emp||emp.company)return emp&&emp.company;
+  const id=emp.companyId;
+  if(!id)return null;
+  let co=findCompanySnapshotById(id);
+  if(!co&&game.companyById&&game.companyById[id])co=game.companyById[id];
+  if(co){
+    emp.company=co;
+    delete emp.companyId;
+    return co;
+  }
+  emp.company={id:id,name:'就职单位',tier:emp.tier||'mid',scale:'medium',city:game.playerCity||(typeof PLAYER_HOME_CITY!=='undefined'?PLAYER_HOME_CITY:'')};
+  delete emp.companyId;
+  return emp.company;
+}
+function ensureEmploymentCompanyLinked(){
+  if(!game||!game.employed||!game.employment)return;
+  linkEmploymentCompany(game.employment);
+}
+function ensureCompanionEmploymentCompanyLinked(){
+  if(!game||!game.companion||!game.companion.employed||!game.companion.employment)return;
+  linkEmploymentCompany(game.companion.employment);
+}
+function getScamSideEmploymentDisplay(){
+  if(!game||!game.selfEmploy||!game.selfEmploy.scamBook)return null;
+  if(game.employment&&game.employment.roleExtra==='scam')return null;
+  const book=game.selfEmploy.scamBook;
+  const sales=book.sales;
+  let company=book.companyName||null,title='电销专员';
+  if(!company){
+    const app=(game.applications||[]).find(function(a){return a.status==='hired_scam'&&a.offer&&a.offer.company;});
+    if(app){
+      company=app.offer.company.name;
+      const j=game.market&&game.market[app.jobIdx];
+      if(j)title=j.title;
+    }
+  }
+  if(!company){
+    const hist=(game.careerHistory||[]).slice().reverse().find(function(h){return h.roleExtra==='scam'&&h.company;});
+    if(hist)company=hist.company;
+  }
+  if(!company&&typeof SCAM_CO_NAMES!=='undefined')company=SCAM_CO_NAMES[0];
+  if(!company)company='诈骗岗';
+  return{
+    company:company,title:title,
+    product:(sales&&sales.product)||'套餐',
+    sold:(sales&&sales.sold)||0,
+    quota:(sales&&sales.quota)||0
+  };
+}
 function renderEmployedJobBar(){
-  if(!game||!game.employed||!game.employment)return '';
-  const job=game.market&&game.market[game.employment.jobIdx];
-  const co=game.employment.company;
-  if(!job||!co)return '';
-  ensureMonthlyAbsenceMonth();
-  const abs=game.monthlyAbsenceCount||0;
-  const absHtml=abs>0?' · <span style="color:var(--red)">本月旷工 <b>'+abs+'</b>/'+MONTHLY_ABSENCE_LIMIT+'</span>':'';
-  const ownerImmune=typeof playerEmployerAcquired==='function'&&playerEmployerAcquired();
-  const resignBtn=ownerImmune
-    ?'<span class="fold-meta" style="margin-left:8px;color:var(--green)">已收购·不可辞职</span>'
-    :' <button type="button" class="btn btn-warn" style="font-size:.68rem;padding:2px 8px;margin-left:8px" onclick="confirmPlayerResign()">辞职</button>';
-  return '<div class="daily-employ" style="font-size:.78rem;margin-bottom:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">'+
-    '💼 在职：<b>'+job.title+'</b> @ '+co.name+absHtml+resignBtn+'</div>';
+  if(!game)return '';
+  let html='';
+  if(game.employed&&game.employment){
+    ensureEmploymentCompanyLinked();
+    const job=game.market&&game.market[game.employment.jobIdx];
+    const co=game.employment.company;
+    if(co){
+      ensureMonthlyAbsenceMonth();
+      const abs=game.monthlyAbsenceCount||0;
+      const absHtml=abs>0?' · <span style="color:var(--red)">本月旷工 <b>'+abs+'</b>/'+MONTHLY_ABSENCE_LIMIT+'</span>':'';
+      const ownerImmune=typeof playerEmployerAcquired==='function'&&playerEmployerAcquired();
+      let scamInfo=null;
+      if(typeof getScamEmployerDisplay==='function')scamInfo=getScamEmployerDisplay();
+      const resignFn=scamInfo?'confirmScamJobResign()':'confirmPlayerResign()';
+      const resignBtn=ownerImmune
+        ?'<span class="fold-meta" style="margin-left:8px;color:var(--green)">已收购·不可辞职</span>'
+        :' <button type="button" class="btn btn-warn" style="font-size:.68rem;padding:2px 8px;margin-left:8px" onclick="'+resignFn+'">辞职</button>';
+      let body='💼 在职：<b>'+(job?job.title:'岗位')+'</b> @ '+co.name;
+      if(scamInfo){
+        body='💼 在职：<span style="color:var(--orange)">⚠ 传销诈骗岗</span> · 所属 <b>'+scamInfo.company+'</b> · '+scamInfo.title+
+          ' · 「'+scamInfo.product+'」'+scamInfo.sold+'/'+scamInfo.quota;
+      }
+      html+='<div class="daily-employ" style="font-size:.78rem;margin-bottom:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px">'+
+        body+absHtml+resignBtn+'</div>';
+    }
+  }
+  if(game.married&&!game.divorced&&game.companion&&game.companion.employed&&game.companion.employment){
+    ensureCompanionEmploymentCompanyLinked();
+    const ce=game.companion.employment;
+    const cco=ce.company;
+    const cjob=game.market&&game.market[ce.jobIdx];
+    const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
+    if(cco){
+      html+='<div class="daily-employ" style="font-size:.78rem;margin-bottom:8px;padding:6px 10px;background:rgba(63,185,80,.06);border:1px solid var(--green);border-radius:6px">'+
+        '💼 '+pn+' 在职：<b>'+(cjob?cjob.title:'岗位')+'</b> @ '+cco.name+'</div>';
+    }
+  }
+  const scamSide=getScamSideEmploymentDisplay();
+  if(scamSide){
+    html+='<div class="daily-employ" style="font-size:.78rem;margin-bottom:8px;padding:6px 10px;background:rgba(210,153,34,.08);border:1px solid var(--orange);border-radius:6px">'+
+      '💼 暗线：<span style="color:var(--orange)">⚠ 传销诈骗岗</span> · 所属 <b>'+scamSide.company+'</b> · '+scamSide.title+
+      ' · 「'+scamSide.product+'」'+scamSide.sold+'/'+scamSide.quota+
+      ' <span class="fold-meta">（明面上班弹窗：📒外呼1h · 📞集中2h · 🛒套餐2h）</span>'+
+      ' <button type="button" class="btn btn-warn" style="font-size:.68rem;padding:2px 8px;margin-left:6px" onclick="confirmScamSideJobResign()">脱身</button></div>';
+  }
+  return html;
 }
 function renderAllnightStreakRow(){
   const ps=getAllnightStreak(),cs=getCompanionAllnightStreak();
@@ -106,6 +248,46 @@ function dailySlotHoursLeft(){
 function dailySlotHoursLabel(){
   const left=dailySlotHoursLeft(),used=SLOT_HOURS_TOTAL-left;
   return '本时段 <b>'+used+'</b>/'+SLOT_HOURS_TOTAL+'h · 剩 '+left+'h';
+}
+function getDailyCalendarDateStr(){
+  if(!game)return '';
+  const w=game.week||0;
+  const dayIdx=game.daily?Math.min(game.daily.dayIndex||0,6):0;
+  let d;
+  if(typeof getGameStartDate==='function')d=getGameStartDate();
+  else d=new Date(typeof START_DATE!=='undefined'?START_DATE:new Date(2024,0,1));
+  d=new Date(d.getTime());
+  d.setDate(d.getDate()+w*7+dayIdx);
+  return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日';
+}
+function playerRomanceStatusLabel(){
+  if(!game)return '单身';
+  if(game.spouseDeceased)return '丧偶';
+  if(game.divorced)return '离异';
+  if(game.married&&!game.divorced)return '已婚';
+  if(game.contacts&&game.contacts.some(function(c){
+    return c&&c.intimateRelation&&!c.dead&&c.kind!=='spouse'&&c.kind!=='ex_spouse'&&c.kind!=='parents'&&c.kind!=='father'&&c.kind!=='mother';
+  }))return '恋爱';
+  return '单身';
+}
+function renderActionTip(){
+  const el=document.getElementById('actionTip');
+  if(!el||!game)return;
+  const dateStr=getDailyCalendarDateStr();
+  const age=typeof getPlayerAge==='function'?getPlayerAge():'—';
+  const romance=playerRomanceStatusLabel();
+  el.innerHTML='<b>'+dateStr+'</b> · '+age+'岁 · '+romance;
+}
+function renderDailyTimeBar(){
+  const el=document.getElementById('dailyTimeBar');
+  if(!el||!game||!game.daily)return;
+  const show=typeof currentTab!=='undefined'&&(currentTab==='daily'||currentTab==='job'||currentTab==='sideincome');
+  el.style.display=show?'block':'none';
+  if(!show)return;
+  const d=ensureDailyState();
+  const day=Math.min(d.dayIndex,6);
+  const phase=d.phase||'morning';
+  el.innerHTML='<div class="daily-hdr"><b>第'+(game.week+1)+'周</b> · '+DAY_NAMES[day]+' · '+PHASE_LABELS[phase]+' · '+dailySlotHoursLabel()+'</div>';
 }
 function resetDailySlotFlags(keepPartnerPresence){
   const d=ensureDailyState();if(!d)return;
@@ -172,9 +354,12 @@ function dailyAdvanceAfterSlotAction(){
       d.slotHoursUsed=SLOT_HOURS_TOTAL;
       d.subMenu=null;
       d.slotActivity=null;
+      d.inOvertime=false;
+      d.inKpiOvertime=false;
     }
-    addLog('🌙 今晚 '+SLOT_HOURS_TOTAL+'h 已过，请在日程面板选择睡觉或进入后半夜','warn');
+    addLog('🌙 今晚 '+SLOT_HOURS_TOTAL+'h 已过，请选择睡觉或进入后半夜','warn');
     renderDailyPanel();updateUI();
+    if(typeof promptEveningEndChoiceIfNeeded==='function')promptEveningEndChoiceIfNeeded();
     return;
   }else if(ph==='allnight'){
     const d=game.daily;
@@ -208,6 +393,12 @@ function dailyStdHospitalVisit(){
 function dailyZoneOut(){
   const d=ensureDailyState(),ph=d.phase;
   if(ph==='allnight'&&dailySlotBlocked()){addLog('本后半夜 '+SLOT_HOURS_TOTAL+'h 已满，请选择作息','fail');return}
+  if(ph==='evening'&&dailySlotBlocked()){
+    addLog('今晚时间已用尽，请选择睡觉或进入后半夜','warn');
+    if(typeof promptEveningEndChoiceIfNeeded==='function')promptEveningEndChoiceIfNeeded();
+    else renderDailyPanel();
+    return;
+  }
   if(shouldMarkWorkSkipNow())markWorkSkipForPhase();
   d.slotHoursUsed=SLOT_HOURS_TOTAL;
   d.subMenu=null;
@@ -220,6 +411,9 @@ function continueDailyOpenCategory(menu){
   const d=ensureDailyState();
   if((menu==='out'||menu==='home')&&shouldMarkWorkSkipNow())markWorkSkipForPhase();
   d.subMenu=menu;
+  if(menu==='out'||menu==='home'){
+    game.myLifeOpen=true;
+  }
   renderDailyPanel();
 }
 function resetPartnerRecallFlag(){
@@ -257,7 +451,10 @@ function renderAllnightSleepRows(leftA,exhausted){
 function eveningEndChoicePending(){
   const d=game&&game.daily;
   if(!d||d.phase!=='evening'||!dailySlotBlocked())return false;
-  if(d.inOvertime||d.slotActivity==='work'||d.slotActivity==='overtime')return false;
+  /* 时段已满必须选作息；清掉可能残留的上班/加班标记，避免睡不了 */
+  if(d.slotActivity==='work'||d.slotActivity==='overtime')d.slotActivity=null;
+  if(d.inOvertime)d.inOvertime=false;
+  if(d.inKpiOvertime)d.inKpiOvertime=false;
   return true;
 }
 function renderEveningEndChoiceRows(){
@@ -616,15 +813,54 @@ function appendOvertimeActionNote(line){
   if(!ms||!line)return;
   ms.innerHTML=ms.innerHTML+'<p style="margin-top:8px;font-size:.78rem">'+line+'</p>';
 }
+function showOvertimeFailModal(msg,backFn){
+  if(typeof showConsumeModalHandlers!=='function'){
+    addLog(msg,'fail');
+    if(backFn)backFn();
+    return;
+  }
+  showConsumeModalHandlers({
+    icon:'🏢',title:'无法操作',
+    html:'<p style="margin:0">'+msg+'</p>',
+    buttons:[{text:'知道了',primary:true,handler:backFn||function(){if(typeof closeConsumeModal==='function')closeConsumeModal(true);}}]
+  });
+}
+function showOvertimeResultModal(icon,title,html,buttons){
+  if(typeof showConsumeModalHandlers!=='function'){
+    if(html)addLog(title,'info');
+    if(buttons&&buttons[0]&&buttons[0].handler)buttons[0].handler();
+    return;
+  }
+  showConsumeModalHandlers({icon:icon||'🏢',title:title||'加班',html:html||'',buttons:buttons});
+}
+function overtimeConsumeHours(h){
+  const d=ensureDailyState();
+  if(!d||!d.inOvertime)return false;
+  if(!dailyCanUseHours(h))return false;
+  const prev=d.slotHoursUsed||0;
+  d.slotHoursUsed=Math.min(SLOT_HOURS_TOTAL,prev+h);
+  maybePartnerSleepOnAllnightDevilStart(prev,d.slotHoursUsed);
+  if(typeof consumeModalOpen==='undefined'||!consumeModalOpen)renderDailyPanel();
+  return true;
+}
 function buildOvertimeModalButtons(){
   const d=game.daily;
-  const buttons=[
-    {text:'摸鱼（压力-1 · 裁员风险↑）',handler:overtimeSlack},
-    {text:'拼命（压力+1 · 可能加班费）',handler:overtimeGrind},
-    {text:'📞 给伴侣打电话（可不打）',handler:overtimeCallSpouse}
-  ];
+  const left=dailySlotHoursLeft();
+  const buttons=[];
+  if(d&&!d.overtimePhoneDone){
+    buttons.push({text:'📞 打电话（仅一次 · 不占时）',handler:overtimePhoneCall});
+  }
+  if(d&&!d.overtimeSlackDone&&!d.overtimeGrindDone&&left>=OT_SLACK_HOURS){
+    buttons.push({text:'摸鱼（'+OT_SLACK_HOURS+'h · 压力-1 · 可早回家剩 '+OT_SLACK_HOME_HOURS+'h）',handler:overtimeSlack});
+  }
+  if(d&&!d.overtimeGrindDone&&!d.overtimeSlackDone&&left>=OT_GRIND_HOURS){
+    buttons.push({text:'努力加班（'+OT_GRIND_HOURS+'h · 压力+1 · 可能加班费）',handler:overtimeGrind});
+  }
   if(d&&d.overtimeDidAction){
-    buttons.push({text:'收工',primary:true,handler:requestFinishOvertime});
+    buttons.push({text:'收工回家',primary:true,handler:requestFinishOvertime});
+  }
+  if(!buttons.length){
+    buttons.push({text:'收工回家',primary:true,handler:requestFinishOvertime});
   }
   return buttons;
 }
@@ -634,61 +870,114 @@ function showOvertimeChoiceModal(){
   d.inOvertime=true;
   d.slotActivity='overtime';
   const hint=ot?'<p class="fold-meta" style="margin:0 0 6px">本岗：'+ot.otLabel+' · 加班费概率约 '+fmtOtPct(ot.otPayProb)+'</p>':'';
-  const doneNote=d.overtimeDidAction?'<p class="fold-meta" style="margin:6px 0 0">摸鱼或拼命后可点收工</p>':'<p class="fold-meta" style="margin:6px 0 0">先摸鱼或拼命，再收工；电话可打可不打</p>';
-  const html=hint+'你在公司加班。'+doneNote;
+  const timeLine=typeof dailySlotHoursLine==='function'?dailySlotHoursLine():'';
+  let doneNote='';
+  if(d.overtimeDidAction){
+    doneNote='<p class="fold-meta" style="margin:6px 0 0;color:var(--green)">已选 '+ (d.overtimeLastAction==='grind'?'努力 '+OT_GRIND_HOURS+'h':'摸鱼 '+OT_SLACK_HOURS+'h') +' · 点「收工回家」</p>';
+  }else{
+    doneNote='<p class="fold-meta" style="margin:6px 0 0">努力 '+OT_GRIND_HOURS+'h 或摸鱼 '+OT_SLACK_HOURS+'h（二选一）· 电话仅一次不占时 · 收工后可能遇到联谊</p>'+
+      '<p class="fold-meta" style="margin:4px 0 0">不联谊：努力→午夜前回家；摸鱼→剩 '+OT_SLACK_HOME_HOURS+'h 早回家 · 努力+联谊→后半夜彩虹</p>';
+  }
+  const html=hint+(timeLine?'<p class="fold-meta" style="margin:0 0 6px">'+timeLine+'</p>':'')+'<p style="margin:0">你在公司加班。</p>'+doneNote;
   if(typeof showConsumeModalHandlers==='function'){
     showConsumeModalHandlers({icon:'🏢',title:'加班中',html:html,buttons:buildOvertimeModalButtons()});
     return;
   }
   const legacy=buildOvertimeModalButtons().map(b=>({
     text:b.text,primary:b.primary,
-    fn:b.handler===overtimeSlack?'overtimeSlack()':b.handler===overtimeGrind?'overtimeGrind()':b.handler===overtimeCallSpouse?'overtimeCallSpouse()':'requestFinishOvertime()'
+    fn:b.handler===overtimeSlack?'overtimeSlack()':b.handler===overtimeGrind?'overtimeGrind()':b.handler===overtimePhoneCall?'overtimePhoneCall()':'requestFinishOvertime()'
   }));
   showConsumeModal({icon:'🏢',title:'加班中',html:html,buttons:legacy});
 }
 function overtimeSlack(){
   const d=ensureDailyState();
   if(!d||!d.inOvertime)return;
+  if(d.overtimeSlackDone||d.overtimeGrindDone){showOvertimeFailModal('本轮已选过加班方式');return}
+  if(!dailyCanUseHours(OT_SLACK_HOURS)){
+    showOvertimeFailModal('本时段只剩 '+dailySlotHoursLeft()+'h，无法摸鱼 '+OT_SLACK_HOURS+'h');
+    return;
+  }
+  if(!overtimeConsumeHours(OT_SLACK_HOURS))return;
   addStress(-1,'摸鱼 ');
   d.overtimeSlack=(d.overtimeSlack||0)+1;
+  d.overtimeSlackDone=true;
   d.overtimeDidAction=true;
   d.overtimeLastAction='slack';
-  addLog('🐟 加班摸鱼 · 压力-1 · 被裁风险上升','warn');
-  appendOvertimeActionNote('<span style="color:var(--green)">🐟 摸了一会儿鱼，压力减轻了些（可继续选其他操作或收工）</span>');
-  showOvertimeChoiceModal();
+  showOvertimeResultModal('🐟','摸鱼 · '+OT_SLACK_HOURS+'h',
+    '<p>🐟 摸鱼 '+OT_SLACK_HOURS+'h · <b style="color:var(--green)">压力 -1</b></p>'+
+    '<p class="fold-meta">被裁风险上升 · 若不联谊可早回家 · 还剩 '+OT_SLACK_HOME_HOURS+'h</p>'+
+    '<p class="fold-meta" style="margin-top:6px">点「知道了」后收工或继续（如尚未打电话）</p>',
+    [{text:'知道了',primary:true,handler:showOvertimeChoiceModal}]);
 }
 function overtimeGrind(){
   const d=ensureDailyState();
   if(!d||!d.inOvertime)return;
+  if(d.overtimeGrindDone||d.overtimeSlackDone){showOvertimeFailModal('本轮已选过加班方式');return}
+  if(!dailyCanUseHours(OT_GRIND_HOURS)){
+    showOvertimeFailModal('本时段只剩 '+dailySlotHoursLeft()+'h，无法安排 '+OT_GRIND_HOURS+'h 努力加班');
+    return;
+  }
+  if(!overtimeConsumeHours(OT_GRIND_HOURS))return;
   addStress(1,'拼命 ');
+  d.overtimeGrindDone=true;
   d.overtimeDidAction=true;
   d.overtimeLastAction='grind';
+  d.slotHoursUsed=SLOT_HOURS_TOTAL;
   const ot=getEmploymentOtProfile();
   const payProb=ot?ot.otPayProb:0.42;
   const payMult=ot?ot.otPayMult||1:1;
-  let note='💼 认真加了一会儿班';
+  let payLine='💼 努力加了 '+OT_GRIND_HOURS+'h，没有额外报酬';
   if(Math.random()<payProb){
     const bonus=Math.round((200+Math.floor(Math.random()*1200))*payMult);
     game.cash+=bonus;game.money+=bonus;
-    addLog('💰 加班费 ¥'+bonus.toLocaleString(),'success');
-    note='<span style="color:var(--green)">💰 拿到加班费 ¥'+bonus.toLocaleString()+'</span>';
-  }else addLog('💼 拼命加班，没有额外报酬','info');
-  appendOvertimeActionNote(note+'（可继续选其他操作或收工）');
-  showOvertimeChoiceModal();
+    payLine='<b style="color:var(--green)">💰 加班费 +¥'+bonus.toLocaleString()+'</b> · 已加 '+OT_GRIND_HOURS+'h';
+  }
+  showOvertimeResultModal('💼','努力加班 · '+OT_GRIND_HOURS+'h',
+    '<p>'+payLine+'</p>'+
+    '<p class="fold-meta" style="margin-top:8px">压力 +1 · 今晚 '+OT_GRIND_HOURS+'h 已满 · 不收工联谊则午夜前回家</p>',
+    [{text:'收工回家',primary:true,handler:requestFinishOvertime}]);
 }
-function overtimeCallSpouse(){
+function overtimePhoneCall(){
   const d=ensureDailyState();
   if(!d||!d.inOvertime)return;
-  const c=game.contacts&&game.contacts.find(x=>x.id===(typeof CORE_CONTACT_IDS!=='undefined'?CORE_CONTACT_IDS.spouse:'core_spouse')||x.kind==='spouse');
-  if(c&&typeof callSpouse==='function'){
-    game._resumeOvertimeAfterModal=true;
-    callSpouse(c,true);
-  }else addLog('找不到伴侣联系人','fail');
+  if(d.overtimePhoneDone){showOvertimeFailModal('加班电话本轮只能打一次');return}
+  showOvertimePhonePicker();
+}
+function showOvertimePhonePicker(){
+  if(typeof openContactPicker!=='function'){
+    addLog('无法打开通讯录','fail');
+    showOvertimeChoiceModal();
+    return;
+  }
+  const canPick=typeof canCallContactFromOvertime==='function'?canCallContactFromOvertime:canCallContact;
+  openContactPicker({
+    title:'加班打电话',
+    hint:'仅一次 · 不占时 · 按组折叠 · 点「选择」拨号',
+    filter:function(c){return canPick(c).ok;},
+    onPick:function(c){overtimeCallContactPick(c.id);},
+    onCancel:function(){showOvertimeChoiceModal();}
+  });
+}
+function overtimeCallContactPick(id){
+  const d=ensureDailyState();
+  if(!d||!d.inOvertime)return;
+  const c=game.contacts&&game.contacts.find(function(x){return x.id===id});
+  if(!c){addLog('联系人不存在','fail');showOvertimeChoiceModal();return}
+  const canPick=typeof canCallContactFromOvertime==='function'?canCallContactFromOvertime:canCallContact;
+  const chk=canPick(c);
+  if(!chk.ok){showOvertimeFailModal(chk.reason,showOvertimeChoiceModal);return}
+  d.overtimePhoneDone=true;
+  game._resumeOvertimeAfterModal=true;
+  if(typeof callContact==='function')callContact(id,true);
+  else showOvertimeChoiceModal();
 }
 function requestFinishOvertime(){
   const d=ensureDailyState();
   if(!d||!d.inOvertime)return;
-  if(!d.overtimeDidAction){addLog('至少先摸鱼或拼命一会儿再收工','fail');return}
+  if(!d.overtimeDidAction){
+    showOvertimeFailModal('至少先摸鱼或拼命 '+OT_SLACK_HOURS+'/'+OT_GRIND_HOURS+'h 再收工');
+    return;
+  }
   const wk=isWeekendDay(d.dayIndex);
   if(!wk&&Math.random()<OT_SOCIAL_PROB){
     game._overtimeFinishPending=true;
@@ -703,25 +992,30 @@ function finishOvertimeEveningFull(label){
   d.inOvertime=false;
   d.slotActivity=null;
   d.slotHoursUsed=SLOT_HOURS_TOTAL;
-  addLog(label||('🚪 收工回家 · 今晚 '+SLOT_HOURS_TOTAL+'h 已用尽'),'info');
+  addLog(label||('🚪 收工回家 · 午夜前 · 今晚 '+SLOT_HOURS_TOTAL+'h 已满'),'info');
   renderDailyPanel();updateUI();autoSaveSlot();
 }
 function finishOvertimeSlackSocial(){
   if(game)game._eveningEndAfterSlackSocial=true;
-  finishOvertimeEveningFull('🍻 摸鱼收工后参加联谊 · 今晚最后 2h 已过');
+  const d=ensureDailyState();
+  d.inOvertime=false;
+  d.slotActivity=null;
+  d.slotHoursUsed=SLOT_HOURS_TOTAL;
+  addLog('🍻 摸鱼收工后联谊 · 午夜前回家（摸鱼 '+OT_SLACK_HOURS+'h + 联谊 '+OT_SLACK_HOME_HOURS+'h）','info');
+  renderDailyPanel();updateUI();autoSaveSlot();
 }
 function finishOvertimeEveningPartial(){
   const d=ensureDailyState();
   d.inOvertime=false;
   d.slotActivity=null;
-  d.slotHoursUsed=OT_SOCIAL_PARTIAL_HOURS;
-  addLog('🚪 收工回家 · 今晚剩 '+dailySlotHoursLeft()+'h','info');
+  d.slotHoursUsed=OT_SLACK_HOURS;
+  addLog('🚪 收工早回家 · 午夜前 · 还剩 '+OT_SLACK_HOME_HOURS+'h 在家','info');
   renderDailyPanel();updateUI();autoSaveSlot();
 }
 function showOvertimeAllnightArrivalModal(){
   const d=game&&game.daily;
   if(!d||!d.allnightArrivalPending)return;
-  const html='拼命加班后的联谊已在<b>金色时段</b>结束，回到家已是后半夜。<br><span class="fold-meta">赶紧睡 → 次日清晨；通宵 → 彩虹时段（宅家/通讯录，不可外出）</span>';
+  const html='努力加班后的联谊已在<b>金色时段</b>结束，回到家已是后半夜。<br><span class="fold-meta">😴 赶紧睡 → 次日清晨（+1压力）；🌈 不睡 → 彩虹时段通宵（剩4h · 不可外出）</span>';
   if(typeof showConsumeModalHandlers==='function'){
     showConsumeModalHandlers({
       icon:'🌃',title:'后半夜到家',
@@ -799,7 +1093,30 @@ function showEveningEndChoiceModal(){
   if(!eveningEndChoicePending())return;
   if(typeof consumeModalOpen!=='undefined'&&consumeModalOpen)return;
   if(typeof hasPendingEncounterModals==='function'&&hasPendingEncounterModals())return;
+  const d=game.daily;
+  if(d&&d.eveningEndModalShown)return;
+  if(d)d.eveningEndModalShown=true;
+  const fromSlack=!!(game&&game._eveningEndAfterSlackSocial);
+  if(game)game._eveningEndAfterSlackSocial=false;
+  const html='<p style="color:var(--orange);margin:0 0 6px">'+(fromSlack?'🍻 联谊后回家 · ':'')+'今晚 '+SLOT_HOURS_TOTAL+'h 已用尽</p>'+
+    '<p class="fold-meta" style="margin:0">必须选择：睡觉进入次日白天，或不睡进入后半夜（金色时段 · 压力+10）</p>';
+  const sleepFn=function(){if(typeof closeConsumeModal==='function')closeConsumeModal(true);confirmEveningEndChoice('sleep');};
+  const allnightFn=function(){if(typeof closeConsumeModal==='function')closeConsumeModal(true);confirmEveningEndChoice('allnight');};
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({
+      icon:'🌙',title:'今晚时间已用尽',html:html,
+      buttons:[
+        {text:'😴 睡觉（次日白天）',primary:true,handler:sleepFn},
+        {text:'🌙 不睡，进入后半夜',handler:allnightFn}
+      ]
+    });
+    return;
+  }
   renderDailyPanel();
+}
+function promptEveningEndChoiceIfNeeded(){
+  if(!eveningEndChoicePending())return;
+  setTimeout(function(){if(typeof showEveningEndChoiceModal==='function')showEveningEndChoiceModal()},60);
 }
 function confirmEveningEndChoice(choice){
   if(typeof consumeModalOpen!=='undefined'&&consumeModalOpen)closeConsumeModal();
@@ -821,26 +1138,94 @@ function showWorkOffModal(title,extraHtml){
     buttons:[{text:'离开公司',primary:true,fn:'closeConsumeModal();dailyAdvanceAfterSlotAction();autoSaveSlot()'}]
   });
 }
+function workShiftConsumeHours(h,label){
+  const d=ensureDailyState();
+  if(!d||game.gameOver)return false;
+  if(d.inOvertime||d.slotActivity==='overtime')return false;
+  if(!isPlayerOnWorkShift())return false;
+  if(!dailyCanUseHours(h))return false;
+  const prev=d.slotHoursUsed||0;
+  d.slotHoursUsed=Math.min(SLOT_HOURS_TOTAL,prev+h);
+  maybePartnerSleepOnAllnightDevilStart(prev,d.slotHoursUsed);
+  renderDailyPanel();
+  return true;
+}
+function workShiftAfterAction(){
+  if(!isPlayerOnWorkShift())return;
+  const d=ensureDailyState();
+  if((d.slotHoursUsed||0)>=SLOT_HOURS_TOTAL){
+    if(typeof finishWorkShift==='function')finishWorkShift();
+    return;
+  }
+  if(typeof returnToWorkShiftModal==='function')returnToWorkShiftModal();
+}
 function finishWorkShift(){
   closeConsumeModal();
   if(game&&game.daily){
     game.daily.slotActivity=null;
     game.daily.inOvertime=false;
+    if((game.daily.slotHoursUsed||0)<SLOT_HOURS_TOTAL)game.daily.slotHoursUsed=SLOT_HOURS_TOTAL;
   }
   showWorkOffModal('下班了','打卡下班，收拾东西准备离开。');
+}
+function isPlayerOnWorkShift(){
+  if(!game||!game.employed||!game.daily)return false;
+  const d=game.daily;
+  return !!(d.inOvertime||d.slotActivity==='work'||d.slotActivity==='overtime');
+}
+function returnToWorkShiftModal(){
+  if(!isPlayerOnWorkShift())return;
+  setTimeout(function(){
+    if(!game||!game.daily||!isPlayerOnWorkShift())return;
+    if(game.daily.inOvertime||game.daily.slotActivity==='overtime'){
+      if(typeof showOvertimeChoiceModal==='function')showOvertimeChoiceModal();
+    }else if(typeof showWorkShiftModal==='function'){
+      showWorkShiftModal(false);
+    }
+  },60);
+}
+function showWorkShiftActionResult(icon,title,html){
+  const resume=function(){
+    if(typeof closeConsumeModal==='function')closeConsumeModal(true);
+    if(typeof workShiftAfterAction==='function')workShiftAfterAction();
+    else if(typeof returnToWorkShiftModal==='function')returnToWorkShiftModal();
+  };
+  if(typeof showConsumeModalHandlers==='function'){
+    showConsumeModalHandlers({
+      icon:icon||'💼',title:title||'结果',html:html||'',
+      buttons:[{text:'继续上班',primary:true,handler:resume}]
+    });
+    return;
+  }
+  showConsumeModal({
+    icon:icon||'💼',title:title||'结果',html:html||'',
+    buttons:[{text:'继续上班',primary:true,fn:'closeConsumeModal(true);returnToWorkShiftModal()'}]
+  });
 }
 function showWorkShiftModal(useOvertimeFlow){
   if(useOvertimeFlow){
     const d=ensureDailyState();
     d.overtimeDidAction=false;
     d.overtimeLastAction=null;
+    d.overtimeSlackDone=false;
+    d.overtimeGrindDone=false;
+    d.overtimePhoneDone=false;
     showOvertimeChoiceModal();
     return;
   }
   const job=game.employed&&game.employment?game.market[game.employment.jobIdx]:null;
   const co=game.employment&&game.employment.company;
   if(!job){dailyAdvanceAfterSlotAction();return}
-  let html='<b>'+job.title+'</b>'+(co?' @ '+co.name:'')+'<br><span class="fold-meta">处理手头工作，忙完点下班</span>';
+  let html='';
+  if(typeof getScamEmployerDisplay==='function'){
+    const scam=getScamEmployerDisplay();
+    if(scam){
+      html='<span style="color:var(--orange)">⚠ 传销诈骗岗</span> · 所属 <b>'+scam.company+'</b> · '+scam.title+
+        '<br><span class="fold-meta">推销「'+scam.product+'」'+scam.sold+'/'+scam.quota+' · 下方三键：📒单人外呼(1h) · 📞集中外呼(2h) · 🛒推销套餐(2h)</span>';
+    }
+  }
+  if(!html)html='<b>'+job.title+'</b>'+(co?' @ '+co.name:'')+'<br><span class="fold-meta">处理手头工作，忙完点下班</span>';
+  if(typeof dailySlotHoursLine==='function')html+='<p class="fold-meta" style="margin:6px 0 0">'+dailySlotHoursLine()+' · 各项操作占时，满 '+SLOT_HOURS_TOTAL+'h 自动下班</p>';
   if(typeof idealWorkShiftHtml==='function')html+=idealWorkShiftHtml();
   const buttons=[{text:'下班',primary:true,fn:'finishWorkShift()'}];
   if(typeof idealWorkShiftButtons==='function'){
@@ -1237,6 +1622,13 @@ function dailyOpenCategory(menu){
     if(typeof openContactsModal==='function')openContactsModal();
     return;
   }
+  if(menu==='job'){
+    if(game.daily&&game.daily.slotActivity==='out'){addLog('外出占用整个时段，请回宅后再应聘','fail');return}
+    if(game.daily&&game.daily.phase==='allnight'&&dailySlotBlocked()){
+      addLog('本通宵 '+SLOT_HOURS_TOTAL+'h 已满，请选择作息','fail');return;
+    }
+    if(typeof showTab==='function'){showTab('job');return}
+  }
   if(menu==='out'&&game.daily&&game.daily.phase==='allnight'&&typeof isAllnightDevilHours==='function'&&isAllnightDevilHours()){
     addLog('彩虹时段不可外出','fail');return;
   }
@@ -1249,48 +1641,86 @@ function dailyOpenCategory(menu){
 }
 function dailyBackToMain(){
   const d=ensureDailyState();
-  if(d.subMenu==='job'){
-    d.jobSubMenu=null;
-    d.dailyPickApp=null;
-    d.dailyPickJobIdxs=[];
-    if(d.dailyAppListings!=null)d.dailyAppListings=null;
-    d.dailyAppRefreshN=0;
-  }
   d.subMenu=null;
   renderDailyPanel();
 }
-function shouldMarkWorkSkipNow(){
+function resetDailyWorkFlags(){
+  const d=ensureDailyState();if(!d)return;
+  d.morningWorkDone=false;
+  d.eveningShiftDone=false;
+  d.allnightShiftDone=false;
+  d.eveningOtTried=false;
+}
+function ensureDailyWorkFlagsConsistent(){
+  const d=game&&game.daily;if(!d)return;
+  if(d.phase==='morning'&&(d.slotHoursUsed||0)===0&&!d.workedToday&&d.morningWorkDone){
+    d.morningWorkDone=false;
+  }
+}
+function playerCanAttemptWorkNow(){
   if(typeof playerEmployerOwnerImmune==='function'&&playerEmployerOwnerImmune())return false;
+  if(!game||!game.employed)return false;
+  if(typeof canPlayerWorkWeek==='function'&&!canPlayerWorkWeek())return false;
+  if(typeof isStressMindBlocked==='function'&&isStressMindBlocked()&&game.employment){
+    const j=game.market[game.employment.jobIdx];
+    if(j&&typeof isManualJob==='function'&&!isManualJob(j))return false;
+  }
+  return true;
+}
+function isWorkShiftRequired(phase){
+  if(typeof playerEmployerOwnerImmune==='function'&&playerEmployerOwnerImmune())return false;
+  if(!game||!game.employed||!game.daily)return false;
+  phase=phase||(game.daily.phase);
+  if(phase==='morning')return isScheduledWorkSlot('morning');
+  if(phase==='evening'){
+    if(typeof eveningEndChoicePending==='function'&&eveningEndChoicePending())return false;
+    if(isScheduledWorkSlot('evening'))return true;
+    if(!isWeekendDay(game.daily.dayIndex)&&game.daily.workedToday)return true;
+    return false;
+  }
+  if(phase==='allnight')return isScheduledWorkSlot('allnight');
+  return false;
+}
+function isWorkChoiceOffered(phase){
+  const d=game.daily;
+  if(!d||!isWorkShiftRequired(phase))return false;
+  return (d.slotHoursUsed||0)===0;
+}
+function shouldMarkWorkSkipNow(){
+  if(!isWorkShiftRequired())return false;
   const d=game.daily,ph=d.phase;
-  if(!game.employed)return false;
-  if(ph==='morning')return isScheduledWorkSlot('morning')&&!d.morningWorkDone;
+  if(ph==='morning')return !d.morningWorkDone;
   if(ph==='evening'){
     if(isScheduledWorkSlot('evening'))return !d.eveningShiftDone;
-    if(!isWeekendDay(d.dayIndex)&&d.morningWorkDone&&!d.eveningOtTried)return true;
+    if(!isWeekendDay(d.dayIndex)&&d.workedToday&&!d.eveningOtTried)return true;
   }
-  if(ph==='allnight')return isScheduledWorkSlot('allnight')&&!d.allnightShiftDone;
+  if(ph==='allnight')return !d.allnightShiftDone;
   return false;
 }
 function markWorkSkipForPhase(){
   const d=game.daily,ph=d.phase;
-  if(!game.employed)return;
-  if(ph==='morning'&&isScheduledWorkSlot('morning')&&!d.morningWorkDone){
+  if(!game.employed||!shouldMarkWorkSkipNow())return;
+  if(ph==='morning'&&!d.morningWorkDone){
     recordMonthlyAbsence('白天未上班');
     d.workSkipDays=(d.workSkipDays||0)+1;
     d.workedToday=false;
+    d.morningWorkDone=true;
     addLog('🛋 '+skipWorkLabel()+'（本周第'+d.workSkipDays+'天未上班）','warn');
   }else if(ph==='evening'){
     if(isScheduledWorkSlot('evening')&&!d.eveningShiftDone){
       recordMonthlyAbsence('晚班未上');
       d.workSkipDays=(d.workSkipDays||0)+1;
+      d.eveningShiftDone=true;
       addLog('🛋 缺勤晚班（本周第'+d.workSkipDays+'天）','warn');
-    }else if(!isWeekendDay(d.dayIndex)&&d.morningWorkDone&&!d.eveningOtTried){
+    }else if(!isWeekendDay(d.dayIndex)&&d.workedToday&&!d.eveningOtTried){
       recordMonthlyAbsence('未去加班');
+      d.eveningOtTried=true;
       addLog('🛋 今晚没去公司加班','warn');
     }
-  }else if(ph==='allnight'&&isScheduledWorkSlot('allnight')&&!d.allnightShiftDone){
+  }else if(ph==='allnight'&&!d.allnightShiftDone){
     recordMonthlyAbsence('后半夜班未上');
     d.workSkipDays=(d.workSkipDays||0)+1;
+    d.allnightShiftDone=true;
     addLog('🛋 缺勤后半夜班（本周第'+d.workSkipDays+'天）','warn');
   }
 }
@@ -1690,9 +2120,25 @@ function renderCarPanel(){
   h+='</div></div>';
   return h;
 }
+function normalizePhoneKey(phone){
+  if(!phone)return null;
+  if(PHONE_SHOP[phone])return phone;
+  const keys=Object.keys(PHONE_SHOP);
+  for(let i=0;i<keys.length;i++){
+    if(PHONE_SHOP[keys[i]].name===phone)return keys[i];
+  }
+  return null;
+}
 function ensurePhoneState(){
   if(!game)return;
-  if(!game.ownedPhones||!game.ownedPhones.length)game.ownedPhones=['xiaomi'];
+  if(!game.ownedPhones||!game.ownedPhones.length)game.ownedPhones=game.phone?[game.phone]:['xiaomi'];
+  game.ownedPhones=game.ownedPhones.map(function(k){return normalizePhoneKey(k)||k}).filter(function(k){return !!PHONE_SHOP[k]});
+  if(!game.ownedPhones.length)game.ownedPhones=['xiaomi'];
+  if(game.phone){
+    const nk=normalizePhoneKey(game.phone);
+    game.phone=nk||null;
+  }
+  if(game.phone&&!game.ownedPhones.includes(game.phone))game.ownedPhones.push(game.phone);
   if(!game.ownedPhones.includes('xiaomi'))game.ownedPhones.unshift('xiaomi');
   if(game.phone&&!game.ownedPhones.includes(game.phone))game.phone=null;
   if(!game.phone&&game.ownedPhones.length)game.phone=game.ownedPhones[0];
@@ -1700,12 +2146,17 @@ function ensurePhoneState(){
   if(game.phoneSwitchMonthKey==null)game.phoneSwitchMonthKey=null;
   syncNokiaTempBonus();
 }
+function phoneFoldRoot(){
+  return document.querySelector('#dailyPanel .swap-phone-fold');
+}
 function applyPhonePanelFold(){
   if(!game)return;
   const open=!!game.phonePanelOpen;
-  const body=document.querySelector('#dailyPanel .phone-fold-body');
-  const chev=document.querySelector('#dailyPanel .phone-fold-chev');
-  const meta=document.querySelector('#dailyPanel .phone-fold-cur');
+  const fold=phoneFoldRoot();
+  if(!fold)return;
+  const body=fold.querySelector('.phone-fold-body');
+  const chev=fold.querySelector('.phone-fold-chev');
+  const meta=fold.querySelector('.phone-fold-cur');
   if(body)body.style.display=open?'block':'none';
   if(chev)chev.textContent=open?'▼':'▶';
   if(meta)meta.style.display=open?'':'none';
@@ -1790,7 +2241,7 @@ function renderPhonePanel(){
   const open=!!game.phonePanelOpen;
   const cur=game.phone&&PHONE_SHOP[game.phone]?PHONE_SHOP[game.phone].name:'无';
   const monthBlocked=phoneSwitchBlockedThisMonth();
-  let h='<div class="phone-fold"><div class="phone-fold-hdr" onclick="togglePhonePanel()"><b>换手机</b>';
+  let h='<div class="phone-fold swap-phone-fold"><div class="phone-fold-hdr" onclick="togglePhonePanel()"><b>换手机</b>';
   h+='<span class="phone-fold-cur fold-meta"'+(open?'':' style="display:none"')+'> · 当前 '+cur+'</span>';
   h+='<span class="phone-fold-chev" style="margin-left:auto;color:var(--muted)">'+(open?'▼':'▶')+'</span></div>';
   h+='<div class="phone-fold-body"'+(open?'':' style="display:none"')+'>';
@@ -1847,7 +2298,6 @@ function maybeMeetOnCommute(mode){
 function cancelCommuteChoice(){
   closeConsumeModal();
   game._commuteCallback=null;
-  dailyReleaseMainActivity();
 }
 function confirmCommute(mode){
   closeConsumeModal();
@@ -1891,6 +2341,7 @@ function beginWorkShift(period,overtimeFlow){
     if(!overtimeFlow&&isScheduledWorkSlot('evening'))d.eveningShiftDone=true;
   }
   if(ph==='allnight')d.allnightShiftDone=true;
+  if(!overtimeFlow)d.slotHoursUsed=0;
   d.slotActivity=overtimeFlow?'overtime':'work';
   const job=game.market[game.employment.jobIdx];
   if(!meetsJobStats(job,true)){
@@ -2079,6 +2530,7 @@ function advanceToNextDay(){
   d.jobHuntCount=0;
   d.jobHuntBySlot={};
   d.subMenu=null;
+  resetDailyWorkFlags();
   resetDailySlotFlags();
   maybeTickStocksForDay(d.dayIndex);
   if(d.dayIndex>=7){
@@ -2117,7 +2569,8 @@ function dailyMorningWork(){
     if(j&&typeof isManualJob==='function'&&!isManualJob(j)){addLog('压力≥'+(typeof STRESS_MIND_BLOCK!=='undefined'?STRESS_MIND_BLOCK:666)+'，无法胜任脑力劳动','fail');return}
   }
   const go=function(){
-    if(!dailyUseMainActivity())return;
+    const d=ensureDailyState();
+    if(d.slotHoursUsed>0){addLog('本时段已在安排其他事（已用 '+d.slotHoursUsed+'h）','fail');return}
     promptCommuteChoice(function(){beginWorkShift('morning',false)});
   };
   go();
@@ -2301,7 +2754,6 @@ function dailyEveningShiftWork(){
   const ph=d.phase;
   const useOt=wk||(ph==='allnight'&&isScheduledWorkSlot('allnight'));
   const go=function(){
-    if(!dailyUseMainActivity())return;
     const period=ph==='allnight'?'allnight':'evening';
     promptCommuteChoice(function(){beginWorkShift(period,useOt)});
   };
@@ -2315,7 +2767,7 @@ function acceptCompanySocial(){
   game._overtimeFinishPending=false;
   addLog('🍻 参加公司联谊','info');
   if(fromOt&&lastAction==='grind')addLog('✨ 拼命加班联谊 · 后半夜金色时段','info');
-  else if(fromOt&&lastAction==='slack')addLog('🐟 摸鱼收工后联谊 · 今晚最后 2h','info');
+  else if(fromOt&&lastAction==='slack')addLog('🐟 摸鱼收工后联谊 · 占用最后 '+OT_SLACK_HOME_HOURS+'h · 午夜前回家','info');
   if(Math.random()<0.35)applyHangover();
   if(typeof runAfterEncounterModals==='function')runAfterEncounterModals(function(){meetRandomPerson('公司联谊',0.55)});
   else meetRandomPerson('公司联谊',0.55);
@@ -2361,9 +2813,9 @@ function showWeekdaySocialChoiceModal(){
   const d=ensureDailyState();
   const grind=d.overtimeLastAction==='grind';
   const meta=grind
-    ?'<span class="fold-meta">拼命收工后联谊在后半夜金色时段；回家后可选睡4h或通宵（彩虹按钮）；不去则今晚时间用尽</span>'
-    :'<span class="fold-meta">摸鱼收工后联谊占用今晚最后 <b>2</b>h；回家后可选睡觉或进入后半夜；不参加可早退还剩 2h</span>';
-  const declineLabel=grind?'不去，回家（今晚过完）':'不去，回家（剩2h）';
+    ?'<span class="fold-meta">努力 '+OT_GRIND_HOURS+'h 后联谊 → 金色时段结束已是<b>后半夜</b> · 到家可选睡觉或彩虹通宵</span>'
+    :'<span class="fold-meta">摸鱼 '+OT_SLACK_HOURS+'h 后联谊 → 占用最后 '+OT_SLACK_HOME_HOURS+'h · <b>午夜前</b>回家 · 可选睡觉或进后半夜</span>';
+  const declineLabel=grind?'不去，午夜前回家（'+OT_GRIND_HOURS+'h 已满）':'不去，早回家（剩 '+OT_SLACK_HOME_HOURS+'h）';
   if(typeof showConsumeModalHandlers!=='function'){acceptCompanySocial();return}
   showConsumeModalHandlers({
     icon:'🍻',title:'公司联谊',
@@ -2376,19 +2828,23 @@ function showWeekdaySocialChoiceModal(){
 }
 function startWeekdayEveningOvertime(){
   const d=ensureDailyState();
+  if(d.slotHoursUsed>0){showOvertimeFailModal('本时段已在安排其他事');return}
   d.eveningOtTried=true;
   d.overtimeDidAction=false;
   d.overtimeLastAction=null;
-  if(!dailyUseMainActivity())return;
+  d.overtimeSlackDone=false;
+  d.overtimeGrindDone=false;
+  d.overtimePhoneDone=false;
+  d.inOvertime=true;
+  d.slotActivity='overtime';
   addStress(1,'加班 ');
   addTempStat('spirit',-1,'🌃 加班');
-  addLog('🌃 到公司加班 · 压力+1','warn');
   showOvertimeChoiceModal();
 }
 function dailyEveningWorkEvent(){
   if(!game.employed)return;
   const d=ensureDailyState();
-  if(d.slotHoursUsed>0){addLog('本时段已在安排其他事','fail');return}
+  if(d.slotHoursUsed>0){showOvertimeFailModal('本时段已在安排其他事');return}
   startWeekdayEveningOvertime();
 }
 function getGameCalendarYear(){
@@ -2851,7 +3307,7 @@ function promptDateGiftModal(onDone){
   onDone=onDone||function(){};
   if(!game.married||game.divorced)return onDone();
   if(game.playerGender!=='male'||game.partnerGender!=='female')return onDone();
-  if(Math.random()>=0.45)return onDone();
+  if(Math.random()>=0.92)return onDone();
   const offer=pickDateGiftOffer();
   const gift=offer.amount;
   const refuseDelta=offer.refuseIntimacy!=null?offer.refuseIntimacy:-2;
@@ -2869,7 +3325,8 @@ function promptDateGiftModal(onDone){
   }else{
     icon='🎁';
     title='约会 · '+pn+' 想要礼物';
-    html='<p>约会结束后，'+pn+' 小声问：「今天能不能送我一份礼物？」</p>'+
+    html='<p>约会结束后，'+pn+' 拿出一张小愿望清单：</p>'+
+      '<p>「今天能不能送我这份礼物？」</p>'+
       '<p>想要：<b>'+offer.label+'</b> · 约 <b>¥'+gift.toLocaleString()+'</b></p>'+
       (offer.desc?'<p class="fold-meta" style="margin-top:6px">'+offer.desc+'</p>':'')+
       '<p class="fold-meta">你手头现金约 ¥'+(game.cash||0).toLocaleString()+' · 日常礼物按价位分档，名目随机</p>'+
@@ -2882,12 +3339,16 @@ function promptDateGiftModal(onDone){
         if(game.cash>=gift){
           game.cash-=gift;
           adjustSpouseIntimacy(offer.intimacy);
+          offer.occasion='date';
+          offer.kind='date';
           recordGiftWish(offer,'fulfilled');
           addLog((offer.superDream?'💎 年度超级梦想':'🎁 约会礼物')+'「'+offer.label+'」¥'+gift.toLocaleString()+' · 亲密度+'+offer.intimacy,'info');
           if(typeof renderSpendingPanel==='function')renderSpendingPanel();
           if(typeof updateUI==='function')updateUI();
         }else{
           adjustSpouseIntimacy(-1);
+          offer.occasion='date';
+          offer.kind='date';
           recordGiftWish(offer,'broke');
           addLog((offer.superDream?'💎 年度超级梦想':'🎁 约会礼物')+'囊中羞涩，无法满足「'+offer.label+'」¥'+gift.toLocaleString()+' · 亲密度-1','warn');
         }
@@ -2895,6 +3356,8 @@ function promptDateGiftModal(onDone){
       }},
       {text:'不买',handler:function(){
         adjustSpouseIntimacy(refuseDelta);
+        offer.occasion='date';
+        offer.kind='date';
         recordGiftWish(offer,'refused');
         addLog((offer.superDream?'💎 拒绝年度超级梦想':'🎁 拒绝买礼物')+' · 亲密度'+refuseDelta,'warn');
         onDone();
@@ -3157,12 +3620,71 @@ function renderPartialSlotJobBtn(){
   if(typeof dailyJobHourlyBlocked==='function'&&dailyJobHourlyBlocked(true))return '';
   if(dailySlotHoursLeft()<=0)return '';
   const label='📋 应聘求职（剩'+dailySlotHoursLeft()+'h）';
-  return '<button class="btn" onclick="dailyOpenCategory(\'job\')">'+(game.daily&&game.daily.phase==='allnight'?allnightBtnLabel(label):label)+'</button> ';
+  return '<button class="btn" onclick="showTab(\'job\')">'+(game.daily&&game.daily.phase==='allnight'?allnightBtnLabel(label):label)+'</button> ';
+}
+function toggleMyLifeFold(){
+  if(!game)return;
+  game.myLifeOpen=!game.myLifeOpen;
+  renderDailyPanel();
+}
+function renderMyLifeEntryActions(phase,d,sched){
+  let h='';
+  if(typeof hobbyProjectsSummaryHtml==='function')h+=hobbyProjectsSummaryHtml();
+  if(d.slotHoursUsed>0)h+='<p style="color:var(--yellow);font-size:.72rem">'+dailySlotHoursLabel()+' · 做爱(2h)/自慰(不占时)仍可进行</p>';
+  h+=partnerLocTag(phase);
+  const left=dailySlotHoursLeft();
+  if(left<=0){
+    if(phase==='evening'&&typeof eveningEndChoicePending==='function'&&eveningEndChoicePending()){
+      h+='<p class="fold-meta" style="color:var(--orange)">今晚 '+SLOT_HOURS_TOTAL+'h 已用尽 · 请在下方选择 😴 睡觉 或 🌙 后半夜</p>';
+    }else{
+      h+='<p class="fold-meta">本时段已无剩余时间 · 可选发呆/通讯录</p>';
+    }
+    return h;
+  }
+  if(phase==='allnight'&&isAllnightDevilHours()){
+    h+='<p class="fold-meta" style="color:var(--accent)">🌈 彩虹时段不可外出 · 仍可宅家</p>';
+  }
+  if(d.slotHoursUsed===0){
+    if(!(phase==='allnight'&&isAllnightDevilHours())){
+      h+='<button class="btn" onclick="dailyOpenCategory(\'out\')">'+(phase==='allnight'?allnightBtnLabel('🚶 外出'):'🚶 外出')+'</button> ';
+    }
+    h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">'+(phase==='allnight'?allnightBtnLabel('🏠 宅家'):'🏠 宅家')+'</button>';
+  }else if(left>0){
+    h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">'+(phase==='allnight'?allnightBtnLabel('🏠 继续宅家（剩'+left+'h）'):'🏠 继续宅家（剩'+left+'h）')+'</button> ';
+    if(!(phase==='allnight'&&isAllnightDevilHours())){
+      h+='<button class="btn" onclick="dailyOpenCategory(\'out\')">'+(phase==='allnight'?allnightBtnLabel('🚶 继续外出'):'🚶 继续外出')+'</button>';
+    }
+  }
+  return h;
+}
+function renderMyLifeFold(phase,d,sched){
+  if(!game)return '';
+  phase=phase||(game.daily&&game.daily.phase)||'morning';
+  d=d||ensureDailyState();
+  sched=sched==null?(game.employed&&isScheduledWorkSlot(phase)):sched;
+  if(game.myLifeOpen==null){
+    if(game.playerProfileOpen!=null)game.myLifeOpen=!!game.playerProfileOpen;
+    else game.myLifeOpen=true;
+  }
+  const sub=d.subMenu||null;
+  const inSub=sub==='out'||sub==='home';
+  const open=!!game.myLifeOpen||inSub;
+  let curHint=' · 外出 / 宅家';
+  if(inSub)curHint=sub==='out'?' · 外出中':' · 宅家中';
+  let h='<div class="phone-fold my-life-fold" style="margin-top:8px">';
+  h+='<div class="phone-fold-hdr" onclick="toggleMyLifeFold()"><b>🏠 我的生活</b>';
+  h+='<span class="phone-fold-cur fold-meta">'+curHint+'</span>';
+  h+='<span class="phone-fold-chev" style="margin-left:auto;color:var(--muted)">'+(open?'▼':'▶')+'</span></div>';
+  h+='<div class="phone-fold-body"'+(open?'':' style="display:none"')+'>';
+  if(sub==='out')h+=renderDailyOutMenu(phase);
+  else if(sub==='home')h+=renderDailyHomeMenu(phase);
+  else h+=renderMyLifeEntryActions(phase,d,sched);
+  h+='</div></div>';
+  return h;
 }
 function renderDailyMainActions(phase,d,sched){
   let h='';
   if(game&&game.stdActive)h+='<p style="color:var(--orange);font-size:.72rem">🦠 性病：须每周用一个时段去医院，连续四周，第4次付 ¥'+((typeof STD_CURE_COST!=='undefined')?STD_CURE_COST:3000)+' 治愈；中断从头来</p>';
-  if(d.slotHoursUsed>0)h+='<p style="color:var(--yellow);font-size:.78rem">'+dailySlotHoursLabel()+' · 做爱(2h)/自慰(不占时)仍可进行</p>';
   if(phase==='rest'){
     h+='<p style="color:var(--orange);font-size:.78rem">请选择睡觉或进入后半夜</p>';
     h+='<button class="btn btn-primary" onclick="confirmEveningEndChoice(\'sleep\')">😴 睡觉（次日白天）</button>';
@@ -3184,17 +3706,6 @@ function renderDailyMainActions(phase,d,sched){
       h+='<p style="color:var(--orange);font-size:.78rem">本后半夜8h已用尽，请选择作息</p>';
     }else{
       if(game.employed&&sched)h+='<button class="btn btn-primary" onclick="dailyEveningShiftWork()">'+allnightBtnLabel('💼 加班')+'</button>';
-      if(d.slotHoursUsed===0){
-        h+=partnerLocTag(phase);
-        if(!isAllnightDevilHours())h+='<button class="btn" onclick="dailyOpenCategory(\'out\')">'+allnightBtnLabel('🚶 外出')+'</button>';
-        h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">'+allnightBtnLabel('🏠 宅家')+'</button>';
-        if(!isAllnightDevilHours())h+='<button class="btn" onclick="dailyOpenCategory(\'job\')">'+allnightBtnLabel('📋 应聘求职')+'</button>';
-        h+=renderStdHospitalBtn();
-      }else if(leftA>0){
-        h+=partnerLocTag(phase);
-        h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">'+allnightBtnLabel('🏠 继续宅家（剩'+leftA+'h）')+'</button> ';
-        if(!isAllnightDevilHours())h+=renderPartialSlotJobBtn();
-      }
       h+=renderStdHospitalBtn();
     }
     h+='<button class="btn btn-allnight-plain" onclick="dailyOpenCategory(\'contacts\')">📇 通讯录</button>';
@@ -3206,22 +3717,20 @@ function renderDailyMainActions(phase,d,sched){
   if(phase==='morning'){
     const wk=isWeekendDay(d.dayIndex);
     if(d.slotHoursUsed===0){
-      if(game.employed&&sched){
-        h+='<p class="fold-meta">'+(wk?'周末':'今日')+'需上班 · 选上班或选休</p>';
+      if(game.employed&&sched&&!d.morningWorkDone){
+        h+='<p class="fold-meta">'+(wk?'周末':'今日')+'需上班 · 选上班或选休（进宅家/外出即选休）</p>';
         h+='<button class="btn btn-primary" onclick="dailyMorningWork()">💼 '+(wk?'加班':'上班')+'</button>';
+      }else if(game.employed&&isManualEmployed()&&!sched&&!wk){
+        h+='<p class="fold-meta">🏭 今日白班轮休（产线排班）</p>';
       }
-      h+=partnerLocTag(phase);
-      h+='<button class="btn" onclick="dailyOpenCategory(\'out\')">🚶 外出</button>';
-      h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">🏠 宅家</button>';
-      h+='<button class="btn" onclick="dailyOpenCategory(\'job\')">📋 应聘求职</button>';
       h+=renderStdHospitalBtn();
-    }else if(dailySlotHoursLeft()>0){
-      h+=partnerLocTag(phase);
-      h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">🏠 继续宅家（剩'+dailySlotHoursLeft()+'h）</button> ';
-      h+=renderPartialSlotJobBtn();
+    }else if(game.employed&&sched&&!d.morningWorkDone){
+      h+='<p class="fold-meta" style="color:var(--orange)">今日有班次但未上班 · 时段已占用</p>';
+      h+=renderStdHospitalBtn();
+    }else{
+      h+=renderStdHospitalBtn();
     }
     h+='<button class="btn" onclick="dailyZoneOut()">😶 发呆（跳下一时段 · 压力-1）</button>';
-    h+=renderStdHospitalBtn();
     h+='<button class="btn" onclick="dailyOpenCategory(\'contacts\')">📇 通讯录</button>';
     return h;
   }
@@ -3232,27 +3741,22 @@ function renderDailyMainActions(phase,d,sched){
     }
     const wk=isWeekendDay(d.dayIndex);
     if(d.slotHoursUsed===0){
-      if(game.employed&&isScheduledWorkSlot('evening')){
+      if(game.employed&&isScheduledWorkSlot('evening')&&!d.eveningShiftDone){
         h+='<p class="fold-meta">'+(wk?'周末':'今晚')+'需上班</p>';
         h+='<button class="btn btn-primary" onclick="dailyEveningShiftWork()">💼 '+(wk?'加班/晚班':'晚班上班')+'</button>';
-      }else if(game.employed&&d.workedToday&&!wk){
+      }else if(game.employed&&d.workedToday&&!wk&&!d.eveningOtTried){
         const ot=getEmploymentOtProfile();
-        const otP=ot?ot.forcedEveningProb:0.5;
         const otHint=ot?' <span class="fold-meta">（'+ot.otLabel+' · 收工后联谊约 '+Math.round(OT_SOCIAL_PROB*100)+'%）</span>':'';
         h+='<button class="btn btn-primary" onclick="dailyEveningWorkEvent()">🏢 加班</button>'+otHint;
       }
-      h+=partnerLocTag(phase);
-      h+='<button class="btn" onclick="dailyOpenCategory(\'out\')">🚶 外出</button>';
-      h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">🏠 宅家</button>';
-      h+='<button class="btn" onclick="dailyOpenCategory(\'job\')">📋 应聘求职</button>';
       h+=renderStdHospitalBtn();
-    }else if(dailySlotHoursLeft()>0){
-      h+=partnerLocTag(phase);
-      h+='<button class="btn" onclick="dailyOpenCategory(\'home\')">🏠 继续宅家（剩'+dailySlotHoursLeft()+'h）</button> ';
-      h+=renderPartialSlotJobBtn();
+    }else if(game.employed&&((isScheduledWorkSlot('evening')&&!d.eveningShiftDone)||(d.workedToday&&!wk&&!d.eveningOtTried))){
+      h+='<p class="fold-meta" style="color:var(--orange)">今晚有班次/可加班但未去 · 时段已占用</p>';
+      h+=renderStdHospitalBtn();
+    }else{
+      h+=renderStdHospitalBtn();
     }
     h+='<button class="btn" onclick="dailyZoneOut()">😶 发呆（跳下一时段 · 压力-1）</button>';
-    h+=renderStdHospitalBtn();
     h+='<button class="btn" onclick="dailyOpenCategory(\'contacts\')">📇 通讯录</button>';
     return h;
   }
@@ -3281,6 +3785,7 @@ function buyPhone(key){
 function renderDailyPanel(){
   const el=document.getElementById('dailyPanel');
   if(!el||!game)return;
+  if(typeof ensureEmploymentCompanyLinked==='function')ensureEmploymentCompanyLinked();
   if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
   if(typeof ensureAutoLifeNotStuck==='function')ensureAutoLifeNotStuck();
   if(typeof isAutoLifeSimulating==='function'&&isAutoLifeSimulating()){
@@ -3305,14 +3810,12 @@ function renderDailyPanel(){
     return;
   }
   const d=ensureDailyState();
+  if(typeof ensureDailyWorkFlagsConsistent==='function')ensureDailyWorkFlagsConsistent();
   const day=Math.min(d.dayIndex,6);
   const phase=d.phase||'morning';
   const sched=game.employed&&isScheduledWorkSlot(phase);
   const allnightWrap=dailyAllnightWrapClass(phase);
   let html='<div class="daily-panel-body'+allnightWrap+'">';
-  html+='<div class="daily-hdr"><b>第'+(game.week+1)+'周</b> · '+DAY_NAMES[day]+' · '+PHASE_LABELS[phase]+' · '+dailySlotHoursLabel()+
-    (isWeekendDay(day)&&isInternetEmployed()?' · <span style="color:var(--orange)">互联网周末班</span>':'')+
-    (isManualEmployed()?' · <span style="color:var(--blue)">轮班制</span>':'')+'</div>';
   html+=renderAllnightStreakRow();
   html+=renderEmployedJobBar();
   const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
@@ -3326,13 +3829,12 @@ function renderDailyPanel(){
       (catchUp?'<div class="fold-meta" style="color:var(--blue)">😴 在家补觉'+(skipDays?(' · 本月旷工 '+skipDays+'/'+MONTHLY_ABSENCE_LIMIT):'')+'</div>':'')+
       '<div class="fold-meta" style="color:var(--orange)">通宵：'+(pStreak?'已连续未睡 '+pStreak+' 天':'未通宵')+'</div>'+
       (!catchUp&&skipDays?'<div class="fold-meta" style="color:var(--yellow)">本月旷工 '+skipDays+'/'+MONTHLY_ABSENCE_LIMIT+' 天</div>':'')+
+      '<div class="fold-meta">亲密度 <b>'+(game.spouseIntimacy!=null?game.spouseIntimacy:'—')+'</b></div>'+
       '</div></div>';
   }
   const left=dailySlotHoursLeft();
-  html+='<p style="font-size:.72rem;color:var(--muted)">本时段剩 '+left+'h · 刷APP '+JOB_APP_BROWSE_H+'h/次 · 猎头/内推 '+JOB_HEADHUNTER_H+'h · 与宅家共用</p>';
-  html+='<div class="daily-stats">'+
-    '<span>亲密度 <b>'+(game.spouseIntimacy!=null?game.spouseIntimacy:'—')+'</b></span></div>';
   html+=renderTempStatsHtml();
+  if(typeof renderMyLifeFold==='function')html+=renderMyLifeFold(phase,d,sched);
   html+='<div class="daily-week">'+DAY_NAMES.map((n,i)=>'<span class="daily-dot'+(i<d.dayIndex?' done':i===day&&d.dayIndex<7?' cur':'')+'">'+n+'</span>').join('')+'</div>';
   if(d.dayIndex>=7){
     html+='<p class="daily-done">✅ 本周七天日程已满</p>';
@@ -3346,23 +3848,9 @@ function renderDailyPanel(){
   html+='<div class="daily-actions">';
   if(eveningEndChoicePending()){
     html+=renderEveningEndChoiceRows();
-    html+='</div>';
-  html+=renderCarPanel();
-  html+=renderPhonePanel();
-  html+='<div class="daily-side-tools">';
-  if(typeof renderContactsBlock==='function')html+=renderContactsBlock();
-  if(typeof renderGiftWishBlock==='function')html+=renderGiftWishBlock();
-  html+='</div>';
-  html+='</div>';
-  el.innerHTML=html;
-  schedulePartnerInviteOutCheck();
-  return;
+  }else{
+    html+=renderDailyMainActions(phase,d,sched);
   }
-  const sub=d.subMenu||null;
-  if(sub==='job')html+=renderDailyJobMenu(phase);
-  else if(sub==='out')html+=renderDailyOutMenu(phase);
-  else if(sub==='home')html+=renderDailyHomeMenu(phase);
-  else html+=renderDailyMainActions(phase,d,sched);
   html+='</div>';
   if(typeof renderPropertyPanel==='function')html+=renderPropertyPanel();
   html+=renderCarPanel();
@@ -3373,17 +3861,22 @@ function renderDailyPanel(){
   html+='</div>';
   html+='</div>';
   el.innerHTML=html;
+  if(typeof renderDailyTimeBar==='function')renderDailyTimeBar();
   if(phase==='allnight'&&d.allnightArrivalPending){
     setTimeout(function(){if(typeof showOvertimeAllnightArrivalModal==='function')showOvertimeAllnightArrivalModal()},80);
   }
   if(phase==='allnight'&&dailySlotBlocked()&&!d.allnightEndModalShown&&!d.allnightArrivalPending){
     setTimeout(function(){if(typeof showAllnightExhaustedModal==='function')showAllnightExhaustedModal()},80);
   }
+  if(phase==='evening'&&eveningEndChoicePending()){
+    setTimeout(function(){if(typeof promptEveningEndChoiceIfNeeded==='function')promptEveningEndChoiceIfNeeded()},80);
+  }
   schedulePartnerInviteOutCheck();
 }
 function migrateDailyState(){
   if(typeof ensurePlayerStatState==='function')ensurePlayerStatState();
   if(game){
+    if(game.myLifeOpen==null&&game.playerProfileOpen!=null)game.myLifeOpen=!!game.playerProfileOpen;
     if(game.superDreamGiftYear==null)game.superDreamGiftYear=null;
     ensureGiftWishHistory();
     ensureArchivedPartnerWishLists();
@@ -3397,6 +3890,10 @@ function migrateDailyState(){
     if(game.nokiaBonusActive==null)game.nokiaBonusActive=false;
     ensureCarState();
     ensurePhoneState();
+    if(typeof ensureEmploymentCompanyLinked==='function')ensureEmploymentCompanyLinked();
+    if(game.playerCircles&&(typeof game.playerCircles!=='object'||Array.isArray(game.playerCircles))){
+      game.playerCircles={social:[],hobby:[],workplace:[],friends:[],family:[]};
+    }
   }
   if(game){
     if(game.pendingPartnerCatchUpSleep==null)game.pendingPartnerCatchUpSleep=false;
@@ -3426,7 +3923,12 @@ function migrateDailyState(){
     if(d.allnightEndModalShown==null)d.allnightEndModalShown=false;
     if(d.partnerCatchUpSleep==null)d.partnerCatchUpSleep=false;
     if(d.companionMorningSkipLogged==null)d.companionMorningSkipLogged=false;
+    if(d.morningWorkDone==null)d.morningWorkDone=false;
+    if(d.eveningShiftDone==null)d.eveningShiftDone=false;
+    if(d.allnightShiftDone==null)d.allnightShiftDone=false;
+    if(d.eveningOtTried==null)d.eveningOtTried=false;
     if(d.eveningEndModalShown==null)d.eveningEndModalShown=false;
+    if(typeof ensureDailyWorkFlagsConsistent==='function')ensureDailyWorkFlagsConsistent();
     if(d.allnightArrivalPending==null)d.allnightArrivalPending=false;
     if(d.villaPartyUsed==null)d.villaPartyUsed=false;
     if(game.monthlyAbsenceMonthKey==null){

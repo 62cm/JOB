@@ -1,9 +1,36 @@
 /* 网络 · 三圈层导航 · 可嵌套点击 — 由 build.js 注入 */
-function canUseNetwork() {
+function canViewFullNetwork() {
   if (!game || game.gameOver) return false;
   if (typeof isPlayerImprisoned === 'function' && isPlayerImprisoned()) return false;
-  if (typeof hasUsablePhone === 'function' && !hasUsablePhone() && !game.ownsComputer) return false;
-  return !!(game.ownsComputer || (typeof hasUsablePhone === 'function' && hasUsablePhone()));
+  if (typeof ensurePhoneState === 'function') ensurePhoneState();
+  if (game.ownsComputer) return true;
+  if (typeof hasUsablePhone === 'function' && hasUsablePhone() && game.phone && game.phone !== 'nokia') return true;
+  return false;
+}
+
+function networkLimitedHintHtml() {
+  const phoneName = game.phone && typeof PHONE_SHOP !== 'undefined' && PHONE_SHOP[game.phone]
+    ? PHONE_SHOP[game.phone].name : '当前手机';
+  if (game.phone === 'nokia') {
+    return '<p class="fold-meta" style="margin:12px 0;padding:8px;background:var(--bg);border-radius:8px;border:1px dashed var(--border)">' +
+      '📱 ' + phoneName + ' 只能查看本人资料 · 换智能手机或购入电脑后可浏览关系网与他人详情</p>';
+  }
+  return '<p class="fold-meta" style="margin:12px 0;padding:8px;background:var(--bg);border-radius:8px;border:1px dashed var(--border)">' +
+    '📡 需智能手机（非诺基亚）或电脑 · 才能浏览关系网与他人详情</p>';
+}
+
+function ensurePlayerNetworkCircles() {
+  if (!game) return;
+  if (!game.playerCircles || typeof game.playerCircles !== 'object' || Array.isArray(game.playerCircles)) {
+    game.playerCircles = { social: [], hobby: [], workplace: [], friends: [], family: [] };
+  }
+  if (typeof migrateSocialCircles === 'function') migrateSocialCircles();
+  const pc = game.playerCircles;
+  const socialEmpty = !pc.social || !pc.social.length || pc.social.every(function (circle) {
+    return !circle.members || circle.members.filter(function (m) { return m.id && m.id !== 'player'; }).length === 0;
+  });
+  if (socialEmpty && typeof populatePlayerSchoolCircles === 'function') populatePlayerSchoolCircles(true);
+  if ((!pc.hobby || !pc.hobby.length) && typeof populatePlayerSchoolCircles === 'function') populatePlayerSchoolCircles(false);
 }
 
 function ensureNetworkStack() {
@@ -11,8 +38,11 @@ function ensureNetworkStack() {
 }
 
 function openNetworkPerson(id) {
-  if (!canUseNetwork()) { addLog('需要手机或电脑才能使用网络', 'fail'); return; }
   if (typeof closeContactsModal === 'function') closeContactsModal();
+  if (id !== 'player' && !canViewFullNetwork()) {
+    addLog('需要智能手机（非诺基亚）或电脑才能查看关系网', 'fail');
+    id = 'player';
+  }
   ensureNetworkStack();
   if (id === 'player') {
     game.networkStack = ['player'];
@@ -26,6 +56,7 @@ function openNetworkPerson(id) {
 
 function networkDrillPerson(id) {
   if (!id || id === 'player') { openNetworkPerson('player'); return; }
+  if (!canViewFullNetwork()) { addLog('需要智能手机（非诺基亚）或电脑才能查看他人', 'fail'); return; }
   openNetworkPerson(id);
 }
 
@@ -43,6 +74,13 @@ function networkGoBack() {
 
 function networkPersonById(id) {
   if (id === 'player') {
+    if (typeof migrateDreamSystem === 'function') migrateDreamSystem();
+    else {
+      if (typeof ensurePlayerHobbies === 'function') ensurePlayerHobbies();
+      if (typeof ensurePlayerMajorExp === 'function') ensurePlayerMajorExp();
+      if (typeof seedPlayerCareerFromMajor === 'function') seedPlayerCareerFromMajor();
+      if (typeof migratePlayerCareerExp === 'function') migratePlayerCareerExp();
+    }
     return {
       id: 'player',
       name: typeof stripForkSuffix === 'function' ? stripForkSuffix(game.playerName) : game.playerName,
@@ -50,8 +88,9 @@ function networkPersonById(id) {
       birthYear: game.birthYear,
       lifeExpectancy: game.lifeExpectancy,
       birthCity: game.playerCity || (typeof PLAYER_HOME_CITY !== 'undefined' ? PLAYER_HOME_CITY : '—'),
-      jobTitle: game.employed && game.employment ? game.market[game.employment.jobIdx].title : '待业',
-      company: game.employed && game.employment ? game.employment.company.name : '',
+      jobTitle: game.employed && game.employment && game.market && game.market[game.employment.jobIdx]
+        ? game.market[game.employment.jobIdx].title : '待业',
+      company: game.employed && game.employment && game.employment.company ? game.employment.company.name : '',
       familiarity: 100, attraction: 0,
       careerExp: (typeof ensurePlayerCareerExp === 'function' ? ensurePlayerCareerExp() : (game.careerExp || {})),
       hobbies: game.hobbies || [],
@@ -78,14 +117,15 @@ function networkPersonById(id) {
 function renderNetworkPanel() {
   const el = document.getElementById('networkPanel');
   if (!el || !game) return;
-  if (!canUseNetwork()) {
-    el.innerHTML = '<p style="color:var(--muted)">📡 网络需要手机或电脑。通讯录仅显示概况，详情请在此查看。</p>';
-    return;
-  }
   if (typeof migrateDreamSystem === 'function') migrateDreamSystem();
-  if (typeof migrateSocialCircles === 'function') migrateSocialCircles();
+  ensurePlayerNetworkCircles();
   ensureNetworkStack();
-  const focusId = game.networkFocusId || game.networkStack[game.networkStack.length - 1] || 'player';
+  let focusId = game.networkFocusId || game.networkStack[game.networkStack.length - 1] || 'player';
+  if (focusId !== 'player' && !canViewFullNetwork()) {
+    focusId = 'player';
+    game.networkFocusId = 'player';
+    game.networkStack = ['player'];
+  }
   game.networkFocusId = focusId;
   el.innerHTML = renderNetworkPersonHub(focusId);
 }
@@ -94,16 +134,17 @@ function renderNetworkPersonHub(id) {
   const p = networkPersonById(id);
   if (!p) return '<p>未找到人物</p>';
   const isPlayer = id === 'player';
+  const fullNet = canViewFullNetwork();
   const gen = p.gender === 'female' ? '女' : p.gender === 'male' ? '男' : '—';
   const ori = p.orientation ? (typeof orientationLabel === 'function' ? orientationLabel(p.orientation) : p.orientation) : '—';
   const lifeLine = typeof personLifespanLine === 'function' ? personLifespanLine(p) : '';
   const displayName = typeof stripForkSuffix === 'function' ? stripForkSuffix(p.name) : p.name;
 
   let h = '';
-  if (game.networkStack && game.networkStack.length > 1) {
+  if (fullNet && game.networkStack && game.networkStack.length > 1) {
     h += '<button type="button" class="btn" style="margin-bottom:8px" onclick="networkGoBack()">← 返回上一层</button>';
   }
-  if (!isPlayer) {
+  if (fullNet && !isPlayer) {
     h += '<button type="button" class="btn" style="margin-bottom:8px;margin-left:6px" onclick="openNetworkPerson(\'player\')">🏠 回到我的网络</button>';
   }
 
@@ -121,7 +162,7 @@ function renderNetworkPersonHub(id) {
   }
 
   if (typeof renderPersonExperienceHtml === 'function') {
-    h += renderPersonExperienceHtml(isPlayer ? null : p, isPlayer);
+    h += renderPersonExperienceHtml(p, isPlayer);
   } else if (isPlayer && typeof playerIndustryExperienceHtml === 'function') {
     h += playerIndustryExperienceHtml();
   }
@@ -131,25 +172,29 @@ function renderNetworkPersonHub(id) {
     h += '<b>理想</b>「' + p.dream.title + '」→ ' + p.dream.career;
     if (p.dream.active) h += ' <span style="color:var(--green)">· 进行中 ' + (p.dream.progress || 0) + '%</span>';
     if (p.dream.completed) h += ' <span style="color:var(--green)">· 已实现</span>';
-    if (!isPlayer && p.dream.active && !p.dream.completed) {
+    if (fullNet && !isPlayer && p.dream.active && !p.dream.completed) {
       const eid = escNetId(id);
       h += '<div style="margin-top:6px"><button type="button" class="btn" style="font-size:.72rem;margin:2px" onclick="operateOnIdeal(\'' + eid + '\')">⚙ 运营一周</button>';
       const has = typeof findIdealContract === 'function' && findIdealContract(id);
       if (!has) h += '<button type="button" class="btn" style="font-size:.72rem;margin:2px" onclick="acceptIdealWorkContract(\'' + eid + '\')">📋 项目制接单</button>';
       h += '</div>';
     }
-    if (!isPlayer && !p.dream.active && !p.dream.completed) {
+    if (fullNet && !isPlayer && !p.dream.active && !p.dream.completed) {
       h += '<button type="button" class="btn" style="font-size:.72rem;margin-top:4px" onclick="sponsorContactIdeal(\'' + escNetId(id) + '\',1)">✨ 赞助理想</button>';
     }
     h += '</div>';
   }
 
-  h += '<p class="fold-meta" style="margin:0 0 6px">点击脑图节点或成员卡片，可继续查看 TA 的三层圈子 · 连线表示同圈相识</p>';
-  if (typeof renderThreeCirclesHub === 'function') {
-    h += renderThreeCirclesHub(id);
-  } else {
-    h += '<p class="fold-meta">圈子模块加载中…</p>';
+  if (fullNet && !isPlayer && !p.dead && typeof relationshipContactActionButtons === 'function') {
+    h += '<div style="margin-top:8px">' + relationshipContactActionButtons(p, escNetId(id)) + '</div>';
   }
+
+  if (fullNet && typeof renderThreeCirclesHub === 'function') {
+    h += renderThreeCirclesHub(id);
+  } else if (isPlayer) {
+    h += networkLimitedHintHtml();
+  }
+
   return h;
 }
 

@@ -386,7 +386,8 @@ function renderLifeCreationStep() {
       buttons = [{ text: '查看高考结果 →', primary: true, handler: lcEnterGaokaoReview }];
     }
   } else if (st.step === 6) {
-    html = '<p><b>第七步 · 轮盘赌 · 第一桶金</b></p><p class="fold-meta">把之前的身份筹码押在轮盘上。红 = 生命 · 黑 = 金钱 · 也可凶狠押单个数字 0-36。</p>';
+    html = '<p><b>第七步 · 轮盘赌 · 第一桶金</b></p><p class="fold-meta">把身份筹码押在轮盘上。<strong>红区 = 生命 · 黑区 = 金钱</strong>；也可单押 0～36。</p>';
+    html += '<p class="fold-meta" style="font-size:.74rem;margin-top:4px">单押数字命中时：<strong>0</strong> = 毕业月遇命中注定之人；<strong>红色数字 N</strong> = 毕业后第 N 年遇感情（不知是谁）；<strong>黑色数字 N</strong> = 毕业后第 N 年彩票中奖。</p>';
     html += '<p style="color:var(--orange);margin:2px 0">告知：第一桶金很重要，当然活着才有命花钱。</p>';
     if (st.phase === 'result') {
       const r = st.roulette;
@@ -808,9 +809,11 @@ function lcRouletteResultText(st) {
   else if (r.pick === 'red' && r.isBlack) lines.push('押红落黑 · 预期寿命受损（' + st.lifeExpectancy + '）');
   else if (r.pick === 'black' && r.isBlack) lines.push('押黑命中 · 祖辈遗产 ¥' + (st.inheritancePending || 0).toLocaleString() + '（待父母离世）');
   else if (r.pick === 'black' && r.isRed) lines.push('押黑落红 · 第一桶金 +¥' + (r.num * 100000).toLocaleString() + '，但折寿少许');
-  else if (r.pick === 'num' && r.num === r.pickNum) lines.push(r.isRed ? '单押命中红 · 命中注定的爱情将在第 ' + r.num + ' 年降临' : '单押命中黑 · 中得彩金 ¥1,000,000');
-  else if (r.isZero) lines.push('开出 0 · 你获得一条命运线索');
-  else lines.push('未中 · 命运自有安排');
+  else if (r.pick === 'num' && r.num === r.pickNum) {
+    if (r.isZero) lines.push('单押命中 0 · 命中注定之人将在<strong>毕业月</strong>出现（你还不知道是谁）');
+    else if (r.isRed) lines.push('单押命中红 ' + r.num + ' · 命中注定感情将在<strong>毕业后第 ' + r.num + ' 年</strong>（你还不知道是谁）');
+    else lines.push('单押命中黑 ' + r.num + ' · 彩票将在<strong>毕业后第 ' + r.num + ' 年</strong>中奖');
+  } else lines.push('未中 · 命运自有安排');
   lines.push('初始现金 ¥' + (st.startCash || 0).toLocaleString() + ' · 预期寿命 ' + (st.lifeExpectancy || 80));
   return lines.join('<br>');
 }
@@ -824,9 +827,10 @@ function applyRouletteOutcome(st) {
   else if (r.pick === 'black' && r.isBlack) { st.inheritanceNum = r.num; st.inheritancePending = r.num * 100000; }
   else if (r.pick === 'black' && r.isRed) { st.startCash += r.num * 100000; st.lifeExpectancy = Math.max(40, st.lifeExpectancy - Math.floor(r.num / 2)); }
   else if (r.pick === 'num' && r.num === r.pickNum) {
-    if (r.isRed) { st.destinyLove = true; st.destinyYear = r.num; }
-    else { st.startCash += 1000000; st.lotteryNum = r.num; }
-  } else if (r.isZero) st.destinyClue = true;
+    if (r.isZero) { st.destinyLove = true; st.destinyYear = 0; }
+    else if (r.isRed) { st.destinyLove = true; st.destinyYear = r.num; }
+    else { st.lotteryNum = r.num; st.lotteryPending = true; }
+  }
 }
 
 function lifeCreationSummaryText(st) {
@@ -834,6 +838,7 @@ function lifeCreationSummaryText(st) {
   const o = st.gaokaoOutcome || {};
   const grad = o.graduationYear || 2010;
   const age = o.startAge != null ? o.startAge : 22;
+  const housing = (st.playerEducation === '高中' || st.playerEducation === '中专') ? '住家里' : '住校或本地住家';
   return '性别：' + (st.playerGender === 'male' ? '男' : '女') + (st.genderRandom ? '（随机）' : '') +
     '\n性向：双性恋 · 偏好' + (st.preferredGender === 'male' ? '男性' : '女性') +
     '\n家境：' + lcFamilyTierLabel(st.familyTier) +
@@ -844,8 +849,9 @@ function lifeCreationSummaryText(st) {
     ' → ' + (o.education || '—') + (o.school && o.school !== 'none' ? ' · ' + (o.schoolLabel || o.school) : '') +
     '\n初始现金：¥' + (st.startCash || 0).toLocaleString() +
     (st.inheritancePending ? '\n祖辈遗产（待父母离世）：¥' + st.inheritancePending.toLocaleString() : '') +
-    (st.destinyLove ? '\n命中注定的爱情 · 毕业月将相遇' : '') +
-    '\n\n' + grad + ' 年 · ' + age + ' 岁 · 离校还有一个月 · 寝室即将到期';
+    (st.destinyLove ? ('\n命中注定爱情 · ' + (st.destinyYear === 0 ? '毕业月相遇' : '毕业后第 ' + st.destinyYear + ' 年') + '（身份未知）') : '') +
+    (st.lotteryPending && st.lotteryNum != null ? '\n彩票运 · 毕业后第 ' + st.lotteryNum + ' 年中奖' : '') +
+    '\n\n' + grad + ' 年 · ' + age + ' 岁 · ' + housing;
 }
 function finishLifeCreation() {
   const st = lifeCreationState;

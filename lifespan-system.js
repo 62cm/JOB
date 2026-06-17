@@ -49,6 +49,7 @@ function initParentLifespans() {
 }
 function initContactLifespan(c, seed) {
   if (!c || c.dead) return c;
+  if (typeof isFamilyKind === 'function' && isFamilyKind(c)) return c;
   const rng = lifespanRng(seed || (c.id || '').length * 17 + (game ? game.week : 0));
   if (c.birthYear == null) {
     const playerAge = typeof getPlayerAge === 'function' ? getPlayerAge() : 22;

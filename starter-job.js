@@ -13,38 +13,6 @@ function migrateOpeningJobEvent(){
   delete game.starterJobWeeksWorked;
 }
 function initOpeningJobEvent(market,edu,jobCompanies,seed){
-  if(!game||!market||!jobCompanies||game.employed)return false;
-  migrateOpeningJobEvent();
-  const rng=seededRand(seed||42);
-  const eligible=[];
-  market.forEach((j,ji)=>{
-    if(typeof isOverAgeLimit==='function'&&isOverAgeLimit(j))return;
-    eligible.push(ji);
-  });
-  if(!eligible.length)return false;
-  shuffleArr(eligible,rng);
-  for(let t=0;t<Math.min(eligible.length,48);t++){
-    const ji=eligible[t],job=market[ji];
-    const pool=(jobCompanies[ji]||[]).slice();
-    if(!pool.length)continue;
-    shuffleArr(pool,rng);
-    for(let ci=0;ci<Math.min(pool.length,10);ci++){
-      const co=pool[ci];
-      const r=seededR(ji*59+ci*17+(seed||0));
-      const openings=genOpeningsForCompany(job,co,r).filter(op=>!op.planned);
-      if(!openings.length)continue;
-      const op=openings[Math.floor(rng()*openings.length)];
-      const offer={
-        company:co,tier:co.tier,importance:op.importance,
-        roleExtra:op.roleExtra||null,annualPay:op.pay,
-        otProfile:op.otProfile||legacyOvertimeProfile(co.tier,op.importance,op.roleExtra,co,job)
-      };
-      hirePlayer(ji,offer,false);
-      game.openingLayoffPending=true;
-      game.openingLayoffCompanyId=co.id||null;
-      return true;
-    }
-  }
   return false;
 }
 function clearOpeningLayoffEvent(){

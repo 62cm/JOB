@@ -174,8 +174,12 @@ function pickWorkplaceColleague(preferKind) {
   return (game.contacts || []).find(function (c) { return c.id === pick.id; }) || null;
 }
 
-function tryColleagueWorkplaceGossip(where, onAfter) {
-  const colleague = pickWorkplaceColleague('team') || pickWorkplaceColleague('department');
+function tryColleagueWorkplaceGossip(where, onAfter, forceStory) {
+  let colleague = pickWorkplaceColleague('team') || pickWorkplaceColleague('department');
+  if (!colleague && forceStory) {
+    const job = game.employment && game.market ? game.market[game.employment.jobIdx] : null;
+    colleague = { id: 'work_gossip_npc', name: '同事', jobTitle: job ? job.title : '职员' };
+  }
   if (!colleague) {
     if (typeof onAfter === 'function') onAfter();
     return;
@@ -185,9 +189,11 @@ function tryColleagueWorkplaceGossip(where, onAfter) {
   if (!colleague.company && game.employment && game.employment.company) colleague.company = game.employment.company.name;
   if (typeof maybeTellWorkplaceStory === 'function') {
     maybeTellWorkplaceStory(colleague, where || '工位', function () {
-      colleague.familiarity = Math.min(100, (colleague.familiarity || 0) + 1);
+      if (colleague.id !== 'work_gossip_npc') {
+        colleague.familiarity = Math.min(100, (colleague.familiarity || 0) + 1);
+      }
       if (typeof onAfter === 'function') onAfter();
-    });
+    }, forceStory ? { force: true } : null);
     return;
   }
   if (typeof onAfter === 'function') onAfter();
@@ -195,14 +201,19 @@ function tryColleagueWorkplaceGossip(where, onAfter) {
 
 function workplaceGossipShiftButtons() {
   if (!game || !game.employed) return null;
-  return [{ text: '☕ 同事八卦', fn: 'doWorkplaceGossipShift()' }];
+  if (typeof isPlayerOnWorkShift === 'function' && isPlayerOnWorkShift() && !game.daily.inOvertime) {
+    const left = typeof dailySlotHoursLeft === 'function' ? dailySlotHoursLeft() : 8;
+    if (left < 1) return null;
+  }
+  return [{ text: '☕ 同事八卦（1h）', fn: 'doWorkplaceGossipShift()' }];
 }
 
 function doWorkplaceGossipShift() {
+  if (typeof workShiftConsumeHours === 'function' && !workShiftConsumeHours(1, '同事八卦')) return;
+  if (typeof closeConsumeModal === 'function') closeConsumeModal(true);
   tryColleagueWorkplaceGossip('工位', function () {
-    if (typeof closeConsumeModal === 'function') closeConsumeModal(true);
-    if (typeof finishWorkShift === 'function') finishWorkShift();
-  });
+    if (typeof workShiftAfterAction === 'function') workShiftAfterAction();
+  }, true);
 }
 
 function tickWorkplaceCircleGossip() {
@@ -218,8 +229,10 @@ function tickWorkplaceCircleGossip() {
   }
 }
 
-function runMediaLifeScandal() {
-  const se = game && game.selfEmploy && game.selfEmploy.media;
+function runMediaLifeScandal(platformId) {
+  let se = null;
+  if (platformId && typeof getSelfShop === 'function') se = getSelfShop(platformId);
+  if (!se && typeof getSelfShop === 'function') se = getSelfShop('douyin') || getSelfShop('bilibili');
   if (!se) { addLog('需先开通自媒体', 'fail'); return; }
   if (se.platform !== 'douyin' && se.track !== '剧情' && se.track !== '生活') {
     addLog('狗血内容适合抖音或剧情/生活赛道', 'fail'); return;

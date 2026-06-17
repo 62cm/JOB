@@ -256,38 +256,70 @@ function resolveBoardVote(approve) {
   if (typeof renderDailyPanel === 'function') renderDailyPanel();
 }
 
+function dismissScamOffer(id) {
+  if (!game || !game.inbox) return;
+  game.inbox = game.inbox.filter(function (it) { return it.id !== id; });
+  if (typeof refreshInboxViews === 'function') refreshInboxViews();
+  if (typeof renderDailyPanel === 'function') renderDailyPanel();
+  if (typeof refreshJobHuntUi === 'function') refreshJobHuntUi();
+  addLog('已忽略可疑招聘', 'info');
+}
+
 function tryScamJobOffer() {
-  if (!game || game.employed || game.gameOver) return;
+  if (!game || game.gameOver) return;
   if (!game.selfEmploy) game.selfEmploy = {};
   if (game.selfEmploy.scamOfferWeek === game.week) return;
-  if (Math.random() > 0.06) return;
+  const hasBaitOffer = (game.inbox || []).some(function (it) {
+    return it.type === 'offer' && (it.scamBait || String(it.id || '').indexOf('_sb_offer') > 0);
+  });
+  if (hasBaitOffer) return;
+  if (Math.random() > 0.35) return;
   game.selfEmploy.scamOfferWeek = game.week;
   const coName = ['鸿运信息', '鑫达科技', '汇通咨询'][Math.floor(Math.random() * 3)];
   (game.inbox || []).unshift({
-    id: 'scam_' + game.week, type: 'offer', read: false,
+    id: 'scam_' + game.week, type: 'offer', read: false, week: game.week,
     title: coName + ' · 电话专员', body: '无需经验，投必中。日结提成，培训三天上岗。'
   });
-  addLog('📧 收到可疑招聘：' + coName + '（投必中）', 'warn');
+  addLog('📧 收到可疑招聘：' + coName + '（投必中）→ 应聘邮箱', 'warn');
+  if (typeof refreshInboxViews === 'function') refreshInboxViews();
+  if (typeof refreshJobHuntUi === 'function') refreshJobHuntUi();
+}
+
+function nudgeScamJobOfferOnJobHunt() {
+  if (!game || game.gameOver) return;
+  if (typeof tryScamJobOffer === 'function') tryScamJobOffer();
 }
 
 function acceptScamJob() {
   if (!game.selfEmploy) game.selfEmploy = {};
-  if (game.employed) { addLog('已有工作', 'fail'); return; }
-  game.selfEmploy.scamBook = game.selfEmploy.scamBook || { contacts: [], calls: 0, income: 0 };
-  game.employed = true;
-  game.employment = {
-    jobIdx: 0, company: { name: '鸿运信息', tier: 'low', scale: 'small', city: game.playerCity || PLAYER_HOME_CITY },
-    annualPay: 96000, roleExtra: 'scam', weeksInCompany: 0
+  const sideOnly = game.employed && game.employment && game.employment.roleExtra !== 'scam';
+  const coName = ['鸿运信息', '鑫达科技', '汇通咨询'][Math.floor(Math.random() * 3)];
+  const offer = {
+    company: { id: 'scam_co_mail', name: coName, tier: 'low', scale: 'small', city: game.playerCity || PLAYER_HOME_CITY },
+    tier: 'low', importance: 'low', annualPay: 96000, scamProduct: '电话营销套餐', scamUnitPrice: 2999
   };
-  for (let i = 0; i < 12; i++) {
-    const gender = Math.random() < 0.5 ? 'male' : 'female';
-    game.selfEmploy.scamBook.contacts.push({
-      id: 'scam_t_' + i, name: typeof pickStrangerDisplayName === 'function' ? pickStrangerDisplayName(gender) : '目标' + i,
-      phone: '1' + Math.floor(1000000000 + Math.random() * 9000000000), called: false
-    });
+  if (typeof initScamEmploymentFromOffer === 'function') initScamEmploymentFromOffer(offer, 0);
+  else {
+    game.selfEmploy.scamBook = game.selfEmploy.scamBook || { contacts: [], calls: 0, income: 0 };
+    game.employed = true;
+    game.employment = {
+      jobIdx: 0, company: offer.company, annualPay: 96000, roleExtra: 'scam', weeksInCompany: 0
+    };
+    for (let i = 0; i < 12; i++) {
+      const gender = Math.random() < 0.5 ? 'male' : 'female';
+      game.selfEmploy.scamBook.contacts.push({
+        id: 'scam_t_' + i, name: typeof pickStrangerDisplayName === 'function' ? pickStrangerDisplayName(gender) : '目标' + i,
+        phone: '1' + Math.floor(1000000000 + Math.random() * 9000000000), called: false,
+        familiarity: 12 + Math.floor(Math.random() * 38)
+      });
+    }
+    game.inbox = (game.inbox || []).filter(function (it) { return String(it.id || '').indexOf('scam_') !== 0; });
   }
-  game.inbox = (game.inbox || []).filter(function (it) { return String(it.id || '').indexOf('scam_') !== 0; });
-  addLog('📒 入职诈骗岗 · 获得特殊通讯簿 ' + game.selfEmploy.scamBook.contacts.length + ' 条线索', 'warn');
+  addLog(sideOnly
+    ? '📒 入坑诈骗岗 · 明面工作保留 · 获得特殊通讯簿'
+    : '📒 入职诈骗岗 · 获得特殊通讯簿 · 需完成销售指标', 'warn');
+  if (typeof renderDailyPanel === 'function') renderDailyPanel();
+  if (typeof refreshJobHuntUi === 'function') refreshJobHuntUi();
   if (typeof updateUI === 'function') updateUI();
 }
 
@@ -314,4 +346,60 @@ function tickIdealCompanyExtensions() {
   migrateCompanyGovernance();
   tickIdealProjects();
   tryScamJobOffer();
+}
+
+function getActiveCompanyProjects(g) {
+  g = g || game;
+  const pc = g && g.playerCompany;
+  if (!pc || !pc.founded || !pc.projects) return [];
+  return pc.projects.filter(function (p) { return (p.progress || 0) < 100 && !p.completed; });
+}
+
+function playerIdealProgressPct(g) {
+  g = g || game;
+  if (!g) return 0;
+  const active = getActiveCompanyProjects(g);
+  if (active.length) {
+    if (active.length === 1) return Math.min(100, Math.round(active[0].progress || 0));
+    const avg = active.reduce(function (s, p) { return s + (p.progress || 0); }, 0) / active.length;
+    return Math.min(100, Math.round(avg));
+  }
+  const con = (g.idealWorkContracts || []).find(function (c) { return c.status === 'active'; });
+  if (con) return Math.min(100, Math.round(con.progress || 0));
+  if (g.playerDream) {
+    if (g.playerDream.completed) return 100;
+    if (g.playerDream.active) return Math.min(100, Math.round(g.playerDream.progress || 0));
+  }
+  return 0;
+}
+
+function playerIdealProgressLabel(g) {
+  g = g || game;
+  if (!g) return '—';
+  const active = getActiveCompanyProjects(g);
+  if (active.length) {
+    if (active.length === 1) {
+      const p = active[0];
+      const name = typeof projectDisplayLabel === 'function' ? projectDisplayLabel(p) : (p.brandName || p.name || '立项');
+      const short = name.length > 10 ? name.slice(0, 10) + '…' : name;
+      return Math.round(p.progress || 0) + '% · ' + short;
+    }
+    const avg = Math.round(active.reduce(function (s, p) { return s + (p.progress || 0); }, 0) / active.length);
+    return avg + '% · ' + active.length + '项在研';
+  }
+  const con = (g.idealWorkContracts || []).find(function (c) { return c.status === 'active'; });
+  if (con) {
+    const t = con.dreamTitle || '项目制';
+    const short = t.length > 10 ? t.slice(0, 10) + '…' : t;
+    return Math.round(con.progress || 0) + '% · ' + short;
+  }
+  if (g.playerDream) {
+    if (g.playerDream.completed) return '已实现';
+    if (g.playerDream.active) {
+      const t = g.playerDream.title || '理想';
+      const short = t.length > 10 ? t.slice(0, 10) + '…' : t;
+      return Math.round(g.playerDream.progress || 0) + '% · ' + short;
+    }
+  }
+  return '无立项';
 }

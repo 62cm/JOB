@@ -178,15 +178,24 @@ function queueWorkplaceStoryModal(person, where, story, onAfter) {
   return false;
 }
 
-function maybeTellWorkplaceStory(person, where, onAfter) {
-  if (!person || Math.random() >= workplaceStoryChance(where)) {
+function maybeTellWorkplaceStory(person, where, onAfter, opts) {
+  opts = opts || {};
+  if (!person) {
     if (typeof onAfter === 'function') onAfter();
     return null;
   }
-  const story = pickWorkplaceStoryForPerson(person);
-  if (!story || !story.text) {
+  if (!opts.force && Math.random() >= workplaceStoryChance(where)) {
     if (typeof onAfter === 'function') onAfter();
     return null;
+  }
+  let story = pickWorkplaceStoryForPerson(person);
+  if (!story || !story.text) {
+    const generic = [
+      '「你听说没，隔壁组又要改需求了。」',
+      '「主管今天脸色不对，悠着点。」',
+      '「食堂今天的菜是真不行，有人都在点外卖。」'
+    ];
+    story = { type: 'company', text: generic[Math.floor(Math.random() * generic.length)] };
   }
   queueWorkplaceStoryModal(person, where, story, onAfter);
   return story;

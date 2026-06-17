@@ -641,6 +641,7 @@ function getMakeLoveBlockReason(skipIntimacy){
     const menstrualBlock=getMenstrualMakeLoveBlock();
     if(menstrualBlock)return menstrualBlock;
   }
+  if(typeof housingAllowsSex==='function'&&!housingAllowsSex())return housingRestrictionHint('sex');
   return null;
 }
 const NOKIA_PHONE_CHECK_CASH=10000;
@@ -1364,6 +1365,10 @@ function agreeAffairMarriage(contactId){
   if(typeof closeConsumeModal==='function')closeConsumeModal(true);
   const c=findContact(contactId);
   if(!c)return;
+  if((!game.married||game.divorced)&&typeof housingAllowsMarriage==='function'&&!housingAllowsMarriage()){
+    addLog(housingRestrictionHint('marry'),'fail');
+    return;
+  }
   c.affairStatus='proposal_pending';
   c.marriageAgreedWeek=game.week;
   c.marriageUrgeCount=0;
@@ -1380,6 +1385,10 @@ function agreeAffairMarriage(contactId){
 function completeAffairWedding(contactId){
   const c=findContact(contactId);
   if(!c)return;
+  if((!game.married||game.divorced)&&typeof housingAllowsMarriage==='function'&&!housingAllowsMarriage()){
+    addLog(housingRestrictionHint('marry'),'fail');
+    return;
+  }
   if(!spendCash(AFFAIR_WEDDING_COST,c.name+'婚礼'))return;
   c.affairStatus='married_affair';
   c.marriageAgreedWeek=0;

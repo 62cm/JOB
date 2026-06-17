@@ -317,7 +317,9 @@ function renderCircleMindMapSvg(graph, centerId, width, height) {
     svg += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + r + '" fill="' + (isCenter ? 'var(--accent)' : 'var(--card)') + '" stroke="var(--border)" stroke-width="1.5"/>';
     const label = (n.label || '').length > 3 ? (n.label || '').slice(0, 3) + '…' : (n.label || '?');
     svg += '<text x="' + p.x + '" y="' + (p.y + 3) + '" text-anchor="middle" font-size="8" fill="var(--text)" pointer-events="none">' + label + '</text>';
-    svg += '<text x="' + p.x + '" y="' + (p.y + r + 10) + '" text-anchor="middle" font-size="7" fill="var(--muted)" pointer-events="none">熟' + Math.round(n.fam) + '/吸' + Math.round(n.attr) + '</text>';
+    if (!isCenter && n.id !== 'player') {
+      svg += '<text x="' + p.x + '" y="' + (p.y + r + 10) + '" text-anchor="middle" font-size="7" fill="var(--muted)" pointer-events="none">熟' + Math.round(n.fam) + '/吸' + Math.round(n.attr) + '</text>';
+    }
     svg += '</g>';
   });
   svg += '</svg>';
@@ -333,7 +335,23 @@ function renderMemberChip(memberId, meta, ownerId, isSelf, kind) {
   const attr = meta && meta.attraction != null ? meta.attraction : (c && c.attraction);
   const eid = escNetId(memberId);
   if (isSelf || memberId === ownerId) {
-    return '<span class="fold-meta" style="display:inline-block;margin:2px;padding:4px 8px;background:var(--accent);color:var(--bg);border-radius:6px;font-size:.72rem">' + name + '（中心）</span>';
+    let expHint = '';
+    if (ownerId === 'player' && typeof ensurePlayerHobbies === 'function') {
+      ensurePlayerHobbies();
+      ensurePlayerMajorExp();
+      if (typeof ensurePlayerEduHistory === 'function') ensurePlayerEduHistory();
+      const parts = [];
+      (game.hobbies || []).slice(0, 1).forEach(function (t) {
+        parts.push('爱好' + Math.floor((game.hobbyExp || {})[t] || 0) + '%');
+      });
+      if (game.playerMajor) parts.push('专业' + Math.floor((game.majorExp || {})[game.playerMajor] || 0) + '%');
+      if (game.employed && game.employment && game.market) {
+        const jt = game.market[game.employment.jobIdx].title;
+        parts.push(typeof playerJobCareerExp === 'function' ? jt + playerJobCareerExp(jt) + '%' : jt);
+      }
+      if (parts.length) expHint = '<br><span class="fold-meta" style="font-size:.65rem">' + parts.join(' · ') + '</span>';
+    }
+    return '<span class="fold-meta" style="display:inline-block;margin:2px;padding:4px 8px;background:var(--accent);color:var(--bg);border-radius:6px;font-size:.72rem">' + name + '（中心）' + expHint + '</span>';
   }
   const roleLbl = meta && meta.role ? ' · ' + meta.role : (c && c.role ? ' · ' + c.role : (c && c.jobTitle ? ' · ' + c.jobTitle : ''));
   let srcLbl = '';
@@ -366,7 +384,7 @@ function renderCircleKindSection(personId, kind) {
       '；下方成员列表为熟悉度≥' + (typeof FRIENDS_FAM_THRESHOLD !== 'undefined' ? FRIENDS_FAM_THRESHOLD : 60) + '（通讯录「关注」可强制入圈）</p>';
   }
   if (kind === 'family') {
-    h += '<p class="fold-meta" style="margin:8px 0 4px">树状图自上而下：曾祖辈 → 祖辈 → 父母辈 → 本人辈 → 子女辈 · 虚线为配偶</p>';
+    h += '<p class="fold-meta" style="margin:8px 0 4px">树状图自上而下：祖辈 → 父母辈 → 本人辈 → 子女辈 · 虚线为配偶</p>';
   }
   let graphCircles = circles;
   if (kind === 'friends') {
@@ -431,6 +449,9 @@ function renderThreeCirclesHub(personId) {
 
 function migrateSocialCircles() {
   if (!game) return;
+  if (!game.playerCircles || typeof game.playerCircles !== 'object' || Array.isArray(game.playerCircles)) {
+    game.playerCircles = { social: [], hobby: [], workplace: [], friends: [], family: [] };
+  }
   game.playerCircles = game.playerCircles || { social: [], hobby: [], workplace: [], friends: [], family: [] };
   populatePlayerSchoolCircles(false);
   if (typeof syncAllPlayerStaffCircles === 'function') syncAllPlayerStaffCircles();

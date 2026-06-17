@@ -243,6 +243,7 @@ function payMortgageLumpSum(){
   game.cash-=need;
   game.mortgagePaidOff=true;
   game.mortgagePaymentsMade=typeof MORTGAGE_MONTHS!=='undefined'?MORTGAGE_MONTHS:360;
+  game.housingType='commercial';
   if(typeof ledgerAddExpense==='function')ledgerAddExpense('housing','🏠','房贷一次性还清',need,false);
   addLog('🏠 已一次性还清房贷 ¥'+need.toLocaleString(),'success');
   if(typeof checkVictory==='function')checkVictory();
@@ -257,6 +258,11 @@ function buyVilla(){
   if(!confirm('购买别墅（花园·泳池·管家）？\n¥'+VILLA_PRICE.toLocaleString()+' · 每月管家 ¥'+VILLA_BUTLER_MONTHLY.toLocaleString()))return;
   game.cash-=VILLA_PRICE;
   game.villaOwned=true;
+  game.housingType='villa';
+  game.livingSituation='owned';
+  game.livingAtHome=false;
+  game.inSchoolDorm=false;
+  game.rentPlan=null;
   if(typeof ledgerAddExpense==='function')ledgerAddExpense('housing','🏡','购置别墅',VILLA_PRICE,false);
   if(typeof syncAllPlayerStaffCircles==='function')syncAllPlayerStaffCircles();
   else if(typeof syncVillaStaffToWorkplaceCircle==='function')syncVillaStaffToWorkplaceCircle();
@@ -748,9 +754,10 @@ function appendPropertyMonthlyExpenses(exp){
 function propertyStatusLabel(){
   const bits=[];
   if(game.villaOwned)bits.push('别墅');
+  if(game.ownsHome&&!game.mortgagePaidOff)bits.push('商品房按揭');
+  else if(game.ownsHome&&game.mortgagePaidOff)bits.push('商品房');
   if(hasPlayerCompany())bits.push('自有公司');
-  if(game.mortgagePaidOff&&game.ownsHome&&!game.villaOwned)bits.push('房贷已清');
-  return bits.length?bits.join(' · '):'';
+  return bits.filter(Boolean).join(' · ');
 }
 function renderPropertyPanel(){
   if(!game)return '';
@@ -761,13 +768,8 @@ function renderPropertyPanel(){
   h+='<span class="property-fold-cur phone-fold-cur fold-meta"'+(open?'':' style="display:none"')+'>'+(status?' · '+status:'')+'</span>';
   h+='<span class="phone-fold-chev property-fold-chev" style="margin-left:auto;color:var(--muted)">'+(open?'▼':'▶')+'</span></div>';
   h+='<div class="phone-fold-body property-fold-body"'+(open?'':' style="display:none"')+'>';
-  if(game.ownsHome&&!game.mortgagePaidOff){
-    const need=mortgageLumpPayoffRemaining();
-    h+='<button class="btn btn-phone-shop" onclick="payMortgageLumpSum()">💰 房贷一次性还清 ¥'+(need/10000).toFixed(0)+'万</button><br>';
-  }else if(game.mortgagePaidOff)h+='<p class="fold-meta" style="color:var(--green)">房贷已还清</p>';
-  if(!game.villaOwned){
-    h+='<button class="btn btn-phone-shop" onclick="buyVilla()">🏡 购买别墅 ¥'+(VILLA_PRICE/10000)+'万 · 花园泳池</button><br>';
-  }else h+='<p class="fold-meta" style="color:var(--green)">已拥有别墅 · 管家 ¥'+(VILLA_BUTLER_MONTHLY/10000)+'万/月</p>';
+  if(typeof renderHousingPanel==='function')h+=renderHousingPanel();
+  h+='<div class="panel-title" style="margin:10px 0 4px">🏢 公司</div>';
   if(game.villaOwned){
     const vf=game.villaFacilities||{};
     h+='<p class="fold-meta" style="margin-top:4px"><b>别墅设施</b>（各 ¥'+(VILLA_FACILITY_COST/10000)+'万）</p>';
