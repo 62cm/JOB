@@ -35,7 +35,8 @@ function fertilityIvfEligible(){
 }
 function fertilityNaturalProcreateEligible(){
   if(!canStartFertilityOrder())return false;
-  return !!(game.married&&!game.divorced&&!isSameSexCouple());
+  if(typeof hasPrimaryPartner==='function'&&hasPrimaryPartner()&&!game.divorced&&!isSameSexCouple())return true;
+  return false;
 }
 function showHomeFertilityBtn(){
   if(game.fertilityOrder)return true;

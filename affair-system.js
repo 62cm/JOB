@@ -431,7 +431,7 @@ function isPartnerAwakeForPhoneSex(phase){
 }
 function getPhoneSexBlockReason(skipIntimacy){
   if(!game||game.gameOver)return '游戏已结束';
-  if(!game.married||game.divorced)return '仅已婚可电话性爱';
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner())return '需有固定伴侣才可电话性爱';
   if(!game.longDistance)return '同城请面对面做爱';
   if(isPlayerImprisoned())return '监禁中无法电话性爱';
   const ph=game.daily&&game.daily.phase;
@@ -442,7 +442,11 @@ function getPhoneSexBlockReason(skipIntimacy){
     return '你不在家，无法电话性爱';
   }
   if(sexSessionsLeft()<=0)return '本周做爱次数已用完（'+SEX_WEEKLY_LIMIT+'次）';
-  if(!skipIntimacy&&(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0)return '亲密度过低（≤0），对方拒绝';
+  if(typeof partnerAttractionMeetsSexThreshold==='function'&&!partnerAttractionMeetsSexThreshold()){
+    const need=typeof REL_PHYSICAL_ATTR!=='undefined'?REL_PHYSICAL_ATTR:52;
+    const cur=typeof getPartnerAttraction==='function'?getPartnerAttraction():0;
+    return '吸引力不足（需≥'+need+'，当前 '+cur+'）';
+  }
   if(typeof getMenstrualMakeLoveBlock==='function'){
     const menstrualBlock=getMenstrualMakeLoveBlock();
     if(menstrualBlock)return menstrualBlock.replace(/做爱/g,'电话性爱');
@@ -457,7 +461,7 @@ function getPhoneSexBlockReason(skipIntimacy){
   return null;
 }
 function ensurePartnerPresence(phase){
-  if(!game||!game.married||game.divorced||game.longDistance)return;
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()||game.longDistance)return;
   const d=game.daily;if(!d)return;
   const ph=phase||(d.phase)||'morning';
   if(d.partnerPresenceRolled&&d._partnerPresencePhase===ph)return;
@@ -506,7 +510,7 @@ function reducePartnerNeglect(amount){
   game.partnerNeglectPoints=Math.max(0,before-(amount||0.18));
 }
 function isPartnerAllnightSleeping(){
-  if(!game||!game.married||game.divorced||game.longDistance)return false;
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()||game.longDistance)return false;
   const d=game.daily;
   if(!d||d.phase!=='allnight')return false;
   if(d.partnerAllnightStayedOut)return false;
@@ -516,13 +520,13 @@ function isPartnerAllnightSleeping(){
   return !!(d.partnerForcedAsleep);
 }
 function isPartnerCatchUpSleeping(phase){
-  if(!game||!game.married||game.divorced||game.longDistance)return false;
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()||game.longDistance)return false;
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(ph!=='morning')return false;
   return !!(game.daily&&game.daily.partnerCatchUpSleep);
 }
 function isPartnerOutForFun(phase){
-  if(!game||!game.married||game.divorced||game.longDistance)return false;
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()||game.longDistance)return false;
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(ph==='rest')return false;
   if(typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return false;
@@ -545,7 +549,7 @@ function bumpPartnerAffairRisk(amount){
   }
 }
 function isSpouseAtHome(phase){
-  if(!game||!game.married||game.divorced||game.longDistance)return false;
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()||game.longDistance)return false;
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(ph==='rest')return true;
   if(typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return true;
@@ -565,7 +569,7 @@ function canEatCoupleSnack(phase){
   return {ok:true,reason:''};
 }
 function getSpouseLocationLabel(phase){
-  if(!game||!game.married||game.divorced)return '';
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner())return '';
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(game.longDistance)return '异地·'+(typeof PLAYER_HOME_CITY!=='undefined'?PLAYER_HOME_CITY:'家乡');
   if(ph==='morning'&&typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return '在家补觉';
@@ -626,7 +630,10 @@ function partnerAbsentSexReason(ph){
 }
 function getMakeLoveBlockReason(skipIntimacy){
   if(!game||game.gameOver)return '游戏已结束';
-  if(!game.married||game.divorced)return '仅已婚可做爱';
+  if(typeof partnerRomanceAllowsHomeSex==='function'&&!partnerRomanceAllowsHomeSex()){
+    if(typeof hasPrimaryPartner==='function'&&hasPrimaryPartner())return '当前关系无法同房';
+    return '需恋爱、同居或已婚才可做爱';
+  }
   if(game.longDistance)return '异地分居，无法同房';
   if(isPlayerImprisoned())return '监禁中无法同房';
   const ph=game.daily&&game.daily.phase;
@@ -636,7 +643,11 @@ function getMakeLoveBlockReason(skipIntimacy){
   const partnerBlock=partnerAbsentSexReason(ph);
   if(partnerBlock)return partnerBlock;
   if(sexSessionsLeft()<=0)return '本周做爱次数已用完（'+SEX_WEEKLY_LIMIT+'次）';
-  if(!skipIntimacy&&(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0)return '亲密度过低（≤0），对方拒绝';
+  if(typeof partnerAttractionMeetsSexThreshold==='function'&&!partnerAttractionMeetsSexThreshold()){
+    const need=typeof REL_PHYSICAL_ATTR!=='undefined'?REL_PHYSICAL_ATTR:52;
+    const cur=typeof getPartnerAttraction==='function'?getPartnerAttraction():0;
+    return '吸引力不足（需≥'+need+'，当前 '+cur+'）';
+  }
   if(typeof getMenstrualMakeLoveBlock==='function'){
     const menstrualBlock=getMenstrualMakeLoveBlock();
     if(menstrualBlock)return menstrualBlock;

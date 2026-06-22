@@ -55,7 +55,7 @@ const COMPANY_KPI_SRC = fs.readFileSync(path.join(__dirname, 'company-kpi.js'), 
 const LIFE_CREATION_SRC = fs.readFileSync(path.join(__dirname, 'life-creation.js'), 'utf8');
 const NETWORK_PANEL_SRC = fs.readFileSync(path.join(__dirname, 'network-panel.js'), 'utf8');
 const SELF_EMPLOY_SRC = fs.readFileSync(path.join(__dirname, 'self-employ.js'), 'utf8');
-const GAME_BUILD_ID = '2026.06.17-remove-work-banner';
+const GAME_BUILD_ID = '2026.06.17-gaokao-bonus-bet-x3';
 const CASINO_WAIT_SCALE = 0.5;
 function casinoWaitMs(ms){return Math.max(1,Math.round(ms*CASINO_WAIT_SCALE))}
 const CASINO_TIMING = {
@@ -5727,34 +5727,39 @@ function declineInterview(inboxId){
 }
 function buyDateNight(){
   if(!game||game.gameOver)return;
-  if(!game.married||game.divorced){addLog('仅已婚可约会','fail');return}
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需恋爱、同居或已婚才可约会','fail');return}
   if(game.longDistance){addLog('异地请使用线上约会','fail');return}
   buyDateNightDaily();
 }
 function buyOnlineDate(){
   if(!game||game.gameOver)return;
-  if(!game.married||game.divorced){addLog('仅已婚可约会','fail');return}
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需恋爱、同居或已婚才可约会','fail');return}
   if(!game.longDistance){addLog('同城请通过日常外出约会','fail');return}
   buyOnlineDateDaily();
 }
 function buyDateNightDaily(){
   if(!game||game.gameOver)return false;
-  if(!game.married||game.divorced){addLog('仅已婚可约会','fail');return false}
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需恋爱、同居或已婚才可约会','fail');return false}
   if(game.longDistance){addLog('异地请使用线上约会','fail');return false}
   if(!spendCash(DATE_COST,'约会'))return false;
   game.lastDateWeek=game.week;
-  addStress(-5,'约会 ');adjustSpouseIntimacy(1);
+  addStress(-5,'约会 ');
+  if(typeof bumpPartnerRomanceSocial==='function')bumpPartnerRomanceSocial(1,0,1);
+  else adjustSpouseIntimacy(1);
   addLog('💑 与伴侣约会','info');
   renderSpendingPanel();updateUI();
   return true;
 }
 function buyOnlineDateDaily(){
   if(!game||game.gameOver)return false;
-  if(!game.married||game.divorced){addLog('仅已婚可约会','fail');return false}
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需恋爱、同居或已婚才可约会','fail');return false}
   if(!game.longDistance){addLog('同城请线下约会','fail');return false}
   game.lastDateWeek=game.week;
   addStress(-2,'线上约会 ');
-  if(Math.random()<0.5)adjustSpouseIntimacy(1);
+  if(typeof bumpPartnerRomanceSocial==='function'){
+    if(Math.random()<0.5)bumpPartnerRomanceSocial(1,0,1);
+    else bumpPartnerRomanceSocial(-1,0,-1);
+  }else if(Math.random()<0.5)adjustSpouseIntimacy(1);
   else adjustSpouseIntimacy(-1);
   addLog('📱 与伴侣视频约会','info');
   renderSpendingPanel();updateUI();
@@ -7807,7 +7812,7 @@ function finalizeDivorce(opts){
   if(!game||game.divorced)return;
   const o=opts||{};
   if(typeof archiveGiftWishHistoryOnDivorce==='function')archiveGiftWishHistoryOnDivorce();
-  game.divorced=true;game.married=false;game.affairActive=false;game.partnerAffairActive=false;game.partnerStdActive=false;game.livingOffSpouse=false;
+  game.divorced=true;game.married=false;game.romanceStage=null;game.affairActive=false;game.partnerAffairActive=false;game.partnerStdActive=false;game.livingOffSpouse=false;
   game.longDistance=false;
   game.spouseIntimacy=0;
   game.lastDateWeek=0;
@@ -8454,7 +8459,7 @@ function startPregnancy(fromAffair,forceSubject){
   if(forceSubject==='player'&&game.playerGender!=='female')subject=resolvePregnantSubject();
   if(!subject){
     game.pregnancyBioFather=pregnancyBioFatherFromContext(!!fromAffair,'partner');
-    game.pregnancyConceivedMarried=!!(game.married&&!game.divorced);
+    game.pregnancyConceivedMarried=typeof hasPrimaryPartner==='function'?hasPrimaryPartner():!!(game.married&&!game.divorced);
     initChildRecordAtBirth();
     addStress(STRESS_CHILD_BIRTH,'怀孕 ');
     addLog('👶 '+(fromAffair?'婚外情怀孕':'怀孕成功')+'！','success');
@@ -8467,7 +8472,7 @@ function startPregnancy(fromAffair,forceSubject){
   game.pregnancyWeeksLeft=PREGNANCY_WEEKS;
   game.pregnancyIntimacyNet=0;
   game.pregnancyBioFather=pregnancyBioFatherFromContext(!!fromAffair,subject);
-  game.pregnancyConceivedMarried=!!(game.married&&!game.divorced);
+  game.pregnancyConceivedMarried=typeof hasPrimaryPartner==='function'?hasPrimaryPartner():!!(game.married&&!game.divorced);
   syncAffairState();
   addStress(STRESS_CHILD_BIRTH,'怀孕 ');
   const who=subject==='player'?'你':pregnancyWhoLabel();
@@ -8517,7 +8522,7 @@ function completePregnancyBirth(){
 function tryConceiveFromSex(noCondom,fromAffair){
   if(!game||game.pregnant||game.hasChildren||game.homeless)return false;
   if(!fromAffair&&isSameSexCouple())return false;
-  if(!fromAffair&&(!game.married||game.divorced))return false;
+  if(!fromAffair&&((typeof hasPrimaryPartner==='function'&&!hasPrimaryPartner())||game.divorced))return false;
   let p=noCondom?PREGNANCY_CHANCE_RAW:PREGNANCY_CHANCE_SAFE;
   if(typeof menstrualConceptionChance==='function')p=menstrualConceptionChance(!!noCondom);
   else if(game.procreateIntentWeek===game.week&&noCondom)p=Math.max(p,PREGNANCY_CHANCE_PROC_CREATE);
@@ -8545,21 +8550,11 @@ function runPhoneSexSession(){
 }
 function promptPhoneSex(){
   if(!game||game.gameOver)return;
-  if(!game.married||game.divorced){addLog('仅已婚可电话性爱','fail');return}
-  const intimFail=(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0;
-  const block=typeof getPhoneSexBlockReason==='function'?getPhoneSexBlockReason(intimFail):null;
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需有固定伴侣才可电话性爱','fail');return}
+  const block=typeof getPhoneSexBlockReason==='function'?getPhoneSexBlockReason(true):null;
   if(block){
     if(game._dailySexPendingHours)clearDailySexReserve();
     showConsumeModal({icon:'📞',title:'无法电话性爱',html:block,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
-    return;
-  }
-  if(intimFail){
-    if(game._dailySexPendingHours)clearDailySexReserve();
-    showConsumeModal({
-      icon:'📞',title:'电话性爱',
-      html:'亲密度 <b>'+game.spouseIntimacy+'</b> 过低，对方拒绝。<br><span class="fold-meta">未获得减压效果 · 可再次尝试</span>',
-      buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]
-    });
     return;
   }
   if(typeof interceptMakeLoveForCycle==='function'&&interceptMakeLoveForCycle(1))return;
@@ -8569,7 +8564,10 @@ function promptPhoneSex(){
   }
   const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
   const devil=typeof isAllnightDevilHours==='function'&&isAllnightDevilHours();
-  let html='亲密度 <b>'+game.spouseIntimacy+'</b><br>'+
+  const attr=typeof getPartnerAttraction==='function'?getPartnerAttraction():null;
+  let html=(game.married&&!game.divorced
+    ?('亲密度 <b>'+game.spouseIntimacy+'</b><br>')
+    :('吸引 <b>'+attr+'</b><br>'))+
     '电话性爱：减压效果约为同房的一半<br>'+
     '每次约 -2 压力 · 20% 不和谐 +5<br>'+
     '<span class="fold-meta">不会怀孕 · 占 2h · 与做爱共用每周次数</span>';
@@ -8670,22 +8668,12 @@ function resolveProcCreateCondomBetrayal(){
 }
 function promptMakeLove(batch){
   if(!game||game.gameOver)return;
-  if(!game.married||game.divorced){addLog('仅已婚可做爱','fail');return}
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需恋爱、同居或已婚才可做爱','fail');return}
   batch=Math.max(1,Math.floor(batch)||1);
-  const intimFail=(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0;
-  const block=typeof getMakeLoveBlockReason==='function'?getMakeLoveBlockReason(intimFail):null;
+  const block=typeof getMakeLoveBlockReason==='function'?getMakeLoveBlockReason(true):null;
   if(block){
     if(game._dailySexPendingHours)clearDailySexReserve();
     showConsumeModal({icon:'💔',title:'无法做爱',html:block,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
-    return;
-  }
-  if(intimFail){
-    if(game._dailySexPendingHours)clearDailySexReserve();
-    showConsumeModal({
-      icon:'💔',title:'夫妻生活',
-      html:'亲密度 <b>'+game.spouseIntimacy+'</b> 过低，对方拒绝。<br><span style="color:var(--muted)">未获得减压效果 · 可再次尝试</span>',
-      buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]
-    });
     return;
   }
   if(typeof interceptMakeLoveForCycle==='function'&&interceptMakeLoveForCycle(batch))return;
@@ -8696,7 +8684,10 @@ function promptMakeLove(batch){
   const procOn=game.procreateIntentWeek===game.week;
   const sameSex=isSameSexCouple();
   const partnerAffair=partnerHasExtramaritalAffair();
-  let html='亲密度 <b>'+game.spouseIntimacy+'</b><br>'+
+  const attr=typeof getPartnerAttraction==='function'?getPartnerAttraction():null;
+  let html=(game.married&&!game.divorced
+    ?('亲密度 <b>'+game.spouseIntimacy+'</b><br>')
+    :('吸引 <b>'+attr+'</b> · 熟悉 <b>'+(typeof getPartnerFamiliarity==='function'?getPartnerFamiliarity():'—')+'</b><br>'))+
     sexSafeOptionLabel()+'：每次 -5 压力 · 20% 不和谐 +10<br>'+
     (sameSex
       ?(isSameSexMaleCouple()
@@ -8776,7 +8767,6 @@ function makeLoveBatch(batch,noCondom){
 }
 function masturbateBatch(batch){
   if(!game||game.gameOver)return;
-  if(!game.divorced&&!game.married){addLog('无法自慰','fail');return}
   batch=Math.max(1,Math.floor(batch)||1);
   const c=ensureConsumption();if(!c)return;
   if(masturbationSessionsLeft()<batch){addLog('本周剩余 '+masturbationSessionsLeft()+' 次','fail');return}

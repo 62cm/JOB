@@ -703,7 +703,7 @@
     <h2>万物涨落 · 理想人生</h2>
     <p class="storage-hint">存档保存在本机浏览器（GitHub Pages 在线玩同样有效，仅当前浏览器；换电脑或换浏览器无存档）</p>
     <p style="font-size:.92rem;color:var(--text);line-height:1.55;margin:8px 0 4px">在一切消失前，探索理想的人生。</p>
-    <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 2026.06.17-remove-work-banner · 若线上数值不对请 Ctrl+F5 强刷</p>
+    <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 2026.06.17-gaokao-bonus-bet-x3 · 若线上数值不对请 Ctrl+F5 强刷</p>
     <div class="slot-grid" id="slotGrid"></div>
     <div id="charCreatePanel" class="char-create-panel" style="display:none">
       <p style="font-weight:600;margin-bottom:8px">档位 <span id="newSlotLabel">1</span> · 创造人生</p>
@@ -1407,7 +1407,7 @@ const AFFAIR_MARRIED_WEEKS = 7 * 52;
 const SAVE_SLOT_COUNT = 3;
 const LS_SLOTS = 'csg_slots_v3';
 const LS_SLOTS_BACKUP = 'csg_slots_backup_v1';
-const GAME_BUILD_ID = '2026.06.17-remove-work-banner';
+const GAME_BUILD_ID = '2026.06.17-gaokao-bonus-bet-x3';
 const CHILD_RAISING_MONTHS = 216;
 const CHILD_LIVING_COST = 20000;
 const PATERNITY_TEST_COST = 5000;
@@ -5666,34 +5666,39 @@ function declineInterview(inboxId){
 }
 function buyDateNight(){
   if(!game||game.gameOver)return;
-  if(!game.married||game.divorced){addLog('仅已婚可约会','fail');return}
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需恋爱、同居或已婚才可约会','fail');return}
   if(game.longDistance){addLog('异地请使用线上约会','fail');return}
   buyDateNightDaily();
 }
 function buyOnlineDate(){
   if(!game||game.gameOver)return;
-  if(!game.married||game.divorced){addLog('仅已婚可约会','fail');return}
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需恋爱、同居或已婚才可约会','fail');return}
   if(!game.longDistance){addLog('同城请通过日常外出约会','fail');return}
   buyOnlineDateDaily();
 }
 function buyDateNightDaily(){
   if(!game||game.gameOver)return false;
-  if(!game.married||game.divorced){addLog('仅已婚可约会','fail');return false}
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需恋爱、同居或已婚才可约会','fail');return false}
   if(game.longDistance){addLog('异地请使用线上约会','fail');return false}
   if(!spendCash(DATE_COST,'约会'))return false;
   game.lastDateWeek=game.week;
-  addStress(-5,'约会 ');adjustSpouseIntimacy(1);
+  addStress(-5,'约会 ');
+  if(typeof bumpPartnerRomanceSocial==='function')bumpPartnerRomanceSocial(1,0,1);
+  else adjustSpouseIntimacy(1);
   addLog('💑 与伴侣约会','info');
   renderSpendingPanel();updateUI();
   return true;
 }
 function buyOnlineDateDaily(){
   if(!game||game.gameOver)return false;
-  if(!game.married||game.divorced){addLog('仅已婚可约会','fail');return false}
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需恋爱、同居或已婚才可约会','fail');return false}
   if(!game.longDistance){addLog('同城请线下约会','fail');return false}
   game.lastDateWeek=game.week;
   addStress(-2,'线上约会 ');
-  if(Math.random()<0.5)adjustSpouseIntimacy(1);
+  if(typeof bumpPartnerRomanceSocial==='function'){
+    if(Math.random()<0.5)bumpPartnerRomanceSocial(1,0,1);
+    else bumpPartnerRomanceSocial(-1,0,-1);
+  }else if(Math.random()<0.5)adjustSpouseIntimacy(1);
   else adjustSpouseIntimacy(-1);
   addLog('📱 与伴侣视频约会','info');
   renderSpendingPanel();updateUI();
@@ -7746,7 +7751,7 @@ function finalizeDivorce(opts){
   if(!game||game.divorced)return;
   const o=opts||{};
   if(typeof archiveGiftWishHistoryOnDivorce==='function')archiveGiftWishHistoryOnDivorce();
-  game.divorced=true;game.married=false;game.affairActive=false;game.partnerAffairActive=false;game.partnerStdActive=false;game.livingOffSpouse=false;
+  game.divorced=true;game.married=false;game.romanceStage=null;game.affairActive=false;game.partnerAffairActive=false;game.partnerStdActive=false;game.livingOffSpouse=false;
   game.longDistance=false;
   game.spouseIntimacy=0;
   game.lastDateWeek=0;
@@ -8393,7 +8398,7 @@ function startPregnancy(fromAffair,forceSubject){
   if(forceSubject==='player'&&game.playerGender!=='female')subject=resolvePregnantSubject();
   if(!subject){
     game.pregnancyBioFather=pregnancyBioFatherFromContext(!!fromAffair,'partner');
-    game.pregnancyConceivedMarried=!!(game.married&&!game.divorced);
+    game.pregnancyConceivedMarried=typeof hasPrimaryPartner==='function'?hasPrimaryPartner():!!(game.married&&!game.divorced);
     initChildRecordAtBirth();
     addStress(STRESS_CHILD_BIRTH,'怀孕 ');
     addLog('👶 '+(fromAffair?'婚外情怀孕':'怀孕成功')+'！','success');
@@ -8406,7 +8411,7 @@ function startPregnancy(fromAffair,forceSubject){
   game.pregnancyWeeksLeft=PREGNANCY_WEEKS;
   game.pregnancyIntimacyNet=0;
   game.pregnancyBioFather=pregnancyBioFatherFromContext(!!fromAffair,subject);
-  game.pregnancyConceivedMarried=!!(game.married&&!game.divorced);
+  game.pregnancyConceivedMarried=typeof hasPrimaryPartner==='function'?hasPrimaryPartner():!!(game.married&&!game.divorced);
   syncAffairState();
   addStress(STRESS_CHILD_BIRTH,'怀孕 ');
   const who=subject==='player'?'你':pregnancyWhoLabel();
@@ -8456,7 +8461,7 @@ function completePregnancyBirth(){
 function tryConceiveFromSex(noCondom,fromAffair){
   if(!game||game.pregnant||game.hasChildren||game.homeless)return false;
   if(!fromAffair&&isSameSexCouple())return false;
-  if(!fromAffair&&(!game.married||game.divorced))return false;
+  if(!fromAffair&&((typeof hasPrimaryPartner==='function'&&!hasPrimaryPartner())||game.divorced))return false;
   let p=noCondom?PREGNANCY_CHANCE_RAW:PREGNANCY_CHANCE_SAFE;
   if(typeof menstrualConceptionChance==='function')p=menstrualConceptionChance(!!noCondom);
   else if(game.procreateIntentWeek===game.week&&noCondom)p=Math.max(p,PREGNANCY_CHANCE_PROC_CREATE);
@@ -8484,21 +8489,11 @@ function runPhoneSexSession(){
 }
 function promptPhoneSex(){
   if(!game||game.gameOver)return;
-  if(!game.married||game.divorced){addLog('仅已婚可电话性爱','fail');return}
-  const intimFail=(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0;
-  const block=typeof getPhoneSexBlockReason==='function'?getPhoneSexBlockReason(intimFail):null;
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需有固定伴侣才可电话性爱','fail');return}
+  const block=typeof getPhoneSexBlockReason==='function'?getPhoneSexBlockReason(true):null;
   if(block){
     if(game._dailySexPendingHours)clearDailySexReserve();
     showConsumeModal({icon:'📞',title:'无法电话性爱',html:block,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
-    return;
-  }
-  if(intimFail){
-    if(game._dailySexPendingHours)clearDailySexReserve();
-    showConsumeModal({
-      icon:'📞',title:'电话性爱',
-      html:'亲密度 <b>'+game.spouseIntimacy+'</b> 过低，对方拒绝。<br><span class="fold-meta">未获得减压效果 · 可再次尝试</span>',
-      buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]
-    });
     return;
   }
   if(typeof interceptMakeLoveForCycle==='function'&&interceptMakeLoveForCycle(1))return;
@@ -8508,7 +8503,10 @@ function promptPhoneSex(){
   }
   const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
   const devil=typeof isAllnightDevilHours==='function'&&isAllnightDevilHours();
-  let html='亲密度 <b>'+game.spouseIntimacy+'</b><br>'+
+  const attr=typeof getPartnerAttraction==='function'?getPartnerAttraction():null;
+  let html=(game.married&&!game.divorced
+    ?('亲密度 <b>'+game.spouseIntimacy+'</b><br>')
+    :('吸引 <b>'+attr+'</b><br>'))+
     '电话性爱：减压效果约为同房的一半<br>'+
     '每次约 -2 压力 · 20% 不和谐 +5<br>'+
     '<span class="fold-meta">不会怀孕 · 占 2h · 与做爱共用每周次数</span>';
@@ -8609,22 +8607,12 @@ function resolveProcCreateCondomBetrayal(){
 }
 function promptMakeLove(batch){
   if(!game||game.gameOver)return;
-  if(!game.married||game.divorced){addLog('仅已婚可做爱','fail');return}
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()){addLog('需恋爱、同居或已婚才可做爱','fail');return}
   batch=Math.max(1,Math.floor(batch)||1);
-  const intimFail=(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0;
-  const block=typeof getMakeLoveBlockReason==='function'?getMakeLoveBlockReason(intimFail):null;
+  const block=typeof getMakeLoveBlockReason==='function'?getMakeLoveBlockReason(true):null;
   if(block){
     if(game._dailySexPendingHours)clearDailySexReserve();
     showConsumeModal({icon:'💔',title:'无法做爱',html:block,buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]});
-    return;
-  }
-  if(intimFail){
-    if(game._dailySexPendingHours)clearDailySexReserve();
-    showConsumeModal({
-      icon:'💔',title:'夫妻生活',
-      html:'亲密度 <b>'+game.spouseIntimacy+'</b> 过低，对方拒绝。<br><span style="color:var(--muted)">未获得减压效果 · 可再次尝试</span>',
-      buttons:[{text:'知道了',primary:true,fn:'closeConsumeModal()'}]
-    });
     return;
   }
   if(typeof interceptMakeLoveForCycle==='function'&&interceptMakeLoveForCycle(batch))return;
@@ -8635,7 +8623,10 @@ function promptMakeLove(batch){
   const procOn=game.procreateIntentWeek===game.week;
   const sameSex=isSameSexCouple();
   const partnerAffair=partnerHasExtramaritalAffair();
-  let html='亲密度 <b>'+game.spouseIntimacy+'</b><br>'+
+  const attr=typeof getPartnerAttraction==='function'?getPartnerAttraction():null;
+  let html=(game.married&&!game.divorced
+    ?('亲密度 <b>'+game.spouseIntimacy+'</b><br>')
+    :('吸引 <b>'+attr+'</b> · 熟悉 <b>'+(typeof getPartnerFamiliarity==='function'?getPartnerFamiliarity():'—')+'</b><br>'))+
     sexSafeOptionLabel()+'：每次 -5 压力 · 20% 不和谐 +10<br>'+
     (sameSex
       ?(isSameSexMaleCouple()
@@ -8715,7 +8706,6 @@ function makeLoveBatch(batch,noCondom){
 }
 function masturbateBatch(batch){
   if(!game||game.gameOver)return;
-  if(!game.divorced&&!game.married){addLog('无法自慰','fail');return}
   batch=Math.max(1,Math.floor(batch)||1);
   const c=ensureConsumption();if(!c)return;
   if(masturbationSessionsLeft()<batch){addLog('本周剩余 '+masturbationSessionsLeft()+' 次','fail');return}
@@ -18888,6 +18878,8 @@ function playerRomanceStatusLabel(){
   if(game.spouseDeceased)return '丧偶';
   if(game.divorced)return '离异';
   if(game.married&&!game.divorced)return '已婚';
+  if(game.romanceStage==='cohabiting')return '同居';
+  if(game.romanceStage==='dating')return '恋爱';
   if(game.contacts&&game.contacts.some(function(c){
     return c&&c.intimateRelation&&!c.dead&&c.kind!=='spouse'&&c.kind!=='ex_spouse'&&c.kind!=='parents'&&c.kind!=='father'&&c.kind!=='mother';
   }))return '恋爱';
@@ -18951,6 +18943,7 @@ function dailyAddHours(h,jumpNextPhase){
   const prev=d.slotHoursUsed||0;
   d.slotHoursUsed=Math.min(SLOT_HOURS_TOTAL,(d.slotHoursUsed||0)+h);
   maybePartnerSleepOnAllnightDevilStart(prev,d.slotHoursUsed);
+  if(h>0&&d.slotActivity&&typeof recordMediaLifeOp==='function')recordMediaLifeOp(d.slotActivity);
   if(jumpNextPhase||d.slotHoursUsed>=SLOT_HOURS_TOTAL)dailyAdvanceAfterSlotAction();
   else renderDailyPanel();
 }
@@ -20105,6 +20098,7 @@ function makeLoveHomeSexBtnState(ph){
   if(block&&!d.slotSexUsed&&dailySlotHoursLeft()>=2){
     if(block.indexOf('睡梦中')>=0)hint=' · 伴侣睡梦中';
     else if(/伴侣|上班|外面玩|未归/.test(block))hint=' · 伴侣不在家';
+    else if(block.indexOf('吸引力')>=0)hint=' · '+block.replace(/，?无法同房$/,'');
     else hint=' · '+block.replace(/，?无法同房$/,'');
   }
   return {disabled,hint};
@@ -20152,7 +20146,6 @@ function dailyTrySex(){
 function dailyTryMasturbate(){
   const d=ensureDailyState();
   if(d.slotMasturbateUsed){addLog('本时段已自慰','fail');return false}
-  if(!game.married&&!game.divorced){addLog('无法自慰','fail');return false}
   d.slotMasturbateUsed=true;
   const awkward=Math.random()<0.1;
   const delta=awkward?1:-1;
@@ -22018,7 +22011,7 @@ function showDateNightResultModal(onDone){
   const phaseLbl=datePhaseLabel();
   showDateFlowModal({
     icon:'💑',title:'约会 · '+phaseLbl,
-    html:'<p>与 <b>'+pn+'</b> 度过了愉快的时光。</p><p class="fold-meta">花费 ¥'+cost+' · 压力-5 · 亲密度+1</p>',
+    html:'<p>与 <b>'+pn+'</b> 度过了愉快的时光。</p><p class="fold-meta">花费 ¥'+cost+' · 压力-5 · '+(game.married&&!game.divorced?'亲密度+1':'熟悉+1')+'</p>',
     btn:'继续',onClose:onDone
   });
 }
@@ -22039,7 +22032,10 @@ function dailyDateEvening(){
       game.daily.noHomeReturnDay=false;
       game.daily.slotActivity='date';
     }
-    if(phoneCfg().photoDate&&!game.longDistance&&Math.random()<0.4)adjustSpouseIntimacy(1);
+    if(phoneCfg().photoDate&&!game.longDistance&&Math.random()<0.4){
+      if(typeof bumpPartnerRomanceSocial==='function')bumpPartnerRomanceSocial(0,1,1);
+      else adjustSpouseIntimacy(1);
+    }
     showDateNightResultModal(function(){
       promptDateGiftModal(function(){
         promptDateSoftRiceModal(function(){
@@ -22062,7 +22058,7 @@ function dailyDateEvening(){
   }
   showDateFlowModal({
     icon:'💑',title:'出门约会 · '+phaseLbl,
-    html:'<p>和 <b>'+pn+'</b> 现在出门约会？</p><p class="fold-meta">占满本时段 · 花费 ¥'+cost+' · 压力-5 · 亲密度+1</p>',
+    html:'<p>和 <b>'+pn+'</b> 现在出门约会？</p><p class="fold-meta">占满本时段 · 花费 ¥'+cost+' · 压力-5 · '+(game.married&&!game.divorced?'亲密度+1':'熟悉+1')+'</p>',
     buttons:[
       {text:'去约会 ¥'+cost,primary:true,handler:function(){
         if(!buyDateNightDaily()){dailyReleaseMainActivity();return;}
@@ -22074,14 +22070,15 @@ function dailyDateEvening(){
 }
 
 function renderDailyOutMenu(phase){
+  const withPartner=typeof hasPrimaryPartner==='function'?hasPrimaryPartner():!!(game.married&&!game.divorced);
   let h='';
   if(typeof renderOutdoorCompanionPicker==='function')h+=renderOutdoorCompanionPicker();
   if(typeof hobbyProjectsSummaryHtml==='function')h+=hobbyProjectsSummaryHtml();
   h+='<p class="fold-meta">选择外出地点</p>';
   if(phase==='morning'){
     const wk=game.daily&&isWeekendDay(game.daily.dayIndex);
-    if(wk&&game.married&&!game.divorced)h+='<p class="fold-meta">周末白天 · 伴侣可能在外面玩</p>';
-    if(game.married&&!game.divorced)h+='<button class="btn" onclick="dailyPickOutMorning(\'date\')">💑 约会</button>';
+    if(wk&&withPartner)h+='<p class="fold-meta">周末白天 · 伴侣可能在外面玩</p>';
+    if(withPartner)h+='<button class="btn" onclick="dailyPickOutMorning(\'date\')">💑 约会</button>';
     h+='<button class="btn" onclick="dailyPickOutMorning(\'park\')">🌳 公园（临时肉体+1）</button>';
     h+='<button class="btn" onclick="dailyPickOutMorning(\'cafe\')">☕ 咖啡店（临时精神+1）</button>';
     h+='<button class="btn" onclick="dailyPickOutMorning(\'library\')">📚 图书馆（临时心智+1）</button>';
@@ -22093,10 +22090,10 @@ function renderDailyOutMenu(phase){
       h+='<button class="btn" onclick="dailyPickOutEvening(\'club\')">'+allnightBtnLabel('🪩 夜店 ¥500（减压×2）')+'</button>';
       h+='<button class="btn" onclick="dailyPickOutEvening(\'bar\')">'+allnightBtnLabel('🍺 酒吧 ¥200（减压×2）')+'</button>';
       h+='<button class="btn" onclick="dailyPickOutEvening(\'store\')">'+allnightBtnLabel('🏪 便利店 ¥50（减压×2）')+'</button>';
-      if(game.married&&!game.divorced)h+='<button class="btn" onclick="dailyPickOutEvening(\'date\')">'+allnightBtnLabel('💑 约会')+'</button>';
+      if(withPartner)h+='<button class="btn" onclick="dailyPickOutEvening(\'date\')">'+allnightBtnLabel('💑 约会')+'</button>';
     }
   }else{
-    if(game.married&&!game.divorced)h+='<button class="btn" onclick="dailyPickOutEvening(\'date\')">💑 约会</button>';
+    if(withPartner)h+='<button class="btn" onclick="dailyPickOutEvening(\'date\')">💑 约会</button>';
     h+='<button class="btn" onclick="dailyPickOutEvening(\'club\')">🪩 夜店 ¥500</button>';
     h+='<button class="btn" onclick="dailyPickOutEvening(\'bar\')">🍺 酒吧 ¥200</button>';
     h+='<button class="btn" onclick="dailyPickOutEvening(\'store\')">🏪 便利店 ¥50</button>';
@@ -22144,8 +22141,14 @@ function renderDailyHomeLeisureBtns(prefix){
   if(ate)h+='<span class="fold-meta">本时段已进食</span>';
   return h;
 }
+function renderDailyHomeMasturbateBtn(pickFn,labelWrap){
+  const d=game.daily||{};
+  const label=labelWrap?labelWrap('🫥 自慰'):'🫥 自慰';
+  return '<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="'+pickFn+'(\'masturbate\')">'+label+'</button> ';
+}
 function renderDailyHomeMenu(phase){
   const d=game.daily||{};
+  const withPartner=typeof hasPrimaryPartner==='function'?hasPrimaryPartner():!!(game.married&&!game.divorced);
   const sexMeta=game.longDistance&&!game.divorced?'电话性爱2h':'做爱2h';
   let h='<p class="fold-meta">'+dailySlotHoursLabel()+' · '+sexMeta+' · 自慰不占时（各1次）</p>';
   if(game.snackReboundPortions>0){
@@ -22161,7 +22164,7 @@ function renderDailyHomeMenu(phase){
   else if(game.procreateIntentWeek===game.week)h+='<p style="color:var(--green);font-size:.72rem">🍼 备孕中（下次做爱怀孕率提升）</p>';
   if(phase==='morning'){
     h+='<button class="btn" onclick="dailyPickHomeMorning(\'rest\')">🛋 休息1h（-1压力·临时精神+1）</button>';
-    if(game.married&&!game.divorced){
+    if(withPartner){
       if(game.longDistance){
         const phoneM=makePhoneSexHomeBtnState('morning');
         h+='<button class="btn" '+(phoneM.disabled?'disabled':'')+' onclick="dailyPickHomeMorning(\'phone_sex\')">📞 电话性爱(2h)'+phoneM.hint+'</button>';
@@ -22169,10 +22172,9 @@ function renderDailyHomeMenu(phase){
         const sexM=makeLoveHomeSexBtnState('morning');
         h+='<button class="btn" '+(sexM.disabled?'disabled':'')+' onclick="dailyPickHomeMorning(\'sex\')">💕 做爱(2h)'+sexM.hint+'</button>';
       }
-      h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeMorning(\'masturbate\')">🫥 自慰</button>';
-    }else if(game.divorced){
-      h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeMorning(\'masturbate\')">🫥 自慰</button>';
     }
+    h+=renderDailyHomeMasturbateBtn('dailyPickHomeMorning');
+    if(typeof partnerRomanceHomeExtras==='function')h+=partnerRomanceHomeExtras('dailyPickHomeMorning');
     if(typeof showHomeFertilityBtn==='function'?showHomeFertilityBtn():(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren)){
       const fertBusy=!!game.fertilityOrder||game.procreateIntentWeek===game.week;
       const lbl=typeof homeFertilityBtnLabel==='function'?homeFertilityBtnLabel():'🍼 备孕';
@@ -22189,7 +22191,7 @@ function renderDailyHomeMenu(phase){
     }
     if(isAllnightDevilHours())h+='<p style="color:var(--accent);font-size:.72rem">🌈 通宵后段（第5–8h）· 与伴侣相关的活动会影响对方作息</p>';
     h+='<button class="btn" onclick="dailyPickHomeEvening(\'rest\')">'+allnightBtnLabel('🛋 休息1h（-1压力·临时精神+1）')+'</button>';
-    if(game.married&&!game.divorced){
+    if(withPartner){
       if(game.longDistance){
         const phoneN=makePhoneSexHomeBtnState('allnight');
         h+='<button class="btn" '+(phoneN.disabled?'disabled':'')+' onclick="dailyPickHomeEvening(\'phone_sex\')">'+allnightBtnLabel('📞 电话性爱(2h)'+phoneN.hint)+'</button>';
@@ -22197,10 +22199,9 @@ function renderDailyHomeMenu(phase){
         const sexN=makeLoveHomeSexBtnState('allnight');
         h+='<button class="btn" '+(sexN.disabled?'disabled':'')+' onclick="dailyPickHomeEvening(\'sex\')">'+allnightBtnLabel('💕 做爱(2h)'+sexN.hint)+'</button>';
       }
-      h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeEvening(\'masturbate\')">'+allnightBtnLabel('🫥 自慰')+'</button>';
-    }else if(game.divorced){
-      h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeEvening(\'masturbate\')">'+allnightBtnLabel('🫥 自慰')+'</button>';
     }
+    h+=renderDailyHomeMasturbateBtn('dailyPickHomeEvening',allnightBtnLabel);
+    if(typeof partnerRomanceHomeExtras==='function')h+=partnerRomanceHomeExtras('dailyPickHomeEvening',allnightBtnLabel);
     if(typeof showHomeFertilityBtn==='function'?showHomeFertilityBtn():(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren)){
       const fertBusy=!!game.fertilityOrder||game.procreateIntentWeek===game.week;
       const fertLbl=typeof homeFertilityBtnLabel==='function'?homeFertilityBtnLabel():'🍼 备孕';
@@ -22210,7 +22211,7 @@ function renderDailyHomeMenu(phase){
     if(typeof renderVillaHomeExtras==='function')h+=renderVillaHomeExtras('HomeEvening');
   }else{
     h+='<button class="btn" onclick="dailyPickHomeEvening(\'rest\')">🛋 休息1h（-1压力·临时精神+1）</button>';
-    if(game.married&&!game.divorced){
+    if(withPartner){
       if(game.longDistance){
         const phoneE=makePhoneSexHomeBtnState('evening');
         h+='<button class="btn" '+(phoneE.disabled?'disabled':'')+' onclick="dailyPickHomeEvening(\'phone_sex\')">📞 电话性爱(2h)'+phoneE.hint+'</button>';
@@ -22218,10 +22219,9 @@ function renderDailyHomeMenu(phase){
         const sexE=makeLoveHomeSexBtnState('evening');
         h+='<button class="btn" '+(sexE.disabled?'disabled':'')+' onclick="dailyPickHomeEvening(\'sex\')">💕 做爱(2h)'+sexE.hint+'</button>';
       }
-      h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeEvening(\'masturbate\')">🫥 自慰</button>';
-    }else if(game.divorced){
-      h+='<button class="btn" '+(d.slotMasturbateUsed?'disabled':'')+' onclick="dailyPickHomeEvening(\'masturbate\')">🫥 自慰</button>';
     }
+    h+=renderDailyHomeMasturbateBtn('dailyPickHomeEvening');
+    if(typeof partnerRomanceHomeExtras==='function')h+=partnerRomanceHomeExtras('dailyPickHomeEvening');
     if(typeof showHomeFertilityBtn==='function'?showHomeFertilityBtn():(game.married&&!game.divorced&&!game.pregnant&&!game.hasChildren)){
       const fertBusy=!!game.fertilityOrder||game.procreateIntentWeek===game.week;
       const lbl=typeof homeFertilityBtnLabel==='function'?homeFertilityBtnLabel():'🍼 备孕';
@@ -22442,17 +22442,23 @@ function renderDailyPanel(){
   html+=renderAllnightStreakRow();
   html+=renderEmployedJobBar();
   const pn=game.partnerDisplayName||(typeof COMPANION_NAME!=='undefined'?COMPANION_NAME:'伴侣');
-  if(game.married&&!game.divorced){
+  const showPartner=typeof hasPrimaryPartner==='function'?hasPrimaryPartner():!!(game.married&&!game.divorced);
+  if(showPartner){
     if(typeof ensurePartnerPresence==='function')ensurePartnerPresence(phase);
     const loc=typeof getSpouseLocationLabel==='function'?getSpouseLocationLabel(phase):'';
     const pStreak=getCompanionAllnightStreak();
     const catchUp=!!(d.partnerCatchUpSleep&&phase==='morning');
     const skipDays=typeof getCompanionMonthlyAbsenceCount==='function'?getCompanionMonthlyAbsenceCount():(game.companion&&game.companion.monthlyAbsenceCount)||0;
+    const fam=typeof getPartnerFamiliarity==='function'?getPartnerFamiliarity():null;
+    const attr=typeof getPartnerAttraction==='function'?getPartnerAttraction():null;
+    const statLine=game.married&&!game.divorced
+      ?('<div class="fold-meta">亲密度 <b>'+(game.spouseIntimacy!=null?game.spouseIntimacy:'—')+'</b></div>')
+      :('<div class="fold-meta">熟悉 <b>'+fam+'</b> · 吸引 <b>'+attr+'</b>'+(game.romanceStage==='cohabiting'?' · 同居':' · 恋爱')+'</div>');
     html+='<div class="daily-partner">'+partnerAvatarHtml(game.partnerGender)+'<div><b>'+pn+'</b><div class="fold-meta">📍 '+loc+'</div>'+
       (catchUp?'<div class="fold-meta" style="color:var(--blue)">😴 在家补觉'+(skipDays?(' · 本月旷工 '+skipDays+'/'+MONTHLY_ABSENCE_LIMIT):'')+'</div>':'')+
       '<div class="fold-meta" style="color:var(--orange)">通宵：'+(pStreak?'已连续未睡 '+pStreak+' 天':'未通宵')+'</div>'+
       (!catchUp&&skipDays?'<div class="fold-meta" style="color:var(--yellow)">本月旷工 '+skipDays+'/'+MONTHLY_ABSENCE_LIMIT+' 天</div>':'')+
-      '<div class="fold-meta">亲密度 <b>'+(game.spouseIntimacy!=null?game.spouseIntimacy:'—')+'</b></div>'+
+      statLine+
       '</div></div>';
   }
   const left=dailySlotHoursLeft();
@@ -24706,7 +24712,7 @@ function isPartnerAwakeForPhoneSex(phase){
 }
 function getPhoneSexBlockReason(skipIntimacy){
   if(!game||game.gameOver)return '游戏已结束';
-  if(!game.married||game.divorced)return '仅已婚可电话性爱';
+  if(typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner())return '需有固定伴侣才可电话性爱';
   if(!game.longDistance)return '同城请面对面做爱';
   if(isPlayerImprisoned())return '监禁中无法电话性爱';
   const ph=game.daily&&game.daily.phase;
@@ -24717,7 +24723,11 @@ function getPhoneSexBlockReason(skipIntimacy){
     return '你不在家，无法电话性爱';
   }
   if(sexSessionsLeft()<=0)return '本周做爱次数已用完（'+SEX_WEEKLY_LIMIT+'次）';
-  if(!skipIntimacy&&(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0)return '亲密度过低（≤0），对方拒绝';
+  if(typeof partnerAttractionMeetsSexThreshold==='function'&&!partnerAttractionMeetsSexThreshold()){
+    const need=typeof REL_PHYSICAL_ATTR!=='undefined'?REL_PHYSICAL_ATTR:52;
+    const cur=typeof getPartnerAttraction==='function'?getPartnerAttraction():0;
+    return '吸引力不足（需≥'+need+'，当前 '+cur+'）';
+  }
   if(typeof getMenstrualMakeLoveBlock==='function'){
     const menstrualBlock=getMenstrualMakeLoveBlock();
     if(menstrualBlock)return menstrualBlock.replace(/做爱/g,'电话性爱');
@@ -24732,7 +24742,7 @@ function getPhoneSexBlockReason(skipIntimacy){
   return null;
 }
 function ensurePartnerPresence(phase){
-  if(!game||!game.married||game.divorced||game.longDistance)return;
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()||game.longDistance)return;
   const d=game.daily;if(!d)return;
   const ph=phase||(d.phase)||'morning';
   if(d.partnerPresenceRolled&&d._partnerPresencePhase===ph)return;
@@ -24781,7 +24791,7 @@ function reducePartnerNeglect(amount){
   game.partnerNeglectPoints=Math.max(0,before-(amount||0.18));
 }
 function isPartnerAllnightSleeping(){
-  if(!game||!game.married||game.divorced||game.longDistance)return false;
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()||game.longDistance)return false;
   const d=game.daily;
   if(!d||d.phase!=='allnight')return false;
   if(d.partnerAllnightStayedOut)return false;
@@ -24791,13 +24801,13 @@ function isPartnerAllnightSleeping(){
   return !!(d.partnerForcedAsleep);
 }
 function isPartnerCatchUpSleeping(phase){
-  if(!game||!game.married||game.divorced||game.longDistance)return false;
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()||game.longDistance)return false;
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(ph!=='morning')return false;
   return !!(game.daily&&game.daily.partnerCatchUpSleep);
 }
 function isPartnerOutForFun(phase){
-  if(!game||!game.married||game.divorced||game.longDistance)return false;
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()||game.longDistance)return false;
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(ph==='rest')return false;
   if(typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return false;
@@ -24820,7 +24830,7 @@ function bumpPartnerAffairRisk(amount){
   }
 }
 function isSpouseAtHome(phase){
-  if(!game||!game.married||game.divorced||game.longDistance)return false;
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner()||game.longDistance)return false;
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(ph==='rest')return true;
   if(typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return true;
@@ -24840,7 +24850,7 @@ function canEatCoupleSnack(phase){
   return {ok:true,reason:''};
 }
 function getSpouseLocationLabel(phase){
-  if(!game||!game.married||game.divorced)return '';
+  if(!game||typeof hasPrimaryPartner!=='function'||!hasPrimaryPartner())return '';
   const ph=phase||(game.daily&&game.daily.phase)||'morning';
   if(game.longDistance)return '异地·'+(typeof PLAYER_HOME_CITY!=='undefined'?PLAYER_HOME_CITY:'家乡');
   if(ph==='morning'&&typeof isPartnerCatchUpSleeping==='function'&&isPartnerCatchUpSleeping(ph))return '在家补觉';
@@ -24901,7 +24911,10 @@ function partnerAbsentSexReason(ph){
 }
 function getMakeLoveBlockReason(skipIntimacy){
   if(!game||game.gameOver)return '游戏已结束';
-  if(!game.married||game.divorced)return '仅已婚可做爱';
+  if(typeof partnerRomanceAllowsHomeSex==='function'&&!partnerRomanceAllowsHomeSex()){
+    if(typeof hasPrimaryPartner==='function'&&hasPrimaryPartner())return '当前关系无法同房';
+    return '需恋爱、同居或已婚才可做爱';
+  }
   if(game.longDistance)return '异地分居，无法同房';
   if(isPlayerImprisoned())return '监禁中无法同房';
   const ph=game.daily&&game.daily.phase;
@@ -24911,7 +24924,11 @@ function getMakeLoveBlockReason(skipIntimacy){
   const partnerBlock=partnerAbsentSexReason(ph);
   if(partnerBlock)return partnerBlock;
   if(sexSessionsLeft()<=0)return '本周做爱次数已用完（'+SEX_WEEKLY_LIMIT+'次）';
-  if(!skipIntimacy&&(game.spouseIntimacy==null?0:game.spouseIntimacy)<=0)return '亲密度过低（≤0），对方拒绝';
+  if(typeof partnerAttractionMeetsSexThreshold==='function'&&!partnerAttractionMeetsSexThreshold()){
+    const need=typeof REL_PHYSICAL_ATTR!=='undefined'?REL_PHYSICAL_ATTR:52;
+    const cur=typeof getPartnerAttraction==='function'?getPartnerAttraction():0;
+    return '吸引力不足（需≥'+need+'，当前 '+cur+'）';
+  }
   if(typeof getMenstrualMakeLoveBlock==='function'){
     const menstrualBlock=getMenstrualMakeLoveBlock();
     if(menstrualBlock)return menstrualBlock;
@@ -26035,7 +26052,11 @@ function respondContactConfession(contactId,accept){
     if(typeof ensureContactRelationFields==='function')ensureContactRelationFields(c);
     c.intimateRelation=true;
     c.intimateMarkedWeek=game.week||0;
-    addLog('💞 接受 '+c.name+' 的表白 · 确立亲密关系认定','success');
+    if(!game.married&&!game.divorced&&typeof setPrimaryPartnerFromContact==='function'){
+      setPrimaryPartnerFromContact(c);
+    }else{
+      addLog('💞 接受 '+c.name+' 的表白 · 确立亲密关系认定','success');
+    }
     if(game.married&&!game.divorced)game.affairActive=true;
   }else{
     const loss=Math.round(5+(c.attraction||0)/8);
@@ -26360,6 +26381,7 @@ function contactKindLabel(c){
   if(c.kind==='great_grandparent'||c.kind==='spouse_great_grandparent')return c.role||'曾祖辈';
   if(c.kind==='spouse_parent')return c.role||'姻亲';
   if(c.kind==='spouse')return '伴侣';
+  if(c.kind==='lover'||c.isPrimaryPartner)return game&&game.romanceStage==='cohabiting'?'同居':'恋人';
   if(c.kind==='ex_spouse')return c.role||(c.gender==='male'?'前夫':'前妻');
   if(c.kind==='bff')return c.role||'基友/闺蜜';
   if(c.pendingConfession)return '表白中';
@@ -27301,7 +27323,7 @@ function canShowPhysicalButton(c) {
   if (!canShowAmbiguityButton(c)) return false;
   ensureContactRelationFields(c);
   return (c.ambiguityLevel || 0) >= REL_AMBIGUITY_TO_PHYSICAL ||
-    ((c.attraction || 0) >= REL_PHYSICAL_ATTR && (c.familiarity || 0) >= REL_PHYSICAL_FAM);
+    (c.attraction || 0) >= REL_PHYSICAL_ATTR;
 }
 
 function canMarkIntimateRelation(c) {
@@ -27376,6 +27398,9 @@ function relationshipContactActionButtons(c, eid) {
     h += '<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="markIntimateRelation(\'' + eid + '\')">💞 认定亲密关系</button> ';
   } else if (isMarkedIntimateRelation(c)) {
     h += '<span class="fold-meta" style="font-size:.68rem">💞 亲密关系</span> ';
+  }
+  if (typeof canShowStartDatingButton === 'function' && canShowStartDatingButton(c)) {
+    h += '<button class="btn" style="font-size:.72rem;padding:3px 8px" onclick="startDatingWithContact(\'' + eid + '\')">💕 确立恋爱</button> ';
   }
   return h;
 }
@@ -27455,16 +27480,386 @@ function patchAdvanceOneWeekForRelations() {
   const orig = advanceOneWeek;
   advanceOneWeek = function () {
     const r = orig.apply(this, arguments);
-    if (r) tickIntimateGiftExchange();
+    if (r) {
+      tickIntimateGiftExchange();
+      if (typeof tickPartnerMarriageProposal === 'function') tickPartnerMarriageProposal();
+      if (typeof tickDestinyPartnerMeet === 'function') tickDestinyPartnerMeet();
+    }
     return r;
   };
   advanceOneWeek._relPatch = true;
+}
+
+/* ---------- 主伴侣：恋爱 · 同居 · 求婚 · 吸引力做爱 ---------- */
+const CORE_LOVER_ID = 'core_lover';
+const PARTNER_WEDDING_COST = 80000;
+const PARTNER_PROPOSAL_WEEKLY_CHANCE = 0.07;
+
+function migratePartnerRomance(g) {
+  g = g || game;
+  if (!g) return;
+  if (g.married && !g.divorced) g.romanceStage = null;
+}
+
+function hasPrimaryPartner(g) {
+  g = g || game;
+  if (!g || g.divorced || g.spouseDeceased) return false;
+  if (g.married) return true;
+  return g.romanceStage === 'dating' || g.romanceStage === 'cohabiting';
+}
+
+function partnerRomanceAllowsHomeSex(g) {
+  g = g || game;
+  if (!hasPrimaryPartner(g)) return false;
+  if (g.married) return true;
+  return g.romanceStage === 'dating' || g.romanceStage === 'cohabiting';
+}
+
+function isPartnerLivingWithPlayer(g) {
+  g = g || game;
+  if (!hasPrimaryPartner(g)) return false;
+  if (g.married && !g.divorced) return !g.longDistance;
+  return g.romanceStage === 'cohabiting';
+}
+
+function getPartnerRomanceContact() {
+  if (!game || !game.contacts) return null;
+  if (typeof initCoreContacts === 'function') initCoreContacts();
+  if (game.married && !game.divorced) {
+    const sid = typeof CORE_CONTACT_IDS !== 'undefined' ? CORE_CONTACT_IDS.spouse : 'core_spouse';
+    return game.contacts.find(function (c) { return c && c.id === sid; }) || null;
+  }
+  if (game.romanceStage === 'dating' || game.romanceStage === 'cohabiting') {
+    return game.contacts.find(function (c) { return c && (c.id === CORE_LOVER_ID || c.isPrimaryPartner); }) || null;
+  }
+  return null;
+}
+
+function getPartnerAttraction() {
+  const c = getPartnerRomanceContact();
+  if (c) return c.attraction || 0;
+  if (game && game.married && !game.divorced) return 80;
+  return 0;
+}
+
+function getPartnerFamiliarity() {
+  const c = getPartnerRomanceContact();
+  return c ? (c.familiarity || 0) : 0;
+}
+
+function partnerAttractionMeetsSexThreshold() {
+  return getPartnerAttraction() >= REL_PHYSICAL_ATTR;
+}
+
+function partnerMeetsMarriageThreshold() {
+  return getPartnerFamiliarity() >= REL_INTIMATE_FAM && getPartnerAttraction() >= REL_INTIMATE_ATTR;
+}
+
+function syncPartnerRomanceContact() {
+  if (!game) return;
+  migratePartnerRomance();
+  if (!game.contacts) game.contacts = [];
+  if (game.married && !game.divorced) {
+    if (typeof syncSpouseContact === 'function') syncSpouseContact();
+    game.contacts = game.contacts.filter(function (c) { return c && c.id !== CORE_LOVER_ID; });
+    return;
+  }
+  if (game.romanceStage !== 'dating' && game.romanceStage !== 'cohabiting') {
+    game.contacts = game.contacts.filter(function (c) { return c && c.id !== CORE_LOVER_ID; });
+    return;
+  }
+  const name = game.partnerDisplayName || (typeof COMPANION_NAME !== 'undefined' ? COMPANION_NAME : '伴侣');
+  const existing = game.contacts.find(function (c) { return c && c.id === CORE_LOVER_ID; });
+  const role = game.romanceStage === 'cohabiting' ? '同居' : '恋人';
+  if (!existing) {
+    if (typeof ensureCoreContact === 'function') {
+      ensureCoreContact(CORE_LOVER_ID, {
+        kind: 'lover', name: name, gender: game.partnerGender || 'female', role: role,
+        company: '', jobTitle: '', income: 0, metWhere: '缘起'
+      });
+    }
+  } else {
+    existing.name = name;
+    existing.role = role;
+    existing.kind = 'lover';
+  }
+  const c = game.contacts.find(function (x) { return x && x.id === CORE_LOVER_ID; });
+  if (c) {
+    if (typeof ensureContactSocialFields === 'function') ensureContactSocialFields(c);
+    c.isPrimaryPartner = true;
+    if (c.familiarity == null) c.familiarity = 58;
+    if (c.attraction == null) c.attraction = 48;
+    if (c.orientation == null && typeof deriveCoupleOrientation === 'function') {
+      c.orientation = game.coupleOrientation || deriveCoupleOrientation(game.playerGender || 'male', game.partnerGender || 'female');
+    }
+  }
+}
+
+function syncPartnerRomanceHousing(g) {
+  g = g || game;
+  if (!g || g.divorced) return;
+  if (g.married && !g.divorced) {
+    if (typeof syncHousingCohabitRule === 'function') syncHousingCohabitRule(g);
+    return;
+  }
+  if (g.romanceStage === 'cohabiting') {
+    if (typeof housingAllowsCohabit === 'function' && !housingAllowsCohabit(g)) {
+      g.romanceStage = 'dating';
+      g.longDistance = true;
+      addLog('🏠 住房不够大，无法继续同居 · 恢复恋爱分居', 'warn');
+      syncPartnerRomanceContact();
+    } else {
+      g.longDistance = false;
+      g._housingForcedLD = false;
+    }
+  } else if (g.romanceStage === 'dating') {
+    g.longDistance = true;
+  }
+}
+
+function setPrimaryPartnerFromContact(c) {
+  if (!c || !game || game.married || game.divorced) return false;
+  if (hasPrimaryPartner() && game.partnerDisplayName && game.partnerDisplayName !== c.name) {
+    addLog('已有固定伴侣，无法与 ' + c.name + ' 确立恋爱', 'fail');
+    return false;
+  }
+  game.partnerDisplayName = c.name;
+  if (c.gender) game.partnerGender = c.gender;
+  if (typeof deriveCoupleOrientation === 'function') {
+    game.coupleOrientation = deriveCoupleOrientation(game.playerGender || 'male', game.partnerGender || 'female');
+  }
+  game.romanceStage = 'dating';
+  syncPartnerRomanceContact();
+  const lover = getPartnerRomanceContact();
+  if (lover) {
+    lover.familiarity = Math.max(lover.familiarity || 0, c.familiarity || 0);
+    lover.attraction = Math.max(lover.attraction || 0, c.attraction || 0);
+  }
+  syncPartnerRomanceHousing();
+  addLog('💕 与 ' + c.name + ' 确立恋爱关系', 'success');
+  if (typeof updateUI === 'function') updateUI();
+  return true;
+}
+
+function startDatingWithContact(contactId) {
+  const c = typeof findContact === 'function' ? findContact(contactId) : null;
+  if (!c || c.unreachable) { addLog('无法确立恋爱', 'fail'); return; }
+  if (typeof isParentContact === 'function' && isParentContact(c)) { addLog('无法与父母恋爱', 'fail'); return; }
+  if (typeof isCoreContact === 'function' && isCoreContact(c) && c.kind !== 'lover') {
+    addLog('无法与该联系人恋爱', 'fail'); return;
+  }
+  ensureContactSocialFields(c);
+  if ((c.attraction || 0) < REL_PHYSICAL_ATTR) {
+    addLog('吸引力需≥' + REL_PHYSICAL_ATTR + ' 才能确立恋爱（当前 ' + (c.attraction | 0) + '）', 'fail');
+    return;
+  }
+  if (typeof mutualOrientationMatch === 'function' && !mutualOrientationMatch(c)) {
+    addLog('性向不符，无法恋爱', 'fail'); return;
+  }
+  setPrimaryPartnerFromContact(c);
+}
+
+function promptMoveInTogether() {
+  if (!game || game.married || game.romanceStage !== 'dating') {
+    addLog('需处于恋爱关系才能同居', 'fail'); return;
+  }
+  if (typeof housingAllowsCohabit === 'function' && !housingAllowsCohabit()) {
+    addLog(typeof housingRestrictionHint === 'function' ? housingRestrictionHint('cohabit') : '住房需大公寓以上', 'fail');
+    return;
+  }
+  const pn = game.partnerDisplayName || '伴侣';
+  if (typeof showConsumeModalHandlers === 'function') {
+    showConsumeModalHandlers({
+      icon: '🏠', title: '同居',
+      html: '<p>与 <b>' + pn + '</b> 开始同居？</p><p class="fold-meta">需大公寓以上 · 同居后可在家做爱、可怀孕</p>',
+      buttons: [
+        { text: '再想想', handler: function () { if (typeof closeConsumeModal === 'function') closeConsumeModal(true); } },
+        { text: '开始同居', primary: true, handler: function () {
+          if (typeof closeConsumeModal === 'function') closeConsumeModal(true);
+          game.romanceStage = 'cohabiting';
+          game.longDistance = false;
+          syncPartnerRomanceContact();
+          syncPartnerRomanceHousing();
+          addLog('🏠 与 ' + pn + ' 开始同居', 'success');
+          if (typeof updateUI === 'function') updateUI();
+        }}
+      ]
+    });
+  } else {
+    game.romanceStage = 'cohabiting';
+    game.longDistance = false;
+    syncPartnerRomanceContact();
+    addLog('🏠 与 ' + pn + ' 开始同居', 'success');
+  }
+}
+
+function completePrimaryPartnerMarriage() {
+  if (typeof housingAllowsMarriage === 'function' && !housingAllowsMarriage()) {
+    addLog(typeof housingRestrictionHint === 'function' ? housingRestrictionHint('marry') : '住房需独户以上才可结婚', 'fail');
+    return false;
+  }
+  if (typeof spendCash === 'function' && !spendCash(PARTNER_WEDDING_COST, '婚礼')) return false;
+  game.married = true;
+  game.divorced = false;
+  game.romanceStage = null;
+  game.longDistance = false;
+  if (game.companion) {
+    game.companion.married = true;
+    game.companion.divorced = false;
+  }
+  game.spouseIntimacy = typeof INTIMACY_INITIAL !== 'undefined' ? INTIMACY_INITIAL : 80;
+  if (typeof syncSpouseIntimacyToCompanion === 'function') syncSpouseIntimacyToCompanion();
+  game.contacts = (game.contacts || []).filter(function (c) { return c && c.id !== CORE_LOVER_ID; });
+  if (typeof syncSpouseContact === 'function') syncSpouseContact();
+  if (typeof syncHousingCohabitRule === 'function') syncHousingCohabitRule();
+  addLog('💒 与 ' + (game.partnerDisplayName || '伴侣') + ' 结婚！', 'success');
+  if (typeof updateUI === 'function') updateUI();
+  return true;
+}
+
+function promptProposeToPartner() {
+  if (!game || game.gameOver || game.married || game.divorced) { addLog('当前无法求婚', 'fail'); return; }
+  if (!hasPrimaryPartner()) { addLog('需先恋爱或同居', 'fail'); return; }
+  const pn = game.partnerDisplayName || '伴侣';
+  const fam = getPartnerFamiliarity();
+  const attr = getPartnerAttraction();
+  const ok = partnerMeetsMarriageThreshold();
+  const html = '<p>向 <b>' + pn + '</b> 求婚？</p>' +
+    '<p class="fold-meta">熟悉 ' + fam + ' · 吸引 ' + attr + '</p>' +
+    '<p class="fold-meta">成功需熟悉≥' + REL_INTIMATE_FAM + ' 且吸引≥' + REL_INTIMATE_ATTR + '（与做爱无关）</p>' +
+    (ok ? '<p style="color:var(--green)">条件达标，对方会答应</p>' : '<p style="color:var(--orange)">未达标，大概率被拒</p>') +
+    '<p class="fold-meta">婚礼 ¥' + PARTNER_WEDDING_COST.toLocaleString() + ' · 需独户以上住房</p>';
+  const run = function () {
+    if (typeof closeConsumeModal === 'function') closeConsumeModal(true);
+    if (ok) completePrimaryPartnerMarriage();
+    else {
+      const c = getPartnerRomanceContact();
+      if (c && typeof bumpContactFamiliarity === 'function') bumpContactFamiliarity(c, -Math.round(4 + attr / 15));
+      addLog('💔 ' + pn + ' 拒绝了求婚 · 需熟悉≥' + REL_INTIMATE_FAM + ' 且吸引≥' + REL_INTIMATE_ATTR + '（现 ' + fam + '/' + attr + '）', 'fail');
+      if (typeof updateUI === 'function') updateUI();
+    }
+  };
+  if (typeof showConsumeModalHandlers === 'function') {
+    showConsumeModalHandlers({
+      icon: '💍', title: '求婚', html: html,
+      buttons: [
+        { text: '算了', handler: function () { if (typeof closeConsumeModal === 'function') closeConsumeModal(true); } },
+        { text: '求婚', primary: true, handler: run }
+      ]
+    });
+  } else run();
+}
+
+function queuePartnerMarriageProposal() {
+  if (!game || game.married || !hasPrimaryPartner()) return;
+  const pn = game.partnerDisplayName || '伴侣';
+  const html = '<p><b>' + pn + '</b> 认真地看着你：「我们结婚吧？」</p>' +
+    '<p class="fold-meta">熟悉 ' + getPartnerFamiliarity() + ' · 吸引 ' + getPartnerAttraction() + '</p>' +
+    '<p class="fold-meta">婚礼 ¥' + PARTNER_WEDDING_COST.toLocaleString() + '</p>';
+  const accept = function () {
+    if (typeof closeConsumeModal === 'function') closeConsumeModal(true);
+    completePrimaryPartnerMarriage();
+  };
+  const reject = function () {
+    if (typeof closeConsumeModal === 'function') closeConsumeModal(true);
+    if (typeof adjustSpouseIntimacy === 'function') { /* 非婚无亲密度 */ }
+    const c = getPartnerRomanceContact();
+    if (c && typeof bumpContactFamiliarity === 'function') bumpContactFamiliarity(c, -3);
+    addLog('💔 你拒绝了 ' + pn + ' 的求婚 · 熟悉度-3', 'warn');
+    if (typeof updateUI === 'function') updateUI();
+  };
+  if (typeof showConsumeModalHandlers === 'function') {
+    showConsumeModalHandlers({
+      icon: '💍', title: pn + ' 求婚', html: html,
+      buttons: [
+        { text: '拒绝', handler: reject },
+        { text: '答应', primary: true, handler: accept }
+      ]
+    });
+  } else addLog('💍 ' + pn + ' 想和你结婚（请打开界面处理）', 'warn');
+}
+
+function tickPartnerMarriageProposal() {
+  if (!game || game.gameOver || game.married || game.divorced || !hasPrimaryPartner()) return;
+  if (typeof autoLifeRunning !== 'undefined' && autoLifeRunning) return;
+  if (!partnerMeetsMarriageThreshold()) return;
+  if (Math.random() >= PARTNER_PROPOSAL_WEEKLY_CHANCE) return;
+  if (game._partnerProposalWeek === game.week) return;
+  game._partnerProposalWeek = game.week;
+  queuePartnerMarriageProposal();
+}
+
+function tickDestinyPartnerMeet() {
+  if (!game || game.gameOver || game.destinyLoveMet || hasPrimaryPartner() || game.married) return;
+  if (!game.destinyLove) return;
+  const year = game.destinyYear != null ? game.destinyYear : 0;
+  const grad = game.graduationYear || (typeof GRADUATION_YEAR !== 'undefined' ? GRADUATION_YEAR : 2024);
+  const meetWeek = year <= 0 ? 0 : Math.max(0, (grad + year - (game.birthYear || grad - 22)) * 52);
+  if ((game.week || 0) < meetWeek) return;
+  game.destinyLoveMet = true;
+  if (!game.partnerDisplayName && typeof pickPartnerDisplayName === 'function') {
+    game.partnerDisplayName = pickPartnerDisplayName(game.partnerGender || 'female');
+  }
+  game.romanceStage = 'dating';
+  syncPartnerRomanceContact();
+  const c = getPartnerRomanceContact();
+  if (c) {
+    c.familiarity = 62;
+    c.attraction = 55;
+  }
+  syncPartnerRomanceHousing();
+  const pn = game.partnerDisplayName || '某人';
+  addLog('✨ 命中注定之人出现：' + pn + ' · 确立恋爱', 'success');
+  if (typeof queuePersonEncounter === 'function') {
+    queuePersonEncounter({
+      lane: 'person', icon: '✨', title: '缘起',
+      html: '<p>你遇见了 <b>' + pn + '</b>，心跳加速——原来命运早已写好。</p><p class="fold-meta">已确立恋爱 · 熟悉62 · 吸引55</p>',
+      btn: '心动'
+    });
+  }
+}
+
+function bumpPartnerRomanceSocial(famDelta, attrDelta, intimacyDelta) {
+  if (!game || game.divorced) return;
+  if (game.married && !game.divorced) {
+    if (intimacyDelta && typeof adjustSpouseIntimacy === 'function') adjustSpouseIntimacy(intimacyDelta);
+    return;
+  }
+  const c = getPartnerRomanceContact();
+  if (!c) return;
+  if (famDelta && typeof bumpContactFamiliarity === 'function') bumpContactFamiliarity(c, famDelta);
+  if (attrDelta && typeof bumpContactAttraction === 'function') bumpContactAttraction(c, attrDelta);
+}
+
+function partnerRomanceHomeExtras(pickFn, labelWrap) {
+  if (!game || game.married || game.divorced || !hasPrimaryPartner()) return '';
+  let h = '';
+  if (game.romanceStage === 'dating') {
+    h += '<button class="btn" onclick="promptMoveInTogether()">' + (labelWrap ? labelWrap('🏠 同居') : '🏠 同居') + '</button> ';
+  }
+  if (!game.married) {
+    h += '<button class="btn" onclick="promptProposeToPartner()">' + (labelWrap ? labelWrap('💍 求婚') : '💍 求婚') + '</button> ';
+  }
+  return h;
+}
+
+function canShowStartDatingButton(c) {
+  if (!c || c.unreachable || hasPrimaryPartner()) return false;
+  if (typeof isParentContact === 'function' && isParentContact(c)) return false;
+  if (typeof isCoreContact === 'function' && isCoreContact(c)) return false;
+  ensureContactSocialFields(c);
+  if ((c.attraction || 0) < REL_PHYSICAL_ATTR) return false;
+  if (typeof mutualOrientationMatch === 'function' && !mutualOrientationMatch(c)) return false;
+  return true;
 }
 
 function initRelationshipSystem() {
   patchLifespanForIntimateInheritance();
   patchAdvanceOneWeekForRelations();
   if (!game) return;
+  migratePartnerRomance(game);
+  syncPartnerRomanceContact();
+  syncPartnerRomanceHousing();
   (game.contacts || []).forEach(function (c) {
     ensureContactRelationFields(c);
     if (typeof contactHasAffairRecord === 'function' && contactHasAffairRecord(c) && (c.familiarity || 0) >= 60) {
@@ -32607,30 +33002,52 @@ function rollCreationDice() {
 function diceSum(d) { return (d || []).reduce(function (a, b) { return a + b; }, 0); }
 function diceIsBig(sum) { return sum >= 11; }
 function lcDiceScore(d) { return (d[0] || 1) * (d[1] || 1) * (d[2] || 1); }
-function lcGaokaoBaseFromRolls(rolls) {
+function lcGaokaoWinsForRolls(st) {
+  if (!st) return [];
+  let wins = [];
+  if (st.retakeRolls && st.retakeRolls.length) {
+    wins = st.retakeRolls.slice(0, 3).map(function (r) { return !!r.win; });
+  } else {
+    const cr = (st.creationRolls || []).filter(function (r) { return r.step >= 1 && r.step <= 3; });
+    if (cr.length) wins = cr.map(function (r) { return !!r.win; });
+    else if (st.gaokaoRollWins && st.gaokaoRollWins.length) wins = st.gaokaoRollWins.slice(0, 3);
+  }
+  if ((st.gaokaoRolls || []).length >= 4 && st.gaokaoBonusWin != null) wins[3] = !!st.gaokaoBonusWin;
+  return wins;
+}
+function lcGaokaoBaseFromRolls(rolls, wins) {
   const first3 = (rolls || []).slice(0, 3);
   if (!first3.length) return 0;
-  let max = 0;
-  first3.forEach(function (d) { max = Math.max(max, lcDiceScore(d)); });
-  return max * 3;
+  wins = wins || [];
+  let total = 0;
+  first3.forEach(function (d, i) {
+    const s = lcDiceScore(d);
+    total += wins[i] ? s * 3 : s;
+  });
+  return total;
 }
-function lcGaokaoBonusFromRolls(rolls) {
+function lcGaokaoBonusFromRolls(rolls, wins) {
   const r = rolls || [];
-  return r.length >= 4 ? lcDiceScore(r[3]) : 0;
+  if (r.length < 4) return 0;
+  const s = lcDiceScore(r[3]);
+  return wins && wins[3] ? s * 3 : s;
 }
 function lcRecalcGaokaoScore(st) {
   if (!st) return 0;
   const rolls = st.gaokaoRolls || [];
-  st.gaokaoBaseScore = lcGaokaoBaseFromRolls(rolls);
-  st.gaokaoBonusPoints = lcGaokaoBonusFromRolls(rolls);
+  const wins = lcGaokaoWinsForRolls(st);
+  st.gaokaoRollWins = wins.slice(0, 3);
+  st.gaokaoBaseScore = lcGaokaoBaseFromRolls(rolls, wins);
+  st.gaokaoBonusPoints = lcGaokaoBonusFromRolls(rolls, wins);
   st.gaokaoScore = st.gaokaoBaseScore + st.gaokaoBonusPoints;
   return st.gaokaoScore;
 }
 function lcGaokaoScoreBreakdownHtml(st) {
-  const base = st.gaokaoBaseScore != null ? st.gaokaoBaseScore : lcGaokaoBaseFromRolls(st.gaokaoRolls);
+  const wins = lcGaokaoWinsForRolls(st);
+  const base = st.gaokaoBaseScore != null ? st.gaokaoBaseScore : lcGaokaoBaseFromRolls(st.gaokaoRolls, wins);
   const bonus = st.gaokaoBonusPoints || 0;
-  let h = '基础分 <span style="color:var(--yellow)">' + base + '</span>（三投最高×3）';
-  if (bonus) h += ' + 加投 <span style="color:var(--yellow)">' + bonus + '</span>';
+  let h = '基础分 <span style="color:var(--yellow)">' + base + '</span>（三投相加，押中×3）';
+  if (bonus) h += ' + 加投 <span style="color:var(--yellow)">' + bonus + '</span>（押中×3）';
   h += ' = 合计 <b style="color:var(--yellow)">' + (st.gaokaoScore != null ? st.gaokaoScore : base + bonus) + '</b>';
   return h;
 }
@@ -32959,7 +33376,7 @@ function renderLifeCreationStep() {
     if (st._gaokaoEligibleBonus) {
       html += '<p class="fold-meta"><b>前三步押中 ' + (st.gaokaoBetWins || st.betWinCount || 0) + ' 次。</b>下面为三投明细；<strong>最终高考分与录取待第六步梦想加投后再公布</strong>。</p>';
     } else {
-      html += '<p class="fold-meta"><b>前三步押中 ' + (st.gaokaoBetWins || st.betWinCount || 0) + ' 次，不足 2 次。</b>无第四次加投，亦无梦想问答。下面三投即第二步～第四步已开盅的骰积，直接相加为高考分。</p>';
+      html += '<p class="fold-meta"><b>前三步押中 ' + (st.gaokaoBetWins || st.betWinCount || 0) + ' 次，不足 2 次。</b>无第四次加投，亦无梦想问答。下面三投即第二步～第四步已开盅的骰积，相加计分（押中×3）。</p>';
     }
     html += lcFeltOpen();
     if (st.gaokaoRolls && st.gaokaoRolls.length) {
@@ -32970,7 +33387,7 @@ function renderLifeCreationStep() {
       });
       html += lcGaokaoScoreBreakdownHtml(st);
       if (st._gaokaoEligibleBonus) {
-        html += '<br><span style="color:var(--green)">第六步梦想问答可<strong>加投一次</strong>（加投分直接计入总分，最高再 +216）</span>';
+        html += '<br><span style="color:var(--green)">第六步梦想问答可<strong>加投一次</strong>（加投分计入总分，押中×3，最高再 +648）</span>';
       }
       html += '</div>';
     }
@@ -33111,6 +33528,7 @@ function lcBuildGaokaoFromCreationRolls(st) {
   const rolls = (st.creationRolls || []).filter(function (r) { return r.step >= 1 && r.step <= 3; });
   st.gaokaoRolls = rolls.map(function (r) { return r.dice; });
   st.gaokaoRollLabels = ['性向', '财富', '实力'];
+  st.gaokaoRollWins = rolls.map(function (r) { return !!r.win; });
   lcRecalcGaokaoScore(st);
   const winCount13 = rolls.filter(function (r) { return r.win; }).length;
   st.gaokaoBetWins = winCount13;
@@ -33120,7 +33538,8 @@ function lcBuildGaokaoFromCreationRolls(st) {
   else if (wins === 0) st.statsMode = 'body';
   const labels = ['性向', '财富', '实力'];
   st.resultText = '前三步开盅已计入高考：' + rolls.map(function (r, i) {
-    return labels[i] + ' ' + r.dice.join('×') + '=' + lcDiceScore(r.dice);
+    const s = lcDiceScore(r.dice);
+    return labels[i] + ' ' + r.dice.join('×') + '=' + s + (r.win ? '×3' : '');
   }).join(' · ') + '。<br>' + lcGaokaoScoreBreakdownHtml(st) +
     (st._gaokaoEligibleBonus ? ' · 押中 ' + winCount13 + ' 次，第六步可梦想加投' : ' · 押中 ' + winCount13 + ' 次，无加投与梦想问答');
   if (!st._gaokaoEligibleBonus) {
@@ -33175,6 +33594,7 @@ function lcRetakeGaokao() {
   st.gaokaoBaseScore = 0;
   st.gaokaoBonusPoints = 0;
   st.gaokaoBonus = false;
+  st.gaokaoBonusWin = null;
   st.gaokaoForkChoice = null;
   st.gaokaoOutcome = null;
   st.gaokaoAccepted = false;
@@ -33215,7 +33635,7 @@ function lcRollRetakeDice() {
     st.gaokaoRollLabels.push(lcRetakeThrowLabel(idx));
     lcRecalcGaokaoScore(st);
     st.retakeThrowIdx = idx + 1;
-    st.resultText = lcRetakeThrowLabel(idx) + '：' + dice.join('×') + ' = <b>' + lcDiceScore(dice) + '</b> · ' +
+    st.resultText = lcRetakeThrowLabel(idx) + '：' + dice.join('×') + ' = <b>' + lcDiceScore(dice) + (win ? '×3' : '') + '</b> · ' +
       (win ? '押中' : '未中') + '<br>' + lcGaokaoScoreBreakdownHtml(st);
     st.retakeAwaitContinue = true;
     renderLifeCreationStep();
@@ -33259,13 +33679,17 @@ function lcRollRetakeBonus(withDream) {
   lcAnimateDice(dice, function () {
     lcRolling = false;
     st.lastDice = dice;
+    const sum = diceSum(dice);
+    st.gaokaoBonusWin = (st.betPick === 'big') === diceIsBig(sum);
     if (withDream) applyDream(st.betPick, dice);
     st.gaokaoRolls.push(dice.slice());
     st.gaokaoRollLabels.push(withDream ? '梦想加投' : '加投');
     st.gaokaoBonus = true;
     lcRecalcGaokaoScore(st);
     st._retakeBonusDone = true;
-    st.resultText = (withDream ? '梦想加投' : '加投') + '：' + dice.join('×') + ' = <b>' + lcDiceScore(dice) + '</b><br>' + lcGaokaoScoreBreakdownHtml(st);
+    const raw = lcDiceScore(dice);
+    st.resultText = (withDream ? '梦想加投' : '加投') + '：' + dice.join('×') + ' = <b>' + raw + (st.gaokaoBonusWin ? '×3' : '') + '</b> · ' +
+      (st.gaokaoBonusWin ? '押中' : '未中') + '<br>' + lcGaokaoScoreBreakdownHtml(st);
     if (withDream) st.resultText += '<br>' + (st.hasDream ? '你心怀梦想。' : '你尚不知方向。');
     lcFinalizeGaokaoOutcome(st);
     renderLifeCreationStep();
@@ -33303,13 +33727,15 @@ function lcRollDiceBet(step) {
     else if (step === 5) {
       applyDream(st.betPick, dice);
       if (st._gaokaoEligibleBonus) {
+        const sum = diceSum(dice);
+        st.gaokaoBonusWin = (st.betPick === 'big') === diceIsBig(sum);
         st.gaokaoRolls = st.gaokaoRolls || [];
         st.gaokaoRollLabels = st.gaokaoRollLabels || ['性向', '财富', '实力'];
         st.gaokaoRolls.push(dice.slice());
         st.gaokaoRollLabels.push('梦想加投');
         st.gaokaoBonus = true;
         lcRecalcGaokaoScore(st);
-        st.resultText += '<br>加投 +' + st.gaokaoBonusPoints + ' · ' + lcGaokaoScoreBreakdownHtml(st);
+        st.resultText += '<br>加投 ' + (st.gaokaoBonusWin ? '押中×3' : '未中') + ' +' + st.gaokaoBonusPoints + ' · ' + lcGaokaoScoreBreakdownHtml(st);
       }
       lcFinalizeGaokaoOutcome(st);
     }
@@ -33697,12 +34123,15 @@ const MEDIA_DY_EDIT_H = 1;
 const MEDIA_DY_LIVE_H = 2;
 const DELIVERY_WORDS = ['麻辣', '黄焖', '兰州', '沙县', '奶茶', '烧烤', '饺子', '汉堡', '寿司', '盖饭', '米线', '煎饼'];
 const BILI_TOPICS = ['入门指南', '实测对比', 'vlog日常', '干货分享', '避坑清单'];
+const MEDIA_FOOD_SHOOT_MIN = 80;
+const MEDIA_FOOD_SHOOT_MAX = 220;
+const MEDIA_TRAVEL_COST_BASE = 280;
 const MEDIA_TRACK_REQ = {
-  '游戏': { needConsoleOrPc: true, label: '需游戏机或电脑' },
+  '游戏': { needConsoleOrPc: true, label: '需游戏机或电脑', costNote: '拍摄需电脑/游戏机' },
   '知识': { needComputer: true, label: '需电脑' },
-  '生活': { needPhone: true, label: '需手机' },
-  '美食': { needPhone: true, label: '需手机' },
-  '旅行': { needPhone: true, label: '需手机' },
+  '生活': { needPhone: true, label: '需手机', needLifeOps: true, costNote: '拍摄需本周围日常操作记录' },
+  '美食': { needPhone: true, foodCost: true, costNote: '拍摄需探店消费' },
+  '旅行': { needPhone: true, travelCost: true, costNote: '拍摄需前往其他城市' },
   '剧情': { needPhone: true, needComputer: true, label: '需电脑+手机' }
 };
 
@@ -33767,10 +34196,102 @@ function trackReqLabel(track, platformId) {
   const req = MEDIA_TRACK_REQ[track];
   if (!req) return '';
   if (platformId === 'douyin') {
+    if (req.needPhone && req.costNote) return req.costNote;
     if (req.needPhone) return '需手机';
     return '';
   }
-  return req.label;
+  return req.costNote || req.label || '';
+}
+
+function trackPickHint(track, platformId) {
+  const parts = [];
+  const dev = trackReqLabel(track, platformId);
+  const cost = typeof trackShootCostHint === 'function' ? trackShootCostHint(track) : '';
+  if (dev) parts.push(dev);
+  if (cost && cost !== dev) parts.push(cost);
+  return parts.join(' · ');
+}
+
+function playerMediaHomeCity() {
+  return typeof PLAYER_HOME_CITY !== 'undefined' ? PLAYER_HOME_CITY : '杭州';
+}
+
+function playerMediaCurrentCity() {
+  if (game && game.employed && game.playerCity) return game.playerCity;
+  if (typeof getPlayerCurrentCity === 'function') return getPlayerCurrentCity();
+  return playerMediaHomeCity();
+}
+
+function recordMediaLifeOp(source) {
+  if (!game || !source) return;
+  if (source === 'sidejob' || source === 'media') return;
+  if (game.mediaLifeOpsWeek !== game.week) {
+    game.mediaLifeOpsWeek = game.week;
+    game.mediaLifeOpsCount = 0;
+  }
+  game.mediaLifeOpsCount = (game.mediaLifeOpsCount || 0) + 1;
+}
+
+function countPlayerLifeOpsThisWeek() {
+  if (!game) return 0;
+  if (game.mediaLifeOpsWeek === game.week) return game.mediaLifeOpsCount || 0;
+  return 0;
+}
+
+function pickMediaTravelCity() {
+  const cities = typeof CITIES !== 'undefined' ? CITIES : ['北京', '上海', '深圳', '广州', '杭州', '成都', '武汉', '南京'];
+  const from = playerMediaCurrentCity();
+  const pool = cities.filter(function (c) { return c !== from; });
+  return pool[Math.floor(Math.random() * pool.length)] || '上海';
+}
+
+function mediaTravelShootCost(fromCity, toCity) {
+  if (typeof getTravelLeg === 'function') {
+    const leg = getTravelLeg(fromCity, toCity);
+    const km = leg.km || 500;
+    return Math.round(MEDIA_TRAVEL_COST_BASE + km * 0.75 + Math.random() * 120);
+  }
+  return MEDIA_TRAVEL_COST_BASE + 300 + Math.floor(Math.random() * 200);
+}
+
+function trackShootCostHint(track) {
+  const req = MEDIA_TRACK_REQ[track] || {};
+  if (req.foodCost) return '拍摄 ¥' + MEDIA_FOOD_SHOOT_MIN + '～' + MEDIA_FOOD_SHOOT_MAX + ' 探店';
+  if (req.travelCost) return '拍摄需赴外市（路宿）';
+  if (req.needLifeOps) return '拍摄需本周围有日常操作';
+  if (req.needConsoleOrPc) return '拍摄需电脑/游戏机';
+  return req.costNote || '';
+}
+
+function chargeMediaTrackShootCost(track, shop) {
+  const req = MEDIA_TRACK_REQ[track] || {};
+  if (req.needConsoleOrPc && shop && !trackMeetsReq(track, shop.platform)) {
+    addLog(trackReqLabel(track, shop.platform), 'fail');
+    return false;
+  }
+  if (req.needLifeOps) {
+    const n = countPlayerLifeOpsThisWeek();
+    if (n < 1) {
+      addLog('生活赛道需先在本轮日程中留下操作记录（上班/外出/宅家/副业等）', 'fail');
+      return false;
+    }
+  }
+  if (req.foodCost) {
+    const cost = MEDIA_FOOD_SHOOT_MIN + Math.floor(Math.random() * (MEDIA_FOOD_SHOOT_MAX - MEDIA_FOOD_SHOOT_MIN + 1));
+    if (typeof spendCash !== 'function' || !spendCash(cost, '美食探店')) return false;
+    addLog('🍜 探店试吃 ¥' + cost, 'info');
+    return true;
+  }
+  if (req.travelCost) {
+    const from = playerMediaCurrentCity();
+    const toCity = pickMediaTravelCity();
+    const cost = mediaTravelShootCost(from, toCity);
+    if (typeof spendCash !== 'function' || !spendCash(cost, '旅行拍摄·' + toCity)) return false;
+    if (shop) shop.lastShootCity = toCity;
+    addLog('✈ 从' + from + '赴' + toCity + '取景 · 路宿 ¥' + cost, 'info');
+    return true;
+  }
+  return true;
 }
 
 function playerBrandPresets() {
@@ -33953,7 +34474,7 @@ function renderSideIncomeTabPanel() {
   if (typeof renderDailyTimeBar === 'function') renderDailyTimeBar();
   const se = ensureSelfEmploy();
   let h = '<div class="panel-title">🏪 副业 · 自营</div>';
-  h += '<p class="fold-meta" style="margin:0 0 10px">与「日常」共用时段 · 弹窗点选 · 收益按文档算法（电商暂不实现进货）</p>';
+  h += '<p class="fold-meta" style="margin:0 0 10px">与「日常」共用时段 · 弹窗点选 · 自媒体赛道拍摄有额外成本（美食探店/旅行外拍/生活需日常记录/游戏需电脑）</p>';
   h += renderSideIncomeChannels();
   if (se.scamBook && se.scamBook.contacts) {
     h += '<div style="margin-top:10px;padding:8px;border:1px solid var(--orange);border-radius:8px">';
@@ -34245,7 +34766,7 @@ function openMediaChannel(platformId) {
   const plat = mediaPlatformMeta(platformId);
   pickChoiceModal({
     icon: '📺', title: plat.name + ' · 开通',
-    html: '<p class="fold-meta">选账号名 → 选赛道（各赛道设备要求不同）</p>',
+    html: '<p class="fold-meta">选账号名 → 选赛道（设备与拍摄成本因赛道而异）</p>',
     choices: playerMediaPresets().map(function (name, i) {
       return { label: name, primary: i === 0, value: name, onPick: function (brand) { pickMediaTrack(platformId, brand); } };
     })
@@ -34259,8 +34780,9 @@ function pickMediaTrack(platformId, brand) {
     html: '<p>账号 <b>「' + brand + '」</b></p>',
     choices: plat.tracks.map(function (t, i) {
       const ok = trackMeetsReq(t, platformId);
+      const hint = trackPickHint(t, platformId);
       return {
-        label: t + (ok ? '' : '（' + trackReqLabel(t, platformId) + '）'),
+        label: t + (hint ? '（' + hint + '）' : ''),
         primary: i === 0 && ok,
         value: t,
         onPick: function (track) {
@@ -34295,6 +34817,8 @@ function openBilibiliOps(shop) {
   const idx = typeof fluxTrackIndex === 'function' ? fluxTrackIndex('media', shop.track) : 100;
   let html = '<p>赛道 <b>' + shop.track + '</b> · 指数 <b>' + Math.round(idx) + '</b> · 粉 ' + (shop.fans || 0) + '</p>';
   html += '<p class="fold-meta">流程：选题' + MEDIA_BILI_PLAN_SLOTS + '时段 → 拍摄' + MEDIA_BILI_SHOOT_SLOTS + '时段 → 剪辑' + MEDIA_BILI_EDIT_SLOTS + '时段 → 投稿审核2～4周</p>';
+  const shootHint = trackShootCostHint(shop.track);
+  if (shootHint) html += '<p class="fold-meta">拍摄成本：' + shootHint + '</p>';
   if (!trackMeetsReq(shop.track, 'bilibili')) html += '<p style="color:var(--orange)">当前赛道需：' + trackReqLabel(shop.track, 'bilibili') + '</p>';
 
   if (shop.pendingUploadUntilWeek && game.week < shop.pendingUploadUntilWeek) {
@@ -34349,6 +34873,7 @@ function openBilibiliOps(shop) {
       handler: function () {
         closeConsumeModal(true);
         if (!trackMeetsReq(shop.track, 'bilibili')) { addLog(trackReqLabel(shop.track, 'bilibili'), 'fail'); return; }
+        if (!chargeMediaTrackShootCost(shop.track, shop)) return;
         const needBlock = sideCanSpendSlots(MEDIA_BILI_SHOOT_SLOTS);
         if (needBlock) { addLog(needBlock, 'fail'); return; }
         if (!sideSpendSlots(MEDIA_BILI_SHOOT_SLOTS, 'media', 'B站拍摄')) return;
@@ -34391,6 +34916,9 @@ function openDouyinOps(shop) {
   const idx = typeof fluxTrackIndex === 'function' ? fluxTrackIndex('media', shop.track) : 100;
   let html = '<p>赛道 <b>' + shop.track + '</b> · 指数 <b>' + Math.round(idx) + '</b> · 连签 ' + (shop.liveStreak || 0) + '</p>';
   html += '<p class="fold-meta">短视频：拍摄' + MEDIA_DY_SHOOT_H + 'h+剪辑' + MEDIA_DY_EDIT_H + 'h · 直播：' + MEDIA_DY_LIVE_H + 'h/次 · 仅需手机</p>';
+  const shootHint = trackShootCostHint(shop.track);
+  if (shootHint) html += '<p class="fold-meta">拍摄成本：' + shootHint + '</p>';
+  if (shop.lastShootCity && shop.track === '旅行') html += '<p class="fold-meta">上次取景：' + shop.lastShootCity + '</p>';
   if (!trackMeetsReq(shop.track, 'douyin')) html += '<p style="color:var(--orange)">当前赛道需：' + trackReqLabel(shop.track, 'douyin') + '</p>';
 
   const buttons = [{ text: '关闭', handler: function () { closeConsumeModal(true); } }];
@@ -34402,6 +34930,7 @@ function openDouyinOps(shop) {
       handler: function () {
         closeConsumeModal(true);
         if (!trackMeetsReq(shop.track, 'douyin')) { addLog(trackReqLabel(shop.track, 'douyin'), 'fail'); return; }
+        if (!chargeMediaTrackShootCost(shop.track, shop)) return;
         if (!sideSpendHours(MEDIA_DY_SHOOT_H, 'media', '抖音拍摄')) return;
         shop.dyDraft = { shot: true, edited: false };
         addLog('🎬 抖音素材拍摄完成', 'info');
@@ -35089,7 +35618,8 @@ function fertilityIvfEligible(){
 }
 function fertilityNaturalProcreateEligible(){
   if(!canStartFertilityOrder())return false;
-  return !!(game.married&&!game.divorced&&!isSameSexCouple());
+  if(typeof hasPrimaryPartner==='function'&&hasPrimaryPartner()&&!game.divorced&&!isSameSexCouple())return true;
+  return false;
 }
 function showHomeFertilityBtn(){
   if(game.fertilityOrder)return true;

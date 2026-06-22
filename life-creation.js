@@ -8,30 +8,52 @@ function rollCreationDice() {
 function diceSum(d) { return (d || []).reduce(function (a, b) { return a + b; }, 0); }
 function diceIsBig(sum) { return sum >= 11; }
 function lcDiceScore(d) { return (d[0] || 1) * (d[1] || 1) * (d[2] || 1); }
-function lcGaokaoBaseFromRolls(rolls) {
+function lcGaokaoWinsForRolls(st) {
+  if (!st) return [];
+  let wins = [];
+  if (st.retakeRolls && st.retakeRolls.length) {
+    wins = st.retakeRolls.slice(0, 3).map(function (r) { return !!r.win; });
+  } else {
+    const cr = (st.creationRolls || []).filter(function (r) { return r.step >= 1 && r.step <= 3; });
+    if (cr.length) wins = cr.map(function (r) { return !!r.win; });
+    else if (st.gaokaoRollWins && st.gaokaoRollWins.length) wins = st.gaokaoRollWins.slice(0, 3);
+  }
+  if ((st.gaokaoRolls || []).length >= 4 && st.gaokaoBonusWin != null) wins[3] = !!st.gaokaoBonusWin;
+  return wins;
+}
+function lcGaokaoBaseFromRolls(rolls, wins) {
   const first3 = (rolls || []).slice(0, 3);
   if (!first3.length) return 0;
-  let max = 0;
-  first3.forEach(function (d) { max = Math.max(max, lcDiceScore(d)); });
-  return max * 3;
+  wins = wins || [];
+  let total = 0;
+  first3.forEach(function (d, i) {
+    const s = lcDiceScore(d);
+    total += wins[i] ? s * 3 : s;
+  });
+  return total;
 }
-function lcGaokaoBonusFromRolls(rolls) {
+function lcGaokaoBonusFromRolls(rolls, wins) {
   const r = rolls || [];
-  return r.length >= 4 ? lcDiceScore(r[3]) : 0;
+  if (r.length < 4) return 0;
+  const s = lcDiceScore(r[3]);
+  return wins && wins[3] ? s * 3 : s;
 }
 function lcRecalcGaokaoScore(st) {
   if (!st) return 0;
   const rolls = st.gaokaoRolls || [];
-  st.gaokaoBaseScore = lcGaokaoBaseFromRolls(rolls);
-  st.gaokaoBonusPoints = lcGaokaoBonusFromRolls(rolls);
+  const wins = lcGaokaoWinsForRolls(st);
+  st.gaokaoRollWins = wins.slice(0, 3);
+  st.gaokaoBaseScore = lcGaokaoBaseFromRolls(rolls, wins);
+  st.gaokaoBonusPoints = lcGaokaoBonusFromRolls(rolls, wins);
   st.gaokaoScore = st.gaokaoBaseScore + st.gaokaoBonusPoints;
   return st.gaokaoScore;
 }
 function lcGaokaoScoreBreakdownHtml(st) {
-  const base = st.gaokaoBaseScore != null ? st.gaokaoBaseScore : lcGaokaoBaseFromRolls(st.gaokaoRolls);
+  const wins = lcGaokaoWinsForRolls(st);
+  const base = st.gaokaoBaseScore != null ? st.gaokaoBaseScore : lcGaokaoBaseFromRolls(st.gaokaoRolls, wins);
   const bonus = st.gaokaoBonusPoints || 0;
-  let h = '基础分 <span style="color:var(--yellow)">' + base + '</span>（三投最高×3）';
-  if (bonus) h += ' + 加投 <span style="color:var(--yellow)">' + bonus + '</span>';
+  let h = '基础分 <span style="color:var(--yellow)">' + base + '</span>（三投相加，押中×3）';
+  if (bonus) h += ' + 加投 <span style="color:var(--yellow)">' + bonus + '</span>（押中×3）';
   h += ' = 合计 <b style="color:var(--yellow)">' + (st.gaokaoScore != null ? st.gaokaoScore : base + bonus) + '</b>';
   return h;
 }
@@ -360,7 +382,7 @@ function renderLifeCreationStep() {
     if (st._gaokaoEligibleBonus) {
       html += '<p class="fold-meta"><b>前三步押中 ' + (st.gaokaoBetWins || st.betWinCount || 0) + ' 次。</b>下面为三投明细；<strong>最终高考分与录取待第六步梦想加投后再公布</strong>。</p>';
     } else {
-      html += '<p class="fold-meta"><b>前三步押中 ' + (st.gaokaoBetWins || st.betWinCount || 0) + ' 次，不足 2 次。</b>无第四次加投，亦无梦想问答。下面三投即第二步～第四步已开盅的骰积，直接相加为高考分。</p>';
+      html += '<p class="fold-meta"><b>前三步押中 ' + (st.gaokaoBetWins || st.betWinCount || 0) + ' 次，不足 2 次。</b>无第四次加投，亦无梦想问答。下面三投即第二步～第四步已开盅的骰积，相加计分（押中×3）。</p>';
     }
     html += lcFeltOpen();
     if (st.gaokaoRolls && st.gaokaoRolls.length) {
@@ -371,7 +393,7 @@ function renderLifeCreationStep() {
       });
       html += lcGaokaoScoreBreakdownHtml(st);
       if (st._gaokaoEligibleBonus) {
-        html += '<br><span style="color:var(--green)">第六步梦想问答可<strong>加投一次</strong>（加投分直接计入总分，最高再 +216）</span>';
+        html += '<br><span style="color:var(--green)">第六步梦想问答可<strong>加投一次</strong>（加投分计入总分，押中×3，最高再 +648）</span>';
       }
       html += '</div>';
     }
@@ -512,6 +534,7 @@ function lcBuildGaokaoFromCreationRolls(st) {
   const rolls = (st.creationRolls || []).filter(function (r) { return r.step >= 1 && r.step <= 3; });
   st.gaokaoRolls = rolls.map(function (r) { return r.dice; });
   st.gaokaoRollLabels = ['性向', '财富', '实力'];
+  st.gaokaoRollWins = rolls.map(function (r) { return !!r.win; });
   lcRecalcGaokaoScore(st);
   const winCount13 = rolls.filter(function (r) { return r.win; }).length;
   st.gaokaoBetWins = winCount13;
@@ -521,7 +544,8 @@ function lcBuildGaokaoFromCreationRolls(st) {
   else if (wins === 0) st.statsMode = 'body';
   const labels = ['性向', '财富', '实力'];
   st.resultText = '前三步开盅已计入高考：' + rolls.map(function (r, i) {
-    return labels[i] + ' ' + r.dice.join('×') + '=' + lcDiceScore(r.dice);
+    const s = lcDiceScore(r.dice);
+    return labels[i] + ' ' + r.dice.join('×') + '=' + s + (r.win ? '×3' : '');
   }).join(' · ') + '。<br>' + lcGaokaoScoreBreakdownHtml(st) +
     (st._gaokaoEligibleBonus ? ' · 押中 ' + winCount13 + ' 次，第六步可梦想加投' : ' · 押中 ' + winCount13 + ' 次，无加投与梦想问答');
   if (!st._gaokaoEligibleBonus) {
@@ -576,6 +600,7 @@ function lcRetakeGaokao() {
   st.gaokaoBaseScore = 0;
   st.gaokaoBonusPoints = 0;
   st.gaokaoBonus = false;
+  st.gaokaoBonusWin = null;
   st.gaokaoForkChoice = null;
   st.gaokaoOutcome = null;
   st.gaokaoAccepted = false;
@@ -616,7 +641,7 @@ function lcRollRetakeDice() {
     st.gaokaoRollLabels.push(lcRetakeThrowLabel(idx));
     lcRecalcGaokaoScore(st);
     st.retakeThrowIdx = idx + 1;
-    st.resultText = lcRetakeThrowLabel(idx) + '：' + dice.join('×') + ' = <b>' + lcDiceScore(dice) + '</b> · ' +
+    st.resultText = lcRetakeThrowLabel(idx) + '：' + dice.join('×') + ' = <b>' + lcDiceScore(dice) + (win ? '×3' : '') + '</b> · ' +
       (win ? '押中' : '未中') + '<br>' + lcGaokaoScoreBreakdownHtml(st);
     st.retakeAwaitContinue = true;
     renderLifeCreationStep();
@@ -660,13 +685,17 @@ function lcRollRetakeBonus(withDream) {
   lcAnimateDice(dice, function () {
     lcRolling = false;
     st.lastDice = dice;
+    const sum = diceSum(dice);
+    st.gaokaoBonusWin = (st.betPick === 'big') === diceIsBig(sum);
     if (withDream) applyDream(st.betPick, dice);
     st.gaokaoRolls.push(dice.slice());
     st.gaokaoRollLabels.push(withDream ? '梦想加投' : '加投');
     st.gaokaoBonus = true;
     lcRecalcGaokaoScore(st);
     st._retakeBonusDone = true;
-    st.resultText = (withDream ? '梦想加投' : '加投') + '：' + dice.join('×') + ' = <b>' + lcDiceScore(dice) + '</b><br>' + lcGaokaoScoreBreakdownHtml(st);
+    const raw = lcDiceScore(dice);
+    st.resultText = (withDream ? '梦想加投' : '加投') + '：' + dice.join('×') + ' = <b>' + raw + (st.gaokaoBonusWin ? '×3' : '') + '</b> · ' +
+      (st.gaokaoBonusWin ? '押中' : '未中') + '<br>' + lcGaokaoScoreBreakdownHtml(st);
     if (withDream) st.resultText += '<br>' + (st.hasDream ? '你心怀梦想。' : '你尚不知方向。');
     lcFinalizeGaokaoOutcome(st);
     renderLifeCreationStep();
@@ -704,13 +733,15 @@ function lcRollDiceBet(step) {
     else if (step === 5) {
       applyDream(st.betPick, dice);
       if (st._gaokaoEligibleBonus) {
+        const sum = diceSum(dice);
+        st.gaokaoBonusWin = (st.betPick === 'big') === diceIsBig(sum);
         st.gaokaoRolls = st.gaokaoRolls || [];
         st.gaokaoRollLabels = st.gaokaoRollLabels || ['性向', '财富', '实力'];
         st.gaokaoRolls.push(dice.slice());
         st.gaokaoRollLabels.push('梦想加投');
         st.gaokaoBonus = true;
         lcRecalcGaokaoScore(st);
-        st.resultText += '<br>加投 +' + st.gaokaoBonusPoints + ' · ' + lcGaokaoScoreBreakdownHtml(st);
+        st.resultText += '<br>加投 ' + (st.gaokaoBonusWin ? '押中×3' : '未中') + ' +' + st.gaokaoBonusPoints + ' · ' + lcGaokaoScoreBreakdownHtml(st);
       }
       lcFinalizeGaokaoOutcome(st);
     }

@@ -165,7 +165,11 @@ function respondContactConfession(contactId,accept){
     if(typeof ensureContactRelationFields==='function')ensureContactRelationFields(c);
     c.intimateRelation=true;
     c.intimateMarkedWeek=game.week||0;
-    addLog('💞 接受 '+c.name+' 的表白 · 确立亲密关系认定','success');
+    if(!game.married&&!game.divorced&&typeof setPrimaryPartnerFromContact==='function'){
+      setPrimaryPartnerFromContact(c);
+    }else{
+      addLog('💞 接受 '+c.name+' 的表白 · 确立亲密关系认定','success');
+    }
     if(game.married&&!game.divorced)game.affairActive=true;
   }else{
     const loss=Math.round(5+(c.attraction||0)/8);
@@ -490,6 +494,7 @@ function contactKindLabel(c){
   if(c.kind==='great_grandparent'||c.kind==='spouse_great_grandparent')return c.role||'曾祖辈';
   if(c.kind==='spouse_parent')return c.role||'姻亲';
   if(c.kind==='spouse')return '伴侣';
+  if(c.kind==='lover'||c.isPrimaryPartner)return game&&game.romanceStage==='cohabiting'?'同居':'恋人';
   if(c.kind==='ex_spouse')return c.role||(c.gender==='male'?'前夫':'前妻');
   if(c.kind==='bff')return c.role||'基友/闺蜜';
   if(c.pendingConfession)return '表白中';

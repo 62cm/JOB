@@ -28,12 +28,15 @@ const MEDIA_DY_EDIT_H = 1;
 const MEDIA_DY_LIVE_H = 2;
 const DELIVERY_WORDS = ['麻辣', '黄焖', '兰州', '沙县', '奶茶', '烧烤', '饺子', '汉堡', '寿司', '盖饭', '米线', '煎饼'];
 const BILI_TOPICS = ['入门指南', '实测对比', 'vlog日常', '干货分享', '避坑清单'];
+const MEDIA_FOOD_SHOOT_MIN = 80;
+const MEDIA_FOOD_SHOOT_MAX = 220;
+const MEDIA_TRAVEL_COST_BASE = 280;
 const MEDIA_TRACK_REQ = {
-  '游戏': { needConsoleOrPc: true, label: '需游戏机或电脑' },
+  '游戏': { needConsoleOrPc: true, label: '需游戏机或电脑', costNote: '拍摄需电脑/游戏机' },
   '知识': { needComputer: true, label: '需电脑' },
-  '生活': { needPhone: true, label: '需手机' },
-  '美食': { needPhone: true, label: '需手机' },
-  '旅行': { needPhone: true, label: '需手机' },
+  '生活': { needPhone: true, label: '需手机', needLifeOps: true, costNote: '拍摄需本周围日常操作记录' },
+  '美食': { needPhone: true, foodCost: true, costNote: '拍摄需探店消费' },
+  '旅行': { needPhone: true, travelCost: true, costNote: '拍摄需前往其他城市' },
   '剧情': { needPhone: true, needComputer: true, label: '需电脑+手机' }
 };
 
@@ -98,10 +101,102 @@ function trackReqLabel(track, platformId) {
   const req = MEDIA_TRACK_REQ[track];
   if (!req) return '';
   if (platformId === 'douyin') {
+    if (req.needPhone && req.costNote) return req.costNote;
     if (req.needPhone) return '需手机';
     return '';
   }
-  return req.label;
+  return req.costNote || req.label || '';
+}
+
+function trackPickHint(track, platformId) {
+  const parts = [];
+  const dev = trackReqLabel(track, platformId);
+  const cost = typeof trackShootCostHint === 'function' ? trackShootCostHint(track) : '';
+  if (dev) parts.push(dev);
+  if (cost && cost !== dev) parts.push(cost);
+  return parts.join(' · ');
+}
+
+function playerMediaHomeCity() {
+  return typeof PLAYER_HOME_CITY !== 'undefined' ? PLAYER_HOME_CITY : '杭州';
+}
+
+function playerMediaCurrentCity() {
+  if (game && game.employed && game.playerCity) return game.playerCity;
+  if (typeof getPlayerCurrentCity === 'function') return getPlayerCurrentCity();
+  return playerMediaHomeCity();
+}
+
+function recordMediaLifeOp(source) {
+  if (!game || !source) return;
+  if (source === 'sidejob' || source === 'media') return;
+  if (game.mediaLifeOpsWeek !== game.week) {
+    game.mediaLifeOpsWeek = game.week;
+    game.mediaLifeOpsCount = 0;
+  }
+  game.mediaLifeOpsCount = (game.mediaLifeOpsCount || 0) + 1;
+}
+
+function countPlayerLifeOpsThisWeek() {
+  if (!game) return 0;
+  if (game.mediaLifeOpsWeek === game.week) return game.mediaLifeOpsCount || 0;
+  return 0;
+}
+
+function pickMediaTravelCity() {
+  const cities = typeof CITIES !== 'undefined' ? CITIES : ['北京', '上海', '深圳', '广州', '杭州', '成都', '武汉', '南京'];
+  const from = playerMediaCurrentCity();
+  const pool = cities.filter(function (c) { return c !== from; });
+  return pool[Math.floor(Math.random() * pool.length)] || '上海';
+}
+
+function mediaTravelShootCost(fromCity, toCity) {
+  if (typeof getTravelLeg === 'function') {
+    const leg = getTravelLeg(fromCity, toCity);
+    const km = leg.km || 500;
+    return Math.round(MEDIA_TRAVEL_COST_BASE + km * 0.75 + Math.random() * 120);
+  }
+  return MEDIA_TRAVEL_COST_BASE + 300 + Math.floor(Math.random() * 200);
+}
+
+function trackShootCostHint(track) {
+  const req = MEDIA_TRACK_REQ[track] || {};
+  if (req.foodCost) return '拍摄 ¥' + MEDIA_FOOD_SHOOT_MIN + '～' + MEDIA_FOOD_SHOOT_MAX + ' 探店';
+  if (req.travelCost) return '拍摄需赴外市（路宿）';
+  if (req.needLifeOps) return '拍摄需本周围有日常操作';
+  if (req.needConsoleOrPc) return '拍摄需电脑/游戏机';
+  return req.costNote || '';
+}
+
+function chargeMediaTrackShootCost(track, shop) {
+  const req = MEDIA_TRACK_REQ[track] || {};
+  if (req.needConsoleOrPc && shop && !trackMeetsReq(track, shop.platform)) {
+    addLog(trackReqLabel(track, shop.platform), 'fail');
+    return false;
+  }
+  if (req.needLifeOps) {
+    const n = countPlayerLifeOpsThisWeek();
+    if (n < 1) {
+      addLog('生活赛道需先在本轮日程中留下操作记录（上班/外出/宅家/副业等）', 'fail');
+      return false;
+    }
+  }
+  if (req.foodCost) {
+    const cost = MEDIA_FOOD_SHOOT_MIN + Math.floor(Math.random() * (MEDIA_FOOD_SHOOT_MAX - MEDIA_FOOD_SHOOT_MIN + 1));
+    if (typeof spendCash !== 'function' || !spendCash(cost, '美食探店')) return false;
+    addLog('🍜 探店试吃 ¥' + cost, 'info');
+    return true;
+  }
+  if (req.travelCost) {
+    const from = playerMediaCurrentCity();
+    const toCity = pickMediaTravelCity();
+    const cost = mediaTravelShootCost(from, toCity);
+    if (typeof spendCash !== 'function' || !spendCash(cost, '旅行拍摄·' + toCity)) return false;
+    if (shop) shop.lastShootCity = toCity;
+    addLog('✈ 从' + from + '赴' + toCity + '取景 · 路宿 ¥' + cost, 'info');
+    return true;
+  }
+  return true;
 }
 
 function playerBrandPresets() {
@@ -284,7 +379,7 @@ function renderSideIncomeTabPanel() {
   if (typeof renderDailyTimeBar === 'function') renderDailyTimeBar();
   const se = ensureSelfEmploy();
   let h = '<div class="panel-title">🏪 副业 · 自营</div>';
-  h += '<p class="fold-meta" style="margin:0 0 10px">与「日常」共用时段 · 弹窗点选 · 收益按文档算法（电商暂不实现进货）</p>';
+  h += '<p class="fold-meta" style="margin:0 0 10px">与「日常」共用时段 · 弹窗点选 · 自媒体赛道拍摄有额外成本（美食探店/旅行外拍/生活需日常记录/游戏需电脑）</p>';
   h += renderSideIncomeChannels();
   if (se.scamBook && se.scamBook.contacts) {
     h += '<div style="margin-top:10px;padding:8px;border:1px solid var(--orange);border-radius:8px">';
@@ -576,7 +671,7 @@ function openMediaChannel(platformId) {
   const plat = mediaPlatformMeta(platformId);
   pickChoiceModal({
     icon: '📺', title: plat.name + ' · 开通',
-    html: '<p class="fold-meta">选账号名 → 选赛道（各赛道设备要求不同）</p>',
+    html: '<p class="fold-meta">选账号名 → 选赛道（设备与拍摄成本因赛道而异）</p>',
     choices: playerMediaPresets().map(function (name, i) {
       return { label: name, primary: i === 0, value: name, onPick: function (brand) { pickMediaTrack(platformId, brand); } };
     })
@@ -590,8 +685,9 @@ function pickMediaTrack(platformId, brand) {
     html: '<p>账号 <b>「' + brand + '」</b></p>',
     choices: plat.tracks.map(function (t, i) {
       const ok = trackMeetsReq(t, platformId);
+      const hint = trackPickHint(t, platformId);
       return {
-        label: t + (ok ? '' : '（' + trackReqLabel(t, platformId) + '）'),
+        label: t + (hint ? '（' + hint + '）' : ''),
         primary: i === 0 && ok,
         value: t,
         onPick: function (track) {
@@ -626,6 +722,8 @@ function openBilibiliOps(shop) {
   const idx = typeof fluxTrackIndex === 'function' ? fluxTrackIndex('media', shop.track) : 100;
   let html = '<p>赛道 <b>' + shop.track + '</b> · 指数 <b>' + Math.round(idx) + '</b> · 粉 ' + (shop.fans || 0) + '</p>';
   html += '<p class="fold-meta">流程：选题' + MEDIA_BILI_PLAN_SLOTS + '时段 → 拍摄' + MEDIA_BILI_SHOOT_SLOTS + '时段 → 剪辑' + MEDIA_BILI_EDIT_SLOTS + '时段 → 投稿审核2～4周</p>';
+  const shootHint = trackShootCostHint(shop.track);
+  if (shootHint) html += '<p class="fold-meta">拍摄成本：' + shootHint + '</p>';
   if (!trackMeetsReq(shop.track, 'bilibili')) html += '<p style="color:var(--orange)">当前赛道需：' + trackReqLabel(shop.track, 'bilibili') + '</p>';
 
   if (shop.pendingUploadUntilWeek && game.week < shop.pendingUploadUntilWeek) {
@@ -680,6 +778,7 @@ function openBilibiliOps(shop) {
       handler: function () {
         closeConsumeModal(true);
         if (!trackMeetsReq(shop.track, 'bilibili')) { addLog(trackReqLabel(shop.track, 'bilibili'), 'fail'); return; }
+        if (!chargeMediaTrackShootCost(shop.track, shop)) return;
         const needBlock = sideCanSpendSlots(MEDIA_BILI_SHOOT_SLOTS);
         if (needBlock) { addLog(needBlock, 'fail'); return; }
         if (!sideSpendSlots(MEDIA_BILI_SHOOT_SLOTS, 'media', 'B站拍摄')) return;
@@ -722,6 +821,9 @@ function openDouyinOps(shop) {
   const idx = typeof fluxTrackIndex === 'function' ? fluxTrackIndex('media', shop.track) : 100;
   let html = '<p>赛道 <b>' + shop.track + '</b> · 指数 <b>' + Math.round(idx) + '</b> · 连签 ' + (shop.liveStreak || 0) + '</p>';
   html += '<p class="fold-meta">短视频：拍摄' + MEDIA_DY_SHOOT_H + 'h+剪辑' + MEDIA_DY_EDIT_H + 'h · 直播：' + MEDIA_DY_LIVE_H + 'h/次 · 仅需手机</p>';
+  const shootHint = trackShootCostHint(shop.track);
+  if (shootHint) html += '<p class="fold-meta">拍摄成本：' + shootHint + '</p>';
+  if (shop.lastShootCity && shop.track === '旅行') html += '<p class="fold-meta">上次取景：' + shop.lastShootCity + '</p>';
   if (!trackMeetsReq(shop.track, 'douyin')) html += '<p style="color:var(--orange)">当前赛道需：' + trackReqLabel(shop.track, 'douyin') + '</p>';
 
   const buttons = [{ text: '关闭', handler: function () { closeConsumeModal(true); } }];
@@ -733,6 +835,7 @@ function openDouyinOps(shop) {
       handler: function () {
         closeConsumeModal(true);
         if (!trackMeetsReq(shop.track, 'douyin')) { addLog(trackReqLabel(shop.track, 'douyin'), 'fail'); return; }
+        if (!chargeMediaTrackShootCost(shop.track, shop)) return;
         if (!sideSpendHours(MEDIA_DY_SHOOT_H, 'media', '抖音拍摄')) return;
         shop.dyDraft = { shot: true, edited: false };
         addLog('🎬 抖音素材拍摄完成', 'info');
