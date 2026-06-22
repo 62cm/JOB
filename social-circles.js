@@ -1,12 +1,13 @@
-/* 社交圈 · 关系脑图 · 网络三圈层 — 由 build.js 注入 */
+/* 校友圈 · 关系脑图 · 网络三圈层 — 由 build.js 注入 */
 const SCHOOL_RING_DEFS = [
   { id: 'ps_soc_0', name: '小学同学圈', cohort: 0 },
   { id: 'ps_soc_1', name: '初中同学圈', cohort: 1 },
   { id: 'ps_soc_2', name: '高中同学圈', cohort: 2 },
   { id: 'ps_soc_3', name: '大学同学圈', cohort: 3 }
 ];
-const CIRCLE_KIND_LABELS = { family: '家族圈', friends: '朋友圈', social: '社交圈', hobby: '爱好圈', workplace: '职场圈' };
-const SOCIAL_CIRCLE_FAM_THRESHOLD = 80;
+const CIRCLE_KIND_LABELS = { family: '家族圈', friends: '朋友圈', social: '校友圈', hobby: '爱好圈', workplace: '职场圈' };
+const SOCIAL_CIRCLE_MINDMAP_FAM_THRESHOLD = 60;
+const SOCIAL_CIRCLE_LIST_FAM_THRESHOLD = 20;
 
 function memberCircleFamiliarity(member, ownerId) {
   if (!member) return 0;
@@ -203,7 +204,7 @@ function ensureNpcThreeCircles(c) {
   if (!c.circles) c.circles = { social: [], hobby: [], workplace: [] };
   const selfId = c.id;
   if (!c.circles.social.length) {
-    const soc = { id: 'soc_' + selfId, name: c.name + '的社交圈', members: [{ id: selfId, familiarity: 100, attraction: 0 }] };
+    const soc = { id: 'soc_' + selfId, name: c.name + '的校友圈', members: [{ id: selfId, familiarity: 100, attraction: 0 }] };
     for (let i = 0; i < 3; i++) {
       const n = generateNpcAcquaintance(selfId, 'soc', i);
       soc.members.push({ id: n.id, familiarity: 45 + Math.floor(Math.random() * 30), attraction: 15 + Math.floor(Math.random() * 25) });
@@ -398,7 +399,8 @@ function renderCircleKindSection(personId, kind) {
       '；下方成员列表为熟悉度≥' + (typeof FRIENDS_FAM_THRESHOLD !== 'undefined' ? FRIENDS_FAM_THRESHOLD : 60) + '（通讯录「关注」可强制入圈）</p>';
   }
   if (kind === 'social') {
-    h += '<p class="fold-meta" style="margin:8px 0 4px">结构图与成员列表均仅显示熟悉度≥' + SOCIAL_CIRCLE_FAM_THRESHOLD + '</p>';
+    h += '<p class="fold-meta" style="margin:8px 0 4px">结构图仅显示熟悉度≥' + SOCIAL_CIRCLE_MINDMAP_FAM_THRESHOLD +
+      '；下方成员列表为熟悉度≥' + SOCIAL_CIRCLE_LIST_FAM_THRESHOLD + '</p>';
   }
   if (kind === 'family') {
     h += '<p class="fold-meta" style="margin:8px 0 4px">树状图自上而下：祖辈 → 父母辈 → 本人辈 → 子女辈 · 虚线为配偶</p>';
@@ -425,7 +427,7 @@ function renderCircleKindSection(personId, kind) {
         theme: circle.theme,
         kind: circle.kind,
         members: (circle.members || []).filter(function (m) {
-          return memberMeetsCircleFamThreshold(m, personId, personId, SOCIAL_CIRCLE_FAM_THRESHOLD);
+          return memberMeetsCircleFamThreshold(m, personId, personId, SOCIAL_CIRCLE_MINDMAP_FAM_THRESHOLD);
         })
       };
     });
@@ -443,7 +445,7 @@ function renderCircleKindSection(personId, kind) {
     const kindLbl = kind === 'workplace' && circle.kind && typeof workplaceCircleLabel === 'function' ? workplaceCircleLabel(circle.kind) + ' · ' : '';
     const visibleMembers = (circle.members || []).filter(function (m) {
       if (!m.id) return false;
-      if (kind === 'social') return memberMeetsCircleFamThreshold(m, personId, personId, SOCIAL_CIRCLE_FAM_THRESHOLD);
+      if (kind === 'social') return memberMeetsCircleFamThreshold(m, personId, personId, SOCIAL_CIRCLE_LIST_FAM_THRESHOLD);
       return true;
     });
     const memCount = visibleMembers.filter(function (m) { return m.id && m.id !== personId; }).length;

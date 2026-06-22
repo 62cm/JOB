@@ -19,7 +19,7 @@ const CONTACT_GROUP_LABELS = {
   family: '家族',
   friends: '朋友圈',
   workplace: '职场圈',
-  social: '社交圈',
+  social: '校友圈',
   hobby: '爱好圈',
   other: '社会'
 };
@@ -416,7 +416,7 @@ function resolveContactCircleSource(personId) {
   let hit = findCircleMembership(personId, pc.workplace, 'workplace');
   if (hit) return (hit.circle.name || '职场圈');
   hit = findCircleMembership(personId, pc.social, 'social');
-  if (hit) return (hit.circle.name || '社交圈');
+  if (hit) return (hit.circle.name || '校友圈');
   hit = findCircleMembership(personId, pc.hobby, 'hobby');
   if (hit) return (hit.circle.name || '爱好圈');
   const c = (game.contacts || []).find(function (x) { return x.id === personId; });

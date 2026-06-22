@@ -472,7 +472,7 @@ function ensureContactCircles(c) {
   if (!c) return;
   ensureContactDreamFields(c);
   if (!c.circles.social.length) {
-    c.circles.social.push({ id: 'soc_' + c.id, name: c.name + '的社交圈', members: [{ id: c.id, familiarity: 100, attraction: 0 }] });
+    c.circles.social.push({ id: 'soc_' + c.id, name: c.name + '的校友圈', members: [{ id: c.id, familiarity: 100, attraction: 0 }] });
   }
   if (!c.circles.hobby.length && Math.random() < 0.6) {
     const theme = HOBBY_THEMES[Math.floor(Math.random() * HOBBY_THEMES.length)];

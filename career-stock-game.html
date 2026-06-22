@@ -703,7 +703,7 @@
     <h2>万物涨落 · 理想人生</h2>
     <p class="storage-hint">存档保存在本机浏览器（GitHub Pages 在线玩同样有效，仅当前浏览器；换电脑或换浏览器无存档）</p>
     <p style="font-size:.92rem;color:var(--text);line-height:1.55;margin:8px 0 4px">在一切消失前，探索理想的人生。</p>
-    <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 2026.06.17-social-circle-fam80 · 若线上数值不对请 Ctrl+F5 强刷</p>
+    <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 2026.06.17-alumni-circle-fam · 若线上数值不对请 Ctrl+F5 强刷</p>
     <div class="slot-grid" id="slotGrid"></div>
     <div id="charCreatePanel" class="char-create-panel" style="display:none">
       <p style="font-weight:600;margin-bottom:8px">档位 <span id="newSlotLabel">1</span> · 创造人生</p>
@@ -1407,7 +1407,7 @@ const AFFAIR_MARRIED_WEEKS = 7 * 52;
 const SAVE_SLOT_COUNT = 3;
 const LS_SLOTS = 'csg_slots_v3';
 const LS_SLOTS_BACKUP = 'csg_slots_backup_v1';
-const GAME_BUILD_ID = '2026.06.17-social-circle-fam80';
+const GAME_BUILD_ID = '2026.06.17-alumni-circle-fam';
 const CHILD_RAISING_MONTHS = 216;
 const CHILD_LIVING_COST = 20000;
 const PATERNITY_TEST_COST = 5000;
@@ -28345,7 +28345,7 @@ function ensureContactCircles(c) {
   if (!c) return;
   ensureContactDreamFields(c);
   if (!c.circles.social.length) {
-    c.circles.social.push({ id: 'soc_' + c.id, name: c.name + '的社交圈', members: [{ id: c.id, familiarity: 100, attraction: 0 }] });
+    c.circles.social.push({ id: 'soc_' + c.id, name: c.name + '的校友圈', members: [{ id: c.id, familiarity: 100, attraction: 0 }] });
   }
   if (!c.circles.hobby.length && Math.random() < 0.6) {
     const theme = HOBBY_THEMES[Math.floor(Math.random() * HOBBY_THEMES.length)];
@@ -29300,15 +29300,16 @@ function patchIdealRecording() {
 patchIdealRecording();
 setTimeout(patchIdealRecording, 0);
 
-/* 社交圈 · 关系脑图 · 网络三圈层 — 由 build.js 注入 */
+/* 校友圈 · 关系脑图 · 网络三圈层 — 由 build.js 注入 */
 const SCHOOL_RING_DEFS = [
   { id: 'ps_soc_0', name: '小学同学圈', cohort: 0 },
   { id: 'ps_soc_1', name: '初中同学圈', cohort: 1 },
   { id: 'ps_soc_2', name: '高中同学圈', cohort: 2 },
   { id: 'ps_soc_3', name: '大学同学圈', cohort: 3 }
 ];
-const CIRCLE_KIND_LABELS = { family: '家族圈', friends: '朋友圈', social: '社交圈', hobby: '爱好圈', workplace: '职场圈' };
-const SOCIAL_CIRCLE_FAM_THRESHOLD = 80;
+const CIRCLE_KIND_LABELS = { family: '家族圈', friends: '朋友圈', social: '校友圈', hobby: '爱好圈', workplace: '职场圈' };
+const SOCIAL_CIRCLE_MINDMAP_FAM_THRESHOLD = 60;
+const SOCIAL_CIRCLE_LIST_FAM_THRESHOLD = 20;
 
 function memberCircleFamiliarity(member, ownerId) {
   if (!member) return 0;
@@ -29505,7 +29506,7 @@ function ensureNpcThreeCircles(c) {
   if (!c.circles) c.circles = { social: [], hobby: [], workplace: [] };
   const selfId = c.id;
   if (!c.circles.social.length) {
-    const soc = { id: 'soc_' + selfId, name: c.name + '的社交圈', members: [{ id: selfId, familiarity: 100, attraction: 0 }] };
+    const soc = { id: 'soc_' + selfId, name: c.name + '的校友圈', members: [{ id: selfId, familiarity: 100, attraction: 0 }] };
     for (let i = 0; i < 3; i++) {
       const n = generateNpcAcquaintance(selfId, 'soc', i);
       soc.members.push({ id: n.id, familiarity: 45 + Math.floor(Math.random() * 30), attraction: 15 + Math.floor(Math.random() * 25) });
@@ -29700,7 +29701,8 @@ function renderCircleKindSection(personId, kind) {
       '；下方成员列表为熟悉度≥' + (typeof FRIENDS_FAM_THRESHOLD !== 'undefined' ? FRIENDS_FAM_THRESHOLD : 60) + '（通讯录「关注」可强制入圈）</p>';
   }
   if (kind === 'social') {
-    h += '<p class="fold-meta" style="margin:8px 0 4px">结构图与成员列表均仅显示熟悉度≥' + SOCIAL_CIRCLE_FAM_THRESHOLD + '</p>';
+    h += '<p class="fold-meta" style="margin:8px 0 4px">结构图仅显示熟悉度≥' + SOCIAL_CIRCLE_MINDMAP_FAM_THRESHOLD +
+      '；下方成员列表为熟悉度≥' + SOCIAL_CIRCLE_LIST_FAM_THRESHOLD + '</p>';
   }
   if (kind === 'family') {
     h += '<p class="fold-meta" style="margin:8px 0 4px">树状图自上而下：祖辈 → 父母辈 → 本人辈 → 子女辈 · 虚线为配偶</p>';
@@ -29727,7 +29729,7 @@ function renderCircleKindSection(personId, kind) {
         theme: circle.theme,
         kind: circle.kind,
         members: (circle.members || []).filter(function (m) {
-          return memberMeetsCircleFamThreshold(m, personId, personId, SOCIAL_CIRCLE_FAM_THRESHOLD);
+          return memberMeetsCircleFamThreshold(m, personId, personId, SOCIAL_CIRCLE_MINDMAP_FAM_THRESHOLD);
         })
       };
     });
@@ -29745,7 +29747,7 @@ function renderCircleKindSection(personId, kind) {
     const kindLbl = kind === 'workplace' && circle.kind && typeof workplaceCircleLabel === 'function' ? workplaceCircleLabel(circle.kind) + ' · ' : '';
     const visibleMembers = (circle.members || []).filter(function (m) {
       if (!m.id) return false;
-      if (kind === 'social') return memberMeetsCircleFamThreshold(m, personId, personId, SOCIAL_CIRCLE_FAM_THRESHOLD);
+      if (kind === 'social') return memberMeetsCircleFamThreshold(m, personId, personId, SOCIAL_CIRCLE_LIST_FAM_THRESHOLD);
       return true;
     });
     const memCount = visibleMembers.filter(function (m) { return m.id && m.id !== personId; }).length;
@@ -29820,7 +29822,7 @@ const CONTACT_GROUP_LABELS = {
   family: '家族',
   friends: '朋友圈',
   workplace: '职场圈',
-  social: '社交圈',
+  social: '校友圈',
   hobby: '爱好圈',
   other: '社会'
 };
@@ -30217,7 +30219,7 @@ function resolveContactCircleSource(personId) {
   let hit = findCircleMembership(personId, pc.workplace, 'workplace');
   if (hit) return (hit.circle.name || '职场圈');
   hit = findCircleMembership(personId, pc.social, 'social');
-  if (hit) return (hit.circle.name || '社交圈');
+  if (hit) return (hit.circle.name || '校友圈');
   hit = findCircleMembership(personId, pc.hobby, 'hobby');
   if (hit) return (hit.circle.name || '爱好圈');
   const c = (game.contacts || []).find(function (x) { return x.id === personId; });
