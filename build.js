@@ -55,7 +55,7 @@ const COMPANY_KPI_SRC = fs.readFileSync(path.join(__dirname, 'company-kpi.js'), 
 const LIFE_CREATION_SRC = fs.readFileSync(path.join(__dirname, 'life-creation.js'), 'utf8');
 const NETWORK_PANEL_SRC = fs.readFileSync(path.join(__dirname, 'network-panel.js'), 'utf8');
 const SELF_EMPLOY_SRC = fs.readFileSync(path.join(__dirname, 'self-employ.js'), 'utf8');
-const GAME_BUILD_ID = '2026.06.17-alumni-circle-fam';
+const GAME_BUILD_ID = '2026.06.17-alumni-edu-age';
 const CASINO_WAIT_SCALE = 0.5;
 function casinoWaitMs(ms){return Math.max(1,Math.round(ms*CASINO_WAIT_SCALE))}
 const CASINO_TIMING = {

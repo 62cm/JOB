@@ -703,7 +703,7 @@
     <h2>万物涨落 · 理想人生</h2>
     <p class="storage-hint">存档保存在本机浏览器（GitHub Pages 在线玩同样有效，仅当前浏览器；换电脑或换浏览器无存档）</p>
     <p style="font-size:.92rem;color:var(--text);line-height:1.55;margin:8px 0 4px">在一切消失前，探索理想的人生。</p>
-    <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 2026.06.17-alumni-circle-fam · 若线上数值不对请 Ctrl+F5 强刷</p>
+    <p style="font-size:.65rem;color:var(--muted);margin-top:-4px">版本 2026.06.17-alumni-edu-age · 若线上数值不对请 Ctrl+F5 强刷</p>
     <div class="slot-grid" id="slotGrid"></div>
     <div id="charCreatePanel" class="char-create-panel" style="display:none">
       <p style="font-weight:600;margin-bottom:8px">档位 <span id="newSlotLabel">1</span> · 创造人生</p>
@@ -1407,7 +1407,7 @@ const AFFAIR_MARRIED_WEEKS = 7 * 52;
 const SAVE_SLOT_COUNT = 3;
 const LS_SLOTS = 'csg_slots_v3';
 const LS_SLOTS_BACKUP = 'csg_slots_backup_v1';
-const GAME_BUILD_ID = '2026.06.17-alumni-circle-fam';
+const GAME_BUILD_ID = '2026.06.17-alumni-edu-age';
 const CHILD_RAISING_MONTHS = 216;
 const CHILD_LIVING_COST = 20000;
 const PATERNITY_TEST_COST = 5000;
@@ -29305,8 +29305,50 @@ const SCHOOL_RING_DEFS = [
   { id: 'ps_soc_0', name: '小学同学圈', cohort: 0 },
   { id: 'ps_soc_1', name: '初中同学圈', cohort: 1 },
   { id: 'ps_soc_2', name: '高中同学圈', cohort: 2 },
-  { id: 'ps_soc_3', name: '大学同学圈', cohort: 3 }
+  { id: 'ps_soc_3', name: '大学同学圈', cohort: 3, requiresUniversity: true }
 ];
+
+function playerAttendedUniversity(g) {
+  g = g || game;
+  const edu = g && g.playerEducation;
+  if (!edu) return true;
+  return ['大专', '本科', '硕士', '博士'].indexOf(edu) >= 0;
+}
+
+function playerSchoolRingDefs(g) {
+  g = g || game;
+  const maxCohort = playerAttendedUniversity(g) ? 3 : 2;
+  return SCHOOL_RING_DEFS.filter(function (r) {
+    if (r.requiresUniversity && !playerAttendedUniversity(g)) return false;
+    return r.cohort <= maxCohort;
+  });
+}
+
+function classmateBirthYear(rng) {
+  const by = (game && game.birthYear) || 1988;
+  return by + Math.floor(rng() * 3) - 1;
+}
+
+function syncClassmateAgeToPlayer(c) {
+  if (!c || !game || c.id === 'player') return;
+  const by = game.birthYear || 1988;
+  if (c.birthYear == null || Math.abs(c.birthYear - by) > 1) {
+    const seed = ((game.stockSeed || 1) + String(c.id || '').length * 17) | 0;
+    const rng = typeof dreamRng === 'function' ? dreamRng(seed) : Math.random;
+    c.birthYear = classmateBirthYear(rng);
+  }
+}
+
+function prunePlayerSchoolRingsBeyondEducation() {
+  if (!game || !game.playerCircles) return;
+  const allowed = {};
+  playerSchoolRingDefs(game).forEach(function (r) { allowed[r.id] = true; });
+  game.playerCircles.social = (game.playerCircles.social || []).filter(function (c) {
+    if (!c || !c.id) return false;
+    if (String(c.id).indexOf('ps_soc_') === 0) return !!allowed[c.id];
+    return true;
+  });
+}
 const CIRCLE_KIND_LABELS = { family: '家族圈', friends: '朋友圈', social: '校友圈', hobby: '爱好圈', workplace: '职场圈' };
 const SOCIAL_CIRCLE_MINDMAP_FAM_THRESHOLD = 60;
 const SOCIAL_CIRCLE_LIST_FAM_THRESHOLD = 20;
@@ -29401,7 +29443,7 @@ function generateClassmateNpc(ringId, index, cohort) {
   const given = typeof composeGivenPart === 'function' ? composeGivenPart(gender, rng) : (gender === 'male' ? '伟' : '娜');
   const name = surname + given;
   const id = 'mate_' + ringId + '_' + index;
-  const birthYear = (game.birthYear || 1988) + Math.floor(rng() * 3) - 1 + (cohort > 2 ? 0 : -1);
+  const birthYear = classmateBirthYear(rng);
   const contact = {
     id: id, kind: 'classmate', name: name, gender: gender, birthYear: birthYear,
     jobTitle: '学生', company: '', metWhere: SCHOOL_RING_DEFS[cohort].name,
@@ -29463,8 +29505,10 @@ function schoolCircleNeedsPopulate(circle) {
 function populatePlayerSchoolCircles(force) {
   if (!game) return;
   game.playerCircles = game.playerCircles || { social: [], hobby: [], workplace: [] };
+  prunePlayerSchoolRingsBeyondEducation();
+  const rings = playerSchoolRingDefs(game);
   let carry = [];
-  SCHOOL_RING_DEFS.forEach(function (ring, ri) {
+  rings.forEach(function (ring, ri) {
     let circle = game.playerCircles.social.find(function (x) { return x.id === ring.id || x.name === ring.name; });
     if (!circle) {
       circle = { id: ring.id, name: ring.name, members: [] };
@@ -29487,6 +29531,12 @@ function populatePlayerSchoolCircles(force) {
       }
     }
     circle.members = members;
+    members.forEach(function (m) {
+      if (m.id && m.id !== 'player') {
+        const c = circleMemberContact(m.id);
+        if (c) syncClassmateAgeToPlayer(c);
+      }
+    });
     carry = members.filter(function (m) { return m.id !== 'player'; }).slice(-2);
   });
   if (!game.playerCircles.hobby || !game.playerCircles.hobby.length) {
@@ -29790,11 +29840,13 @@ function migrateSocialCircles() {
     game.playerCircles = { social: [], hobby: [], workplace: [], friends: [], family: [] };
   }
   game.playerCircles = game.playerCircles || { social: [], hobby: [], workplace: [], friends: [], family: [] };
+  prunePlayerSchoolRingsBeyondEducation();
   populatePlayerSchoolCircles(false);
   if (typeof syncAllPlayerStaffCircles === 'function') syncAllPlayerStaffCircles();
   if (typeof migrateFamilyCircles === 'function') migrateFamilyCircles();
   else if (typeof syncFamilyCircle === 'function') syncFamilyCircle();
   (game.contacts || []).forEach(function (c) {
+    if (c.kind === 'classmate') syncClassmateAgeToPlayer(c);
     if (c.kind === 'classmate' || c.kind === 'acquaintance' || c.kind === 'colleague' || c.kind === 'staff') ensureNpcThreeCircles(c);
     ensurePersonLifespan(c);
   });
