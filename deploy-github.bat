@@ -45,6 +45,7 @@ echo [2/4] git add
 git add build.js index.html career-stock-game.html data.json
 git add *.js
 if exist README.md git add README.md
+if exist GAME-INTRO.md git add GAME-INTRO.md
 if exist .gitignore git add .gitignore
 if exist build.bat git add build.bat
 if exist deploy-github.bat git add deploy-github.bat
