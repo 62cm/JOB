@@ -6,6 +6,20 @@ const SCHOOL_RING_DEFS = [
   { id: 'ps_soc_3', name: '大学同学圈', cohort: 3 }
 ];
 const CIRCLE_KIND_LABELS = { family: '家族圈', friends: '朋友圈', social: '社交圈', hobby: '爱好圈', workplace: '职场圈' };
+const SOCIAL_CIRCLE_FAM_THRESHOLD = 80;
+
+function memberCircleFamiliarity(member, ownerId) {
+  if (!member) return 0;
+  const meta = member.familiarity != null ? member.familiarity : 0;
+  const c = circleMemberContact(member.id, ownerId);
+  const contactFam = c && c.familiarity != null ? c.familiarity : 0;
+  return Math.max(meta, contactFam);
+}
+
+function memberMeetsCircleFamThreshold(member, ownerId, centerId, minFam) {
+  if (!member || !member.id || member.id === centerId || member.id === 'player') return true;
+  return memberCircleFamiliarity(member, ownerId) >= minFam;
+}
 
 function getContactAge(c) {
   if (!c) return null;
@@ -383,6 +397,9 @@ function renderCircleKindSection(personId, kind) {
     h += '<p class="fold-meta" style="margin:8px 0 4px">结构图仅显示熟悉度≥' + (typeof FRIENDS_MINDMAP_FAM_THRESHOLD !== 'undefined' ? FRIENDS_MINDMAP_FAM_THRESHOLD : 80) +
       '；下方成员列表为熟悉度≥' + (typeof FRIENDS_FAM_THRESHOLD !== 'undefined' ? FRIENDS_FAM_THRESHOLD : 60) + '（通讯录「关注」可强制入圈）</p>';
   }
+  if (kind === 'social') {
+    h += '<p class="fold-meta" style="margin:8px 0 4px">结构图与成员列表均仅显示熟悉度≥' + SOCIAL_CIRCLE_FAM_THRESHOLD + '</p>';
+  }
   if (kind === 'family') {
     h += '<p class="fold-meta" style="margin:8px 0 4px">树状图自上而下：祖辈 → 父母辈 → 本人辈 → 子女辈 · 虚线为配偶</p>';
   }
@@ -396,8 +413,19 @@ function renderCircleKindSection(personId, kind) {
         theme: circle.theme,
         kind: circle.kind,
         members: (circle.members || []).filter(function (m) {
-          if (m.id === personId) return true;
-          return (m.familiarity || 0) >= minFam;
+          return memberMeetsCircleFamThreshold(m, personId, personId, minFam);
+        })
+      };
+    });
+  } else if (kind === 'social') {
+    graphCircles = circles.map(function (circle) {
+      return {
+        id: circle.id,
+        name: circle.name,
+        theme: circle.theme,
+        kind: circle.kind,
+        members: (circle.members || []).filter(function (m) {
+          return memberMeetsCircleFamThreshold(m, personId, personId, SOCIAL_CIRCLE_FAM_THRESHOLD);
         })
       };
     });
@@ -413,7 +441,12 @@ function renderCircleKindSection(personId, kind) {
     const circleKey = 'circle_' + (circle.id || circle.name) + '_' + personId;
     const cFolded = typeof isCircleFolded === 'function' ? isCircleFolded(circleKey) : true;
     const kindLbl = kind === 'workplace' && circle.kind && typeof workplaceCircleLabel === 'function' ? workplaceCircleLabel(circle.kind) + ' · ' : '';
-    const memCount = (circle.members || []).filter(function (m) { return m.id && m.id !== personId; }).length;
+    const visibleMembers = (circle.members || []).filter(function (m) {
+      if (!m.id) return false;
+      if (kind === 'social') return memberMeetsCircleFamThreshold(m, personId, personId, SOCIAL_CIRCLE_FAM_THRESHOLD);
+      return true;
+    });
+    const memCount = visibleMembers.filter(function (m) { return m.id && m.id !== personId; }).length;
     h += '<div class="circle-fold' + (cFolded ? ' collapsed' : '') + '" style="margin:8px 0 0;padding:8px;background:var(--bg);border-radius:8px;border:1px dashed var(--border)">';
     h += '<div class="circle-fold-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer" onclick="event.stopPropagation();toggleCircleFold(\'' + escNetId(circleKey) + '\')">';
     h += '<b style="font-size:.82rem">' + kindLbl + circle.name + '</b>';
@@ -421,7 +454,7 @@ function renderCircleKindSection(personId, kind) {
     h += '<div class="circle-fold-body">';
     if (circle.theme) h += '<span class="fold-meta">· ' + circle.theme + '</span>';
     h += '<div style="margin-top:6px;display:flex;flex-wrap:wrap;align-items:flex-start">';
-    (circle.members || []).forEach(function (m) {
+    visibleMembers.forEach(function (m) {
       h += renderMemberChip(m.id, m, personId, m.id === personId, kind);
     });
     h += '</div>';
